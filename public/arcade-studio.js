@@ -20,7 +20,7 @@ const VOICE_GROUPS = [
   ] },
   { title: "Cabinets (per-game accents)", voices: [
     ["sprint", "Sprint"], ["tugofwar", "Tug of War"], ["canvas", "Canvas"],
-    ["button", "The Button"], ["clawback", "ETHperience"], ["degendash", "Degen Dash"],
+    ["button", "The Button"], ["clawback", "Clawback"], ["degendash", "Degen Dash"],
   ] },
   { title: "Events", voices: [["blip", "SFX / Jingle"]] },
 ];

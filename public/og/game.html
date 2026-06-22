@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>OG · Arcade game</title>
+<!-- 1200x630 per-game OG. Render: /og/game.html?g=<id> via headless Chrome.
+     Themed to each cabinet's color + shard; signature art on a lit CRT tile. -->
+<style>
+@font-face{font-family:'Roobert PRO';src:url('/fonts/RoobertPRO-Medium.otf') format('opentype');font-weight:500;font-display:block;}
+@font-face{font-family:'Roobert PRO';src:url('/fonts/RoobertPRO-SemiBold.otf') format('opentype');font-weight:600;font-display:block;}
+@font-face{font-family:'Roobert PRO';src:url('/fonts/RoobertPRO-Heavy.otf') format('opentype');font-weight:900;font-display:block;}
+@font-face{font-family:'JetBrains Mono';src:url('/fonts/JetBrainsMono.woff2') format('woff2');font-weight:100 800;font-display:block;}
+:root{--mint:#23F7DD;--amber:#F5B544;--coral:#FF6B9D;--blue:#5B8DEF;--lavender:#A78BFA;--green:#4ADE80;--yellow:#FFD23F;
+  --text:#F4F6FA;--dim:#9BA3B4;--faint:#6B7385;--mono:'JetBrains Mono','SFMono-Regular',ui-monospace,monospace;--c:#23F7DD;}
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{width:1200px;height:630px;overflow:hidden;background:#040506;}
+body{font-family:'Roobert PRO',system-ui,sans-serif;color:var(--text);position:relative;}
+#galaxy{position:fixed;inset:0;z-index:0;}
+.vignette{position:fixed;inset:0;z-index:1;background:radial-gradient(130% 120% at 30% 46%,transparent 44%,rgba(2,3,4,.74) 100%);}
+.frame{position:absolute;inset:0;z-index:3;display:flex;flex-direction:column;padding:46px 60px 42px;}
+.top{display:flex;align-items:center;justify-content:space-between;}
+.kick{display:flex;align-items:center;gap:13px;}
+.kick img{height:23px;display:block;opacity:.92;}
+.kick .k{font-family:var(--mono);font-size:13px;letter-spacing:.22em;text-transform:uppercase;color:var(--faint);border-left:1px solid #2a3140;padding-left:13px;}
+.shard{font-family:var(--mono);font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:var(--c);border:1px solid color-mix(in srgb,var(--c) 35%,transparent);background:color-mix(in srgb,var(--c) 10%,transparent);padding:7px 15px;border-radius:999px;}
+.mid{flex:1;display:flex;align-items:center;gap:54px;}
+/* the lit CRT tile (a cabinet screen) */
+.crt{flex:0 0 auto;width:330px;height:300px;border-radius:14px;position:relative;overflow:hidden;
+  background:radial-gradient(120% 130% at 50% 0%,color-mix(in srgb,var(--c) 16%,#050608),#040506);
+  border:2px solid #04060a;box-shadow:inset 0 0 34px rgba(0,0,0,.85),0 0 0 1px color-mix(in srgb,var(--c) 32%,transparent),0 0 40px color-mix(in srgb,var(--c) 22%,transparent);}
+.crt::after{content:"";position:absolute;inset:0;opacity:.45;background:repeating-linear-gradient(0deg,rgba(0,0,0,0) 0 3px,rgba(0,0,0,.26) 3px 4px);}
+.gx{position:absolute;inset:0;display:grid;place-items:center;}
+.info{min-width:0;}
+.name{font-weight:900;font-size:76px;line-height:.92;letter-spacing:-.015em;color:#fff;
+  text-shadow:0 0 22px color-mix(in srgb,var(--c) 65%,transparent),0 0 52px color-mix(in srgb,var(--c) 38%,transparent);}
+.tag{margin-top:20px;font-size:24px;line-height:1.32;font-weight:500;color:var(--dim);max-width:15ch;}
+.tag b{color:var(--text);font-weight:600;}
+.bot{display:flex;align-items:center;justify-content:space-between;}
+.play{font-family:var(--mono);font-size:15px;letter-spacing:.05em;text-transform:uppercase;color:var(--c);}
+.play b{color:#fff;}
+.meta{font-family:var(--mono);font-size:14px;letter-spacing:.05em;text-transform:uppercase;color:var(--faint);}
+
+/* signature art (scaled emblems) */
+.ring{width:120px;height:120px;border-radius:50%;border:3px solid var(--c);box-shadow:0 0 26px color-mix(in srgb,var(--c) 55%,transparent);display:grid;place-items:center;}
+.ring svg{width:62px;height:48px;}
+.ring svg path{fill:var(--c);}
+.txd{position:absolute;width:7px;height:7px;border-radius:50%;background:var(--c);box-shadow:0 0 9px var(--c);}
+.rope{position:relative;width:74%;height:3px;background:color-mix(in srgb,var(--c) 32%,transparent);border-radius:3px;}
+.rope i{position:absolute;top:50%;left:58%;width:22px;height:22px;border-radius:50%;background:var(--c);box-shadow:0 0 16px var(--c);transform:translate(-50%,-50%);}
+.pixg{display:grid;grid-template-columns:repeat(6,20px);grid-auto-rows:20px;gap:5px;}
+.pixg i{width:20px;height:20px;border-radius:3px;background:color-mix(in srgb,var(--c) 18%,transparent);}
+.bbtn{width:96px;height:96px;border-radius:50%;background:radial-gradient(circle at 45% 35%,#fff,var(--c) 66%);box-shadow:0 0 30px color-mix(in srgb,var(--c) 60%,transparent);position:relative;}
+.bbtn::after{content:"";position:absolute;inset:-16px;border-radius:50%;border:3px solid color-mix(in srgb,var(--c) 45%,transparent);}
+.card{position:absolute;font-family:var(--mono);font-weight:700;font-size:24px;padding:7px 13px;border-radius:8px;}
+</style>
+</head>
+<body>
+<canvas id="galaxy" aria-hidden="true"></canvas>
+<div class="vignette"></div>
+<div class="frame">
+  <div class="top">
+    <span class="kick"><img src="/mvx-wordmark.svg" alt="MultiversX" /><span class="k">Supernova Arcade</span></span>
+    <span class="shard" id="shard">shard 1</span>
+  </div>
+  <div class="mid">
+    <div class="crt"><div class="gx" id="art"></div></div>
+    <div class="info">
+      <h1 class="name" id="name">Game</h1>
+      <p class="tag" id="tag">Tagline.</p>
+    </div>
+  </div>
+  <div class="bot">
+    <span class="play">Play at <b id="route">supernova-arcade.xyz</b></span>
+    <span class="meta">One tap &middot; no wallet &middot; onchain</span>
+  </div>
+</div>
+<script type="module">
+  import { mountGalaxy } from "/arcade-galaxy.js";
+  const GAMES = {
+    sprint:    { name:"Supernova Sprint", c:"#23F7DD", shard:"shard 1", tag:"How many transactions can you fire in 30 seconds?", art:"ring",  route:"/onchain" },
+    tugofwar:  { name:"Tug of War",       c:"#23F7DD", shard:"shard 1", tag:"Two teams, one rope. Every pull is a real transaction.", art:"rope", route:"/tug-of-war" },
+    canvas:    { name:"Supernova Canvas", c:"#A78BFA", shard:"shard 1", tag:"A shared pixel canvas. Every pixel is an onchain write.", art:"pix", route:"/canvas" },
+    button:    { name:"The Button",       c:"#5B8DEF", shard:"shard 2", tag:"One button. A timer that resets on every press.", art:"btn",  route:"/button" },
+    clawback:  { name:"Clawback",         c:"#FF6B9D", shard:"shard 2", tag:"Attacks rain in. Claw each one back before it settles.", art:"card", route:"/clawback" },
+    degendash: { name:"Degen Dash",       c:"#FFD23F", shard:"shard 0", tag:"Collect the wins, dodge the rugs. Every collect is real.", art:"dash", route:"/degen-dash" },
+  };
+  const SI = { "shard 0":0, "shard 1":1, "shard 2":2 };
+  const id = new URLSearchParams(location.search).get("g") || "sprint";
+  const g = GAMES[id] || GAMES.sprint;
+  document.documentElement.style.setProperty("--c", g.c);
+  document.getElementById("name").textContent = g.name;
+  document.getElementById("tag").innerHTML = g.tag;
+  document.getElementById("shard").textContent = g.shard;
+  document.getElementById("route").textContent = "supernova-arcade.xyz" + g.route;
+  const X = '<svg viewBox="0 0 192 148"><path d="M106.4,74L192,28L177.6,0.2L99.2,32.1c-2,0.8-4.3,0.8-6.3,0L14.5,0.2L0.1,28l85.6,46l-85.6,46l14.4,27.8l78.4-31.9c2-0.8,4.3-0.8,6.3,0l78.4,31.9l14.4-27.8L106.4,74z"/></svg>';
+  const art = document.getElementById("art");
+  const px = (on) => { let s=""; for(let i=0;i<24;i++){ const lit=on.includes(i); s+=`<i style="${lit?`background:var(--c);box-shadow:0 0 10px var(--c)`:''}"></i>`; } return `<div class="pixg">${s}</div>`; };
+  const ART = {
+    ring: `<div class="ring">${X}</div><span class="txd" style="left:38%;top:74%"></span><span class="txd" style="left:60%;top:80%"></span><span class="txd" style="left:50%;top:66%"></span>`,
+    rope: `<div class="rope"><i></i></div>`,
+    pix:  px([2,3,8,9,10,14,15,20]),
+    btn:  `<div class="bbtn"></div>`,
+    card: `<span class="card" style="left:24%;top:26%;color:var(--coral);background:rgba(255,107,157,.16)">-12</span><span class="card" style="left:56%;top:54%;color:var(--green);background:rgba(74,222,128,.16)">+6</span>`,
+    dash: `<span class="card" style="left:22%;top:28%;color:var(--mint);background:rgba(35,247,221,.16)">+18</span><span class="card" style="left:56%;top:56%;color:var(--coral);background:rgba(255,107,157,.16)">&#9760;</span>`,
+  };
+  art.innerHTML = ART[g.art] || ART.ring;
+  try { mountGalaxy({ intensity: 1, focusShard: SI[g.shard], canvas: "#galaxy", ambient: true }); } catch (e) {}
+</script>
+</body>
+</html>

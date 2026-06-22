@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>X header · Supernova Arcade</title>
+<!-- 1500x500 X/Twitter header. Content centered + kept clear of the bottom-left
+     avatar zone. Render via headless Chrome against the dev server. -->
+<style>
+@font-face{font-family:'Roobert PRO';src:url('/fonts/RoobertPRO-Medium.otf') format('opentype');font-weight:500;font-display:block;}
+@font-face{font-family:'Roobert PRO';src:url('/fonts/RoobertPRO-Heavy.otf') format('opentype');font-weight:900;font-display:block;}
+@font-face{font-family:'JetBrains Mono';src:url('/fonts/JetBrainsMono.woff2') format('woff2');font-weight:100 800;font-display:block;}
+:root{--mint:#23F7DD;--amber:#F5B544;--coral:#FF6B9D;--blue:#5B8DEF;--lavender:#A78BFA;--text:#F4F6FA;--dim:#9BA3B4;--faint:#6B7385;--mono:'JetBrains Mono',monospace;}
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{width:1500px;height:500px;overflow:hidden;background:#040506;}
+body{font-family:'Roobert PRO',system-ui,sans-serif;color:var(--text);position:relative;}
+#galaxy{position:fixed;inset:0;z-index:0;}
+.vignette{position:fixed;inset:0;z-index:1;background:radial-gradient(120% 130% at 50% 42%,transparent 42%,rgba(2,3,4,.74) 100%);}
+.ceiling{position:absolute;top:0;left:0;right:0;height:64px;z-index:2;opacity:.9;}
+.mid{position:absolute;inset:0;z-index:3;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;}
+.bulbs{display:flex;gap:16px;margin-bottom:18px;}
+.bulbs i{width:8px;height:8px;border-radius:50%;background:var(--mint);box-shadow:0 0 11px var(--mint);}
+.bulbs i:nth-child(2){background:var(--amber);box-shadow:0 0 11px var(--amber);}
+.bulbs i:nth-child(3){background:var(--coral);box-shadow:0 0 11px var(--coral);}
+.bulbs i:nth-child(4){background:var(--blue);box-shadow:0 0 11px var(--blue);}
+.bulbs i:nth-child(5){background:var(--lavender);box-shadow:0 0 11px var(--lavender);}
+.sign{font-weight:900;font-size:96px;line-height:.9;letter-spacing:-.01em;color:#eafffb;white-space:nowrap;
+  text-shadow:0 0 6px #fff,0 0 22px var(--mint),0 0 54px rgba(35,247,221,.7),0 0 104px rgba(35,247,221,.42);}
+.tag{margin-top:20px;font-size:22px;font-weight:500;color:var(--dim);}
+.tag b{color:var(--mint);font-weight:600;}
+.url{position:absolute;right:46px;bottom:34px;z-index:3;font-family:var(--mono);font-size:15px;letter-spacing:.04em;color:var(--faint);}
+.url b{color:var(--text);}
+</style>
+</head>
+<body>
+<canvas id="galaxy" aria-hidden="true"></canvas>
+<div class="vignette"></div>
+<svg class="ceiling" viewBox="0 0 1500 64" preserveAspectRatio="none" aria-hidden="true">
+  <polyline points="80,20 160,20 160,46 240,46 240,20 320,20" fill="none" stroke="#23F7DD" stroke-width="3" stroke-linecap="round" style="filter:drop-shadow(0 0 6px #23F7DD)"/>
+  <circle cx="560" cy="33" r="15" fill="none" stroke="#FF6B9D" stroke-width="3" style="filter:drop-shadow(0 0 6px #FF6B9D)"/>
+  <rect x="660" y="18" width="30" height="30" rx="5" fill="none" stroke="#A78BFA" stroke-width="3" style="filter:drop-shadow(0 0 6px #A78BFA)"/>
+  <polyline points="820,46 846,20 872,46 898,20 924,46" fill="none" stroke="#F5B544" stroke-width="3" stroke-linecap="round" style="filter:drop-shadow(0 0 6px #F5B544)"/>
+  <polyline points="1100,20 1180,20 1180,46 1260,46 1260,20 1340,20" fill="none" stroke="#5B8DEF" stroke-width="3" stroke-linecap="round" style="filter:drop-shadow(0 0 6px #5B8DEF)"/>
+</svg>
+<div class="mid">
+  <div class="bulbs" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+  <h1 class="sign">SUPERNOVA&nbsp;ARCADE</h1>
+  <p class="tag">A neon arcade <b>inside the live network</b> &middot; one tap, no wallet, every move onchain</p>
+</div>
+<span class="url"><b>supernova-arcade</b>.xyz</span>
+<script type="module">
+  import { mountGalaxy } from "/arcade-galaxy.js";
+  try { mountGalaxy({ intensity: 1, canvas: "#galaxy", ambient: true }); } catch (e) {}
+</script>
+</body>
+</html>

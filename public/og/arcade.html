@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>OG · Supernova Arcade</title>
+<!-- 1200x630 OG artboard for supernova-arcade.xyz. Rendered to PNG via headless
+     Chrome against the dev server (real fonts + a live Galaxy of Nodes frame). -->
+<style>
+@font-face{font-family:'Roobert PRO';src:url('/fonts/RoobertPRO-Medium.otf') format('opentype');font-weight:500;font-display:block;}
+@font-face{font-family:'Roobert PRO';src:url('/fonts/RoobertPRO-Bold.otf') format('opentype');font-weight:700;font-display:block;}
+@font-face{font-family:'Roobert PRO';src:url('/fonts/RoobertPRO-Heavy.otf') format('opentype');font-weight:900;font-display:block;}
+@font-face{font-family:'JetBrains Mono';src:url('/fonts/JetBrainsMono.woff2') format('woff2');font-weight:100 800;font-display:block;}
+:root{--mint:#23F7DD;--amber:#F5B544;--coral:#FF6B9D;--blue:#5B8DEF;--lavender:#A78BFA;
+  --text:#F4F6FA;--dim:#9BA3B4;--faint:#6B7385;--mono:'JetBrains Mono','SFMono-Regular',ui-monospace,monospace;}
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{width:1200px;height:630px;overflow:hidden;background:#040506;}
+body{font-family:'Roobert PRO',system-ui,sans-serif;color:var(--text);position:relative;}
+#galaxy{position:fixed;inset:0;z-index:0;}
+.vignette{position:fixed;inset:0;z-index:1;background:radial-gradient(135% 115% at 50% 44%,transparent 46%,rgba(2,3,4,.72) 100%);}
+/* neon ceiling tubes, subtle across the very top */
+.ceiling{position:absolute;top:0;left:0;right:0;height:74px;z-index:2;opacity:.9;}
+.frame{position:absolute;inset:0;z-index:3;display:flex;flex-direction:column;padding:48px 64px 44px;}
+.top{display:flex;align-items:center;justify-content:space-between;}
+.lockup img{height:27px;display:block;opacity:.95;}
+.chip{font-family:var(--mono);font-size:14.5px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:var(--mint);
+  border:1px solid rgba(35,247,221,.38);background:rgba(35,247,221,.07);padding:9px 17px;border-radius:999px;display:inline-flex;align-items:center;gap:10px;}
+.chip .dot{width:8px;height:8px;border-radius:50%;background:var(--mint);box-shadow:0 0 10px var(--mint);}
+.mid{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;}
+.bulbs{display:flex;gap:17px;margin-bottom:22px;}
+.bulbs i{width:9px;height:9px;border-radius:50%;background:var(--mint);box-shadow:0 0 12px var(--mint);}
+.bulbs i:nth-child(2){background:var(--amber);box-shadow:0 0 12px var(--amber);}
+.bulbs i:nth-child(3){background:var(--coral);box-shadow:0 0 12px var(--coral);}
+.bulbs i:nth-child(4){background:var(--blue);box-shadow:0 0 12px var(--blue);}
+.bulbs i:nth-child(5){background:var(--lavender);box-shadow:0 0 12px var(--lavender);}
+.sign{font-weight:900;font-size:122px;line-height:.86;letter-spacing:-.012em;color:#eafffb;
+  text-shadow:0 0 6px #fff,0 0 24px var(--mint),0 0 58px rgba(35,247,221,.7),0 0 110px rgba(35,247,221,.42);}
+.tag{margin-top:26px;font-size:27px;font-weight:500;color:var(--text);letter-spacing:.005em;}
+.tag b{color:var(--mint);font-weight:600;}
+.bot{display:flex;align-items:center;justify-content:space-between;}
+.hook{font-family:var(--mono);font-size:15px;letter-spacing:.05em;text-transform:uppercase;color:var(--dim);}
+.hook b{color:var(--mint);font-weight:600;}
+.url{font-family:var(--mono);font-size:15px;letter-spacing:.03em;color:var(--faint);}
+.url b{color:var(--text);font-weight:600;}
+</style>
+</head>
+<body>
+<canvas id="galaxy" aria-hidden="true"></canvas>
+<div class="vignette"></div>
+<svg class="ceiling" viewBox="0 0 1200 74" preserveAspectRatio="none" aria-hidden="true">
+  <polyline points="60,22 140,22 140,52 220,52 220,22 300,22" fill="none" stroke="#23F7DD" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="filter:drop-shadow(0 0 6px #23F7DD)"/>
+  <circle cx="470" cy="37" r="17" fill="none" stroke="#FF6B9D" stroke-width="3" style="filter:drop-shadow(0 0 6px #FF6B9D)"/>
+  <rect x="560" y="20" width="34" height="34" rx="5" fill="none" stroke="#A78BFA" stroke-width="3" style="filter:drop-shadow(0 0 6px #A78BFA)"/>
+  <polyline points="700,52 728,22 756,52 784,22 812,52" fill="none" stroke="#F5B544" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="filter:drop-shadow(0 0 6px #F5B544)"/>
+  <polyline points="900,22 980,22 980,52 1060,52 1060,22 1140,22" fill="none" stroke="#5B8DEF" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="filter:drop-shadow(0 0 6px #5B8DEF)"/>
+</svg>
+<div class="frame">
+  <div class="top">
+    <span class="lockup"><img src="/mvx-wordmark.svg" alt="MultiversX" /></span>
+    <span class="chip"><span class="dot"></span>Live on testnet</span>
+  </div>
+  <div class="mid">
+    <div class="bulbs" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+    <h1 class="sign">SUPERNOVA<br/>ARCADE</h1>
+    <p class="tag">A neon arcade <b>inside the live network</b></p>
+  </div>
+  <div class="bot">
+    <span class="hook">One tap &middot; no wallet &middot; every move a <b>real transaction onchain</b></span>
+    <span class="url"><b>supernova-arcade</b>.xyz</span>
+  </div>
+</div>
+<script type="module">
+  import { mountGalaxy } from "/arcade-galaxy.js";
+  try { mountGalaxy({ intensity: 1, canvas: "#galaxy", ambient: true }); } catch (e) {}
+</script>
+</body>
+</html>
