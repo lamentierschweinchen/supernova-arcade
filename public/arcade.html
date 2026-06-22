@@ -7,7 +7,7 @@
 <meta name="description" content="A neon arcade inside the live network. Simple onchain games on MultiversX: one tap, no wallet, every move a real transaction. Play, or build your own." />
 <meta property="og:title" content="Supernova Arcade · MultiversX" />
 <meta property="og:description" content="A neon arcade inside the live network. Simple games, real transactions. One tap, no wallet, no install. The chain holds the score." />
-<meta property="og:image" content="/supernova-sprint-og.png" />
+<meta property="og:image" content="/supernova-arcade-og.png" />
 <meta name="twitter:card" content="summary_large_image" />
 <link rel="icon" href="/favicon.svg" />
 <!--
@@ -351,7 +351,7 @@ h1,h2,h3,p{text-wrap:balance;}
     <div class="reqs">
       <div class="req"><span class="rq-n">01</span><span class="rq-t"><b>One-tap gasless play.</b> An ephemeral key in the browser, transactions relayed for free. No wallet, no install.</span></div>
       <div class="req"><span class="rq-n">02</span><span class="rq-t"><b>An onchain score or shared state.</b> A leaderboard or a shared tally the hub can read.</span></div>
-      <div class="req"><span class="rq-n">03</span><span class="rq-t"><b>Uncheatable scores.</b> The score is the count of real transactions a player actually sends, so it can't be faked from the client without sending them onchain.</span></div>
+      <div class="req"><span class="rq-n">03</span><span class="rq-t"><b>Uncheatable scores.</b> A score is just the player's real transaction count, so there's nothing to fake.</span></div>
       <div class="req"><span class="rq-n">04</span><span class="rq-t"><b>The standard actions event.</b> Emit <span style="font-family:var(--mono)">arcadeAction</span> so your game feeds this counter.</span></div>
     </div>
     <div class="b-cta">
@@ -362,8 +362,8 @@ h1,h2,h3,p{text-wrap:balance;}
 
   <!-- footer -->
   <footer class="foot">
-    <div class="coin"><span class="slot" aria-hidden="true"></span><span class="ct">Every other arcade says insert coin. Here you <b>insert nothing</b>.</span></div>
-    <span class="net">Galaxy of Nodes · each cabinet lives on a <b>shard</b> · onchain actions read straight from the chain. A score is the count of real transactions a player sends, so it can't be faked. Testnet can be reset, which clears the boards.</span>
+    <div class="coin"><span class="slot" aria-hidden="true"></span><span class="ct">No coins, no wallet, no gas. <b>Just play.</b></span></div>
+    <span class="net">Each cabinet lives on a <b>shard</b> of the live network. Every score is real onchain transactions, read straight from the chain, so it can't be faked. Testnet resets clear the boards.</span>
   </footer>
 
 </div>
@@ -389,7 +389,7 @@ const CABINETS = [
   {
     id: "sprint", name: "Supernova Sprint", status: "live", href: "/onchain", art: "sprint",
     color: "#23F7DD", shard: "shard 1",
-    line: "How many transactions can you fire in 30 seconds? Tap fast, each tap is a real transaction that finalizes on the Supernova clock.",
+    line: "How many transactions can you fire in 30 seconds? Tap fast. Every tap is a real transaction, final in a fraction of a second.",
     metaSuffix: "taps onchain",
     counter: { address: SPRINT_TAP_COUNTER, view: "getGlobalTaps" },
   },
@@ -415,9 +415,9 @@ const CABINETS = [
     counter: { address: GAMES.button.contract, view: "getGlobalActions" },
   },
   {
-    id: "clawback", name: "ETHperience", status: "live", href: "/clawback", art: "claw",
+    id: "clawback", name: "Clawback", status: "live", href: "/clawback", art: "claw",
     color: "#FF6B9D", shard: "shard 2",
-    line: "Defend your wallet from the attacks that drain crypto. Brutal on the ETH experience, a breeze with a MultiversX guardian. Same game, two worlds.",
+    line: "Attacks rain in to drain your wallet. Tap to claw each one back before it settles. Brutal in ETH mode, easy with a MultiversX Guardian.",
     metaSuffix: "counters onchain",
     counter: { address: GAMES.clawback.contract, view: "getGlobalActions" },
   },

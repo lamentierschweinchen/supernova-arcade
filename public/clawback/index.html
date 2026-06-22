@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>ETHperience · Supernova Arcade</title>
-<meta name="description" content="Defend your wallet from the attacks that drain crypto. Brutal on the ETH theme, a breeze with a MultiversX guardian. A real onchain game on MultiversX, gasless and no wallet." />
+<title>Clawback · Supernova Arcade</title>
+<meta name="description" content="Defend your wallet from the attacks that drain crypto. Brutal in ETH mode, easy with a MultiversX Guardian. A real onchain game, gasless and no wallet." />
 <link rel="icon" href="/favicon.svg" />
 <link rel="stylesheet" href="/arcade-shell.css" />
 <!--
@@ -251,32 +251,32 @@
     <span class="lockup"><img src="/mvx-wordmark.svg" alt="MultiversX" /><span class="shard">shard 2</span></span>
   </header>
 
-  <h1><span class="x">ETH</span>perience</h1>
-  <p class="sub">Attacks rain down to drain your wallet. Tap to claw each one back before it settles. The catch: it depends which chain you are on.</p>
+  <h1><span class="x">Claw</span>back</h1>
+  <p class="sub">Attacks rain down to drain your wallet. Tap to claw each one back before it settles.</p>
   <span class="mode" id="modeBadge">connecting…</span>
 
   <div class="onetap"><span class="ic"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M13 2 3 14h7l-1 8 10-12h-7z" stroke="#FF6B9D" stroke-width="1.6" stroke-linejoin="round"/></svg></span><span class="t"><b>No wallet, just play.</b> A key is created in your browser and we cover the gas.</span></div>
 
   <div class="cabinet">
-    <div class="cab-marquee">Clawback · pull it back before it settles</div>
+    <div class="cab-marquee">Clawback · claw it back before it settles</div>
     <div class="screen">
       <div class="play">
         <!-- the proof is the toggle: same game, two worlds. ETH theme = brutal; Guardian = safe. -->
-        <section class="modepick" id="modepick" aria-label="Choose your chain">
+        <section class="modepick" id="modepick" aria-label="Choose your mode">
           <button class="opt eth sel" id="optEth" data-mode="eth" type="button">
             <span class="check"></span>
-            <span class="nm"><span class="ic">⚔︎</span>The ETH experience</span>
+            <span class="nm"><span class="ic">⚔︎</span>ETHperience</span>
             <span class="tag">Unnecessarily hard</span>
-            <span class="dsc">Sandwiches, MEV bots, drainers. They come fast and mostly land. Survive if you can.</span>
+            <span class="dsc">Sandwiches, MEV bots, drainers. They come fast and mostly land.</span>
           </button>
           <button class="opt mvx" id="optMvx" data-mode="mvx" type="button">
             <span class="check"></span>
-            <span class="nm"><span class="ic">⛨</span>With a MultiversX guardian</span>
+            <span class="nm"><span class="ic">⛨</span>Guardian</span>
             <span class="tag">Unreasonably secure</span>
-            <span class="dsc">A native guardian auto-blocks the attacks. Your money just stays safe.</span>
+            <span class="dsc">A native MultiversX Guardian auto-blocks the attacks. Your money stays safe.</span>
           </button>
         </section>
-        <div class="modeline eth" id="modeline"><b>ETH experience.</b> Keeping your money is a fight.</div>
+        <div class="modeline eth" id="modeline"><b>ETHperience.</b> Keeping your money is a fight.</div>
 
         <section class="hero">
           <div class="cap">Account balance</div>
@@ -330,12 +330,12 @@
     <span class="r">Red</span> cards are incoming attacks draining a valueless game token. Tap one to fire a
     <b>real gasless counter-transaction</b> that claws the amount back before its settle window closes.
     <span class="g">Green</span> ones are inflows; leave them (recall one by mistake and you forfeit it).
-    On the <b style="color:var(--coral)">ETH experience</b>, attacks pour in fast and mostly land, the way wallet drainers,
-    sandwiches, and MEV play out on Ethereum today. Switch to <b style="color:var(--mint)">a MultiversX guardian</b> and a
+    In <b style="color:var(--coral)">ETHperience</b> mode, attacks pour in fast and mostly land, the way wallet drainers,
+    sandwiches, and MEV play out on Ethereum today. Switch on a <b style="color:var(--mint)">MultiversX Guardian</b> and a
     native co-signer auto-blocks the same attacks before they settle, so your money stays safe with little effort.
     <br /><br />
     <!-- [CLAIM TBD: hidden from UI pending protocol team. The precise sentence on MultiversX's MEV / front-running resistance vs Ethereum goes here once the protocol team confirms the wording. Restore as visible copy when supplied.] -->
-    The "ETH experience" is a themed hard mode. <b>Both modes run on MultiversX testnet</b> (real onchain, gasless). This game
+    ETHperience is a themed hard mode. <b>Both modes run on MultiversX testnet</b> (real onchain, gasless). This game
     never runs on Ethereum. The round seed and your final balance are computed <b>onchain</b>, so the score can't be faked,
     and every run is unique.
   </section>
@@ -390,16 +390,16 @@ const MODES = {
     key: "eth", theme: "eth",
     fallScale: 0.62,   // attacks come down fast — you mostly can't keep up
     guardian: 0,       // no guardian on the ETH theme; every attack is yours to fight
-    label: "ETH experience",
-    line: '<b>ETH experience.</b> Keeping your money is a fight.',
+    label: "ETHperience",
+    line: '<b>ETHperience.</b> Keeping your money is a fight.',
     center: "Attacks rain in and drain your <b>%S NOVA</b> in %T seconds. Claw back what you can. Most can't.",
   },
   mvx: {
     key: "mvx", theme: "mvx",
     fallScale: 1.5,    // calmer fall, but you barely need it — the guardian does the work
     guardian: 0.82,    // the native guardian auto-blocks the vast majority of attacks
-    label: "MultiversX guardian",
-    line: '<b>MultiversX guardian.</b> The attacks bounce off. Your money stays safe.',
+    label: "Guardian",
+    line: '<b>Guardian.</b> The attacks bounce off. Your money stays safe.',
     center: "Attacks come in, but your <b style=\"color:var(--mint)\">guardian</b> auto-blocks them. Your <b>%S NOVA</b> just stays safe.",
   },
 };
@@ -769,13 +769,13 @@ function reveal(final, claimable, practice, ended = true) {
   // doing the work (MvX). blockedCount = the share the guardian auto-intercepted.
   const isMvx = mode.key === "mvx";
   const savedSub = isMvx
-    ? `${G.blockedCount} blocked by your guardian`
+    ? `${G.blockedCount} blocked by your Guardian`
     : `${G.savedCount} recall${G.savedCount === 1 ? "" : "s"} in time`;
   const savedHead = isMvx ? "Guardian blocked" : "Clawed back";
   // a one-line verdict that makes the contrast land
   const verdict = isMvx
-    ? `Your guardian held the line. <b style="color:var(--mint)">Try the ETH experience</b> and feel the difference.`
-    : `Brutal, right? <b style="color:var(--mint)">Switch on a MultiversX guardian</b> and watch the attacks bounce.`;
+    ? `Your Guardian held the line. <b style="color:var(--mint)">Try ETHperience mode</b> and feel the difference.`
+    : `That's ETHperience. <b style="color:var(--mint)">Switch on a Guardian</b> and watch the same attacks bounce.`;
   let html =
     `<div class="final">Final balance${tag}<b>${fmt(final)} NOVA</b></div>` +
     `<div class="tally">` +
