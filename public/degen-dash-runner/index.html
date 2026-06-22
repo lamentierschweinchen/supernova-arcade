@@ -4,17 +4,18 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>Degen Dash · Supernova Arcade</title>
-<meta name="description" content="An onchain auto-runner. Dash through the crypto feed, grab the wins, dodge the rugs. Every grab is a real gasless transaction on MultiversX, no wallet. A fun game on a valueless token." />
+<meta name="description" content="An onchain lane runner. Run the track, grab the wins, dodge the rugs. Every grab is a real gasless transaction on MultiversX, no wallet. A fun game on a valueless token." />
 <link rel="icon" href="/favicon.svg" />
 <link rel="stylesheet" href="/arcade-shell.css" />
 <!--
-  DEGEN DASH — a Supernova Arcade auto-runner (model A: the contract is the referee).
+  DEGEN DASH — a Supernova Arcade lane runner (model A: the contract is the referee).
 
-  The world scrolls toward you and the crypto feed flies past. GOOD items (EGLD, a
-  green candle, an airdrop, staking yield, an NFT, a clean 100x) are wins: TAP to
-  grab them, +score. BAD items (a rug, a hack, a gas spike, an MEV sandwich, a red
-  candle) are hazards: LEAVE them. Grab one by mistake and you take the hit. Stack
-  the most over a 60s run. It ramps: forgiving open, frantic finish.
+  Classic endless-runner feel: you run a track into the screen and the crypto feed
+  rushes toward you down 3 lanes. GOOD items (EGLD, a green candle, an airdrop,
+  staking yield, an NFT, a clean 100x) are wins: TAP to grab them, +score. BAD items
+  (a rug, a hack, a gas spike, an MEV sandwich, a red candle) are hazards: LEAVE
+  them. Grab one by mistake and you take the hit. Stack the most over a 60s run. It
+  ramps: forgiving open, frantic finish.
 
   Each grab is a REAL gasless onchain transaction. The contract decides, by the real
   block timestamp, whether the grab landed inside the item's catch window, and
@@ -29,16 +30,15 @@
   Two modes: ONCHAIN (deployed contract + relayer — real gasless txs + real NOVA)
   and PRACTICE (no contract configured — fully playable locally, nothing onchain).
 
-  This is the side-scrolling rebuild of Degen Dash. It reuses the EXACT onchain
-  plumbing of the original cabinet (arcade.js / arcade.config.js / schedule.js /
-  contract) byte-for-byte; only the presentation — parallax, the runner, item art,
-  the grab loop — is new.
+  This reuses the EXACT onchain plumbing of the original Degen Dash cabinet
+  (arcade.js / arcade.config.js / schedule.js / contract) byte-for-byte; only the
+  presentation — the perspective track, the astronaut, item art, the grab loop — is
+  new.
 -->
 <style>
-  /* Degen Dash inherits the canon (Roobert, #06070A cosmos, surfaces, buttons,
-     leaderboard, status, brackets) from /arcade-shell.css. Cabinet accent --c is
-     warm amber (shard 0). Per-game item colors: GOOD = --mint, big GOOD = --lavender
-     jackpot, BAD = --coral. Bright + energetic, distinct from Clawback's coral tension. */
+  /* Inherits the canon (Roobert, #06070A cosmos, surfaces, buttons, leaderboard,
+     status, brackets) from /arcade-shell.css. Cabinet accent --c = warm amber
+     (shard 0). Item colors: GOOD = --mint, big GOOD = --lavender jackpot, BAD = --coral. */
   .wrap { max-width: 520px; }
   h1 { text-align: center; }
   h1 .x { color: var(--c); }
@@ -72,105 +72,75 @@
   .rtimer { height: 4px; border-radius: 4px; background: #0c1119; overflow: hidden; border: 1px solid var(--border); margin-top: 9px; }
   .rtimer > i { display: block; height: 100%; width: 100%; background: linear-gradient(90deg, var(--mint), var(--lavender)); transform-origin: left; }
 
-  /* ============================ THE RUNNER ARENA ============================ */
-  .arena { position: relative; height: 372px; border-radius: 12px; overflow: hidden;
-    background: linear-gradient(180deg, #070a12 0%, #0a0e18 52%, #0c1018 70%, #0a0d14 100%);
+  /* ============================ THE LANE-RUNNER ARENA ============================ */
+  .arena { position: relative; height: 380px; border-radius: 12px; overflow: hidden;
+    background: radial-gradient(120% 70% at 50% 12%, rgba(35,247,221,0.07), transparent 46%), linear-gradient(180deg, #05070d 0%, #070a12 46%, #0a0e17 74%, #0c1119 100%);
     touch-action: manipulation; user-select: none; -webkit-user-select: none; cursor: pointer; }
 
-  /* parallax layers (CSS-driven; the world always runs). z below items + runner. */
-  .layer { position: absolute; left: 0; bottom: 0; pointer-events: none; }
-  .belt { position: absolute; bottom: 0; left: 0; height: 100%; width: 200%; display: flex; will-change: transform; }
-  .belt .half { width: 50%; height: 100%; position: relative; flex: 0 0 50%; }
-  .belt .half > i { position: absolute; bottom: 0; border-radius: 2px 2px 0 0; }
-  /* far skyline of "blocks" (the chain as a distant city) */
-  .range.far { height: 58%; opacity: 0.62; }
-  .range.far .belt { animation: scrollBelt 26s linear infinite; }
-  .range.far .half > i { background: linear-gradient(180deg, rgba(74,96,128,0.32), rgba(74,96,128,0.05)); box-shadow: inset 0 1px 0 rgba(130,160,205,0.45); }
-  .range.mid { height: 42%; opacity: 0.85; }
-  .range.mid .belt { animation: scrollBelt 12s linear infinite; }
-  .range.mid .half > i { background: linear-gradient(180deg, rgba(35,247,221,0.2), rgba(35,247,221,0.03)); box-shadow: inset 0 1px 0 rgba(35,247,221,0.55); }
-  @keyframes scrollBelt { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+  /* the perspective track (lines + ground) drawn into this SVG by JS */
+  .tracksvg { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; }
+  .horizonglow { position: absolute; left: 0; right: 0; top: 0; height: 46%; z-index: 1; pointer-events: none;
+    background: radial-gradient(60% 80% at 50% 18%, color-mix(in srgb, var(--c) 14%, transparent), transparent 70%); }
+  /* track rungs (sleepers) rushing toward the camera — positioned by JS */
+  .rungs { position: absolute; inset: 0; z-index: 3; pointer-events: none; }
+  .rung { position: absolute; left: 0; top: 0; height: 2px; transform-origin: left center; will-change: transform, opacity;
+    background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--c) 70%, transparent) 14% 86%, transparent); border-radius: 2px; }
+  /* speed streaks (stars rushing past) */
+  .streak { position: absolute; width: 2px; border-radius: 2px; background: linear-gradient(180deg, transparent, rgba(180,205,255,0.7)); z-index: 3; pointer-events: none; }
 
-  /* the running track + ground (near layer, fast = speed) */
-  .ground { position: absolute; left: 0; right: 0; bottom: 0; height: 84px;
-    background: linear-gradient(180deg, rgba(255,210,63,0.05), rgba(8,10,16,0) 30%), linear-gradient(180deg, #0b0e15, #07090e); }
-  .ground::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 2px;
-    background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--c) 60%, transparent), transparent); box-shadow: 0 0 14px color-mix(in srgb, var(--c) 35%, transparent); }
-  .dashes { position: absolute; left: -10%; right: -10%; top: 26px; height: 6px;
-    background-image: repeating-linear-gradient(90deg, color-mix(in srgb, var(--c) 55%, transparent) 0 26px, transparent 26px 64px);
-    opacity: 0.5; animation: dashRun 0.7s linear infinite; }
-  .dashes.slow { top: 50px; height: 4px; opacity: 0.28; animation-duration: 1.15s; background-image: repeating-linear-gradient(90deg, color-mix(in srgb, var(--c) 40%, transparent) 0 18px, transparent 18px 70px); }
-  @keyframes dashRun { from { transform: translateX(0); } to { transform: translateX(-64px); } }
+  /* ---- the astronaut (back view, running away from camera) ---- */
+  .runner { position: absolute; left: 50%; bottom: 14px; width: 60px; height: 78px; margin-left: -30px; z-index: 20; will-change: transform; }
+  .runnerInner { width: 100%; height: 100%; animation: bob 0.4s ease-in-out infinite; }
+  .runner svg { width: 100%; height: 100%; display: block; overflow: visible; filter: drop-shadow(0 7px 7px rgba(0,0,0,0.55)); }
+  .runner .legL { transform-origin: 24px 46px; animation: legA 0.4s linear infinite; }
+  .runner .legR { transform-origin: 36px 46px; animation: legB 0.4s linear infinite; }
+  .runner .armL { transform-origin: 19px 32px; animation: legB 0.4s linear infinite; }
+  .runner .armR { transform-origin: 41px 32px; animation: legA 0.4s linear infinite; }
+  @keyframes bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+  @keyframes legA { 0% { transform: rotate(13deg); } 50% { transform: rotate(-13deg); } 100% { transform: rotate(13deg); } }
+  @keyframes legB { 0% { transform: rotate(-13deg); } 50% { transform: rotate(13deg); } 100% { transform: rotate(-13deg); } }
+  .runner .rim { stroke: color-mix(in srgb, var(--mint) 70%, transparent); }
+  .runnerInner.grab { animation: hop 0.34s ease; }
+  .runnerInner.grab .armR, .runnerInner.grab .armL { animation: reach 0.34s ease; }
+  @keyframes hop { 0% { transform: translateY(0); } 42% { transform: translateY(-12px); } 100% { transform: translateY(0); } }
+  @keyframes reach { 0% { transform: rotate(0); } 45% { transform: rotate(-120deg); } 100% { transform: rotate(0); } }
+  .runnerInner.hit { animation: stumble 0.4s ease; }
+  .runnerInner.hit svg { filter: drop-shadow(0 0 9px var(--coral)) saturate(0.4) brightness(1.3); }
+  @keyframes stumble { 0% { transform: translateY(0) rotate(0); } 30% { transform: translateY(2px) rotate(-7deg); } 60% { transform: rotate(5deg); } 100% { transform: rotate(0); } }
 
-  /* drifting feed motes for depth */
-  .mote { position: absolute; width: 3px; height: 3px; border-radius: 50%; background: rgba(180,200,255,0.5); pointer-events: none; }
-
-  /* ---- the cosmonaut ---- */
-  .runner { position: absolute; bottom: 50px; left: 16%; width: 56px; height: 70px; z-index: 4;
-    transform-origin: 50% 100%; will-change: transform; animation: bob 0.42s ease-in-out infinite; }
-  .runner svg { width: 100%; height: 100%; display: block; overflow: visible; filter: drop-shadow(0 6px 8px rgba(0,0,0,0.5)); }
-  .runner .legF { transform-origin: 28px 46px; animation: legA 0.42s linear infinite; }
-  .runner .legB { transform-origin: 28px 46px; animation: legB 0.42s linear infinite; }
-  .runner .armF { transform-origin: 31px 30px; animation: legB 0.42s linear infinite; }
-  .runner .armB { transform-origin: 31px 30px; animation: legA 0.42s linear infinite; }
-  @keyframes bob { 0%,100% { transform: translateY(0) rotate(-2deg); } 50% { transform: translateY(-3px) rotate(0deg); } }
-  @keyframes legA { 0% { transform: rotate(30deg); } 50% { transform: rotate(-28deg); } 100% { transform: rotate(30deg); } }
-  @keyframes legB { 0% { transform: rotate(-28deg); } 50% { transform: rotate(30deg); } 100% { transform: rotate(-28deg); } }
-  .runner .visor { fill: var(--mint); }
-  .runner .glow { stroke: color-mix(in srgb, var(--mint) 70%, transparent); }
-  .runner.grab { animation: hop 0.34s ease; }
-  .runner.grab .armF { animation: reach 0.34s ease; }
-  @keyframes hop { 0% { transform: translateY(0); } 40% { transform: translateY(-13px) rotate(2deg); } 100% { transform: translateY(0); } }
-  @keyframes reach { 0% { transform: rotate(0); } 45% { transform: rotate(-118deg); } 100% { transform: rotate(0); } }
-  .runner.hit { animation: stumble 0.38s ease; }
-  .runner.hit svg { filter: drop-shadow(0 0 9px var(--coral)) saturate(0.4) brightness(1.3); }
-  @keyframes stumble { 0% { transform: translateX(0) rotate(0); } 30% { transform: translateX(-9px) rotate(-9deg); } 60% { transform: translateX(-3px) rotate(4deg); } 100% { transform: translateX(0); } }
-  /* the spot where grabs resolve (just ahead of the runner) */
-  .grabglow { position: absolute; bottom: 40px; left: 16%; width: 70px; height: 150px; transform: translateX(-12px); z-index: 2; pointer-events: none;
-    background: radial-gradient(60% 50% at 50% 70%, color-mix(in srgb, var(--c) 16%, transparent), transparent 72%); opacity: 0.7; }
-
-  /* ---- the flying items (compact tokens: icon + amount badge) ---- */
-  .item { position: absolute; left: 0; top: 0; z-index: 5; width: 54px; height: 54px; will-change: transform; cursor: pointer; }
+  /* ---- the rushing items (compact tokens: icon + amount badge) ---- */
+  .item { position: absolute; left: 0; top: 0; width: 54px; height: 54px; will-change: transform; cursor: pointer; }
   .item .tok { position: relative; width: 54px; height: 54px; border-radius: 15px; display: grid; place-items: center;
-    border: 1.5px solid var(--border); background: linear-gradient(165deg, #1b2433, #10151d); box-shadow: 0 6px 14px -8px rgba(0,0,0,0.7); transition: transform 0.08s ease; }
+    border: 1.5px solid var(--border); background: linear-gradient(165deg, #1b2433, #10151d); box-shadow: 0 6px 14px -8px rgba(0,0,0,0.7); }
   .item .gi { width: 30px; height: 30px; }
   .item .gi svg { width: 100%; height: 100%; display: block; }
   .item .amt { position: absolute; bottom: -7px; right: -8px; font-family: var(--mono); font-size: 11px; font-weight: 800; line-height: 1;
-    padding: 2px 5px; border-radius: 8px; background: #090c12; border: 1px solid var(--border); font-variant-numeric: tabular-nums; color: var(--text-dim); z-index: 6; }
-  .item:active .tok { transform: scale(0.9); }
-  /* GOOD — grab them (mint) */
+    padding: 2px 5px; border-radius: 8px; background: #090c12; border: 1px solid var(--border); font-variant-numeric: tabular-nums; color: var(--text-dim); }
+  .item:active .tok { filter: brightness(1.15); }
   .item.good { color: var(--mint); }
   .item.good .tok { border-color: rgba(35,247,221,0.55); background: linear-gradient(165deg, rgba(35,247,221,0.18), rgba(13,17,23,0.9)); }
   .item.good .amt { color: var(--mint); border-color: rgba(35,247,221,0.4); }
   .item.good .amt::before { content: "+"; }
-  /* BAD — leave them (coral) */
   .item.bad { color: var(--coral); }
   .item.bad .tok { border-color: rgba(255,107,157,0.55); background: linear-gradient(165deg, rgba(255,107,157,0.13), rgba(13,17,23,0.9)); }
   .item.bad .amt { color: var(--coral); border-color: rgba(255,107,157,0.4); }
   .item.bad .amt::before { content: "−"; }
-  /* big GOOD — the jackpots (lavender) */
   .item.big.good { color: var(--lavender); }
   .item.big.good .tok { border-color: var(--lavender); box-shadow: 0 0 0 1px rgba(167,139,250,0.6), 0 8px 20px -8px rgba(167,139,250,0.6); animation: bigpulse 1s ease-in-out infinite; }
   .item.big.good .amt { color: var(--lavender); border-color: rgba(167,139,250,0.5); }
   @keyframes bigpulse { 0%,100% { box-shadow: 0 0 0 1px rgba(167,139,250,0.55), 0 8px 18px -10px rgba(167,139,250,0.4); } 50% { box-shadow: 0 0 0 2px rgba(167,139,250,0.95), 0 10px 24px -8px rgba(167,139,250,0.75); } }
-  /* big BAD — the nukes (hot coral) */
   .item.big.bad .tok { box-shadow: 0 0 0 1px rgba(255,107,157,0.8), 0 8px 20px -8px rgba(255,107,157,0.5); }
-  /* urgency: a good item about to slip past flashes amber */
-  .item.urgent .tok { border-color: var(--amber); box-shadow: 0 0 0 1px rgba(245,181,68,0.7), 0 0 14px -2px rgba(245,181,68,0.55); }
-  .item.grabbed { animation: grabbed 0.4s ease-out forwards; pointer-events: none; }
-  @keyframes grabbed { to { transform: translate(var(--gx,-30px), -52px) scale(1.18); opacity: 0; } }
-  .item.zapped { animation: zapped 0.36s ease-out forwards; pointer-events: none; }
-  @keyframes zapped { 0% { filter: brightness(1.9) saturate(1.6); } 100% { transform: scale(0.84) rotate(8deg); opacity: 0; } }
-  .item.slipped { animation: slipped 0.5s ease-in forwards; pointer-events: none; }
-  @keyframes slipped { to { transform: translate(-72px, var(--sy, 0)); opacity: 0; } }
+  .item.urgent .tok { border-color: var(--amber); box-shadow: 0 0 0 1px rgba(245,181,68,0.75), 0 0 16px -2px rgba(245,181,68,0.6); }
+  /* grabbed / zapped / passed are driven by an inline transition + JS target transform */
+  .item.fx { pointer-events: none; }
 
-  .float { position: absolute; pointer-events: none; font-family: var(--mono); font-weight: 800; font-size: 17px; z-index: 7;
+  .float { position: absolute; pointer-events: none; font-family: var(--mono); font-weight: 800; font-size: 18px; z-index: 55;
     animation: rise 0.75s ease-out forwards; font-variant-numeric: tabular-nums; }
   .float.gain { color: var(--mint); } .float.loss { color: var(--coral); }
-  @keyframes rise { from { opacity: 1; transform: translateY(0) scale(1); } to { opacity: 0; transform: translateY(-36px) scale(1.25); } }
+  @keyframes rise { from { opacity: 1; transform: translateY(0) scale(1); } to { opacity: 0; transform: translateY(-38px) scale(1.25); } }
 
-  .center { position: absolute; inset: 0; z-index: 8; display: flex; flex-direction: column; align-items: center; justify-content: center;
-    text-align: center; padding: 22px; gap: 12px; background: radial-gradient(120% 100% at 50% 40%, rgba(6,7,10,0.5), rgba(6,7,10,0.86)); backdrop-filter: blur(2px); }
+  .center { position: absolute; inset: 0; z-index: 60; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; padding: 22px; gap: 12px; background: radial-gradient(120% 100% at 50% 40%, rgba(6,7,10,0.5), rgba(6,7,10,0.88)); backdrop-filter: blur(2px); }
   .center.hide { display: none; }
   .center p { color: var(--text-dim); font-size: 13px; margin: 0; max-width: 340px; line-height: 1.5; }
   .center .legend { display: flex; gap: 18px; font-size: 12px; }
@@ -206,10 +176,8 @@
   .legendbar .gi svg { width: 100%; height: 100%; }
   .legendbar .g { color: var(--mint); } .legendbar .r { color: var(--coral); }
 
-  @media (prefers-reduced-motion: reduce) {
-    .item.big.good .chip { animation: none; }
-  }
-  @media (max-width: 430px) { .arena { height: 348px; } }
+  @media (prefers-reduced-motion: reduce) { .item.big.good .tok { animation: none; } }
+  @media (max-width: 430px) { .arena { height: 360px; } }
 </style>
 <!-- Vercel Web Analytics -->
 <script defer src="/_vercel/insights/script.js"></script>
@@ -221,7 +189,6 @@
 <!-- ===== inline SVG icon set (the item art). currentColor = item color ===== -->
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
   <defs>
-    <!-- GOOD -->
     <symbol id="ic-egld" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
       <circle cx="12" cy="12" r="8.4"/><path d="M8.2 8.2l7.6 7.6M15.8 8.2l-7.6 7.6"/></symbol>
     <symbol id="ic-yield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
@@ -238,7 +205,6 @@
       <path d="M12 3l7 2.6v5.2c0 4.8-3.3 7.8-7 9.4-3.7-1.6-7-4.6-7-9.4V5.6z"/><path d="M9 12l2.2 2.2L15.5 10"/></symbol>
     <symbol id="ic-bridge" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
       <path d="M3 15c4 0 4-6 9-6s5 6 9 6"/><path d="M3 15v4M21 15v4M9 12.2V19M15 12.2V19"/></symbol>
-    <!-- BAD -->
     <symbol id="ic-rug" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
       <path d="M6 3v18"/><path d="M6 4.2h11l-2.6 3.6L17 11.4H6z" fill="currentColor" fill-opacity="0.16"/></symbol>
     <symbol id="ic-skull" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
@@ -263,7 +229,7 @@
   </header>
 
   <h1>DEGEN <span class="x">DASH</span></h1>
-  <p class="sub">Dash the feed. Grab the wins, dodge the rugs. Every grab is a <b>real onchain transaction</b>.</p>
+  <p class="sub">Run the track. Grab the wins, dodge the rugs. Every grab is a <b>real onchain transaction</b>.</p>
   <div class="modewrap"><span class="mode" id="modeBadge">connecting…</span></div>
 
   <div class="onetap"><span class="ic"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M13 2 3 14h7l-1 8 10-12h-7z" stroke="#FFD23F" stroke-width="1.6" stroke-linejoin="round"/></svg></span><span class="t"><b>No wallet, just play.</b> A key is created in your browser and we cover the gas.</span></div>
@@ -285,39 +251,37 @@
         </section>
 
         <section class="arena" id="arena">
-          <div class="layer range far"><div class="belt" id="beltFar"></div></div>
-          <div class="layer range mid"><div class="belt" id="beltMid"></div></div>
-          <div class="ground"><div class="dashes slow"></div><div class="dashes"></div></div>
-          <div class="grabglow"></div>
+          <div class="horizonglow"></div>
+          <svg class="tracksvg" id="tracksvg" preserveAspectRatio="none"></svg>
+          <div class="rungs" id="rungs"></div>
           <div class="runner" id="runner">
-            <svg viewBox="0 0 56 70" aria-hidden="true">
-              <!-- back arm + back leg (drawn first, darker for depth) -->
-              <g class="armB"><path d="M30 31 L20 39" stroke="#5a6884" stroke-width="4.6" stroke-linecap="round"/></g>
-              <g class="legB"><path d="M27 45 L19 62" stroke="#525f7a" stroke-width="5.2" stroke-linecap="round"/><path d="M19 62 L14 63.5" stroke="#525f7a" stroke-width="5.2" stroke-linecap="round"/></g>
-              <!-- backpack with a teal vent -->
-              <rect x="20" y="24" width="10" height="17" rx="3" fill="#27314a"/>
-              <rect x="22" y="27" width="3" height="10" rx="1.5" fill="#23F7DD" opacity="0.45"/>
-              <!-- torso (suit) -->
-              <path d="M25 26 q10 -3 12 4 l-1 13 q-10 3 -13 -1 z" fill="#bcc6da"/>
-              <path d="M27 31 l8 1" class="glow" stroke-width="1.2" fill="none" opacity="0.7"/>
-              <circle cx="29.5" cy="36" r="1.7" fill="#23F7DD" opacity="0.9"/>
-              <!-- front leg + front arm (lighter, foremost) -->
-              <g class="legF"><path d="M29 45 L37 62" stroke="#9aa6c2" stroke-width="5.2" stroke-linecap="round"/><path d="M37 62 L42 63.5" stroke="#9aa6c2" stroke-width="5.2" stroke-linecap="round"/></g>
-              <g class="armF"><path d="M31 31 L43 36" stroke="#cdd6ea" stroke-width="4.6" stroke-linecap="round"/></g>
-              <!-- antenna -->
-              <path d="M31 6 L29 1.5" stroke="#8b97b4" stroke-width="1.4" stroke-linecap="round"/>
-              <circle cx="29" cy="1.5" r="1.6" fill="#23F7DD"/>
-              <!-- helmet shell + dark visor with teal sheen -->
-              <circle cx="32" cy="15" r="11.5" fill="#ccd5e8"/>
-              <circle cx="32" cy="15" r="11.5" fill="none" class="glow" stroke-width="1.5"/>
-              <path d="M33 6.5 a9 9 0 0 1 2.5 17 a8.5 8.5 0 0 1 -7 -3 a11 11 0 0 0 1.5 -12 a7 7 0 0 1 3 -2z" fill="#0a1426"/>
-              <path d="M33 9 a6.5 6.5 0 0 1 2.6 6" stroke="#23F7DD" stroke-width="1.6" fill="none" stroke-linecap="round" opacity="0.75"/>
-              <circle cx="31.5" cy="11.5" r="1.5" fill="#eafffb" opacity="0.85"/>
-            </svg>
+            <div class="runnerInner" id="runnerInner">
+              <svg viewBox="0 0 60 78" aria-hidden="true">
+                <ellipse cx="30" cy="74" rx="17" ry="3.4" fill="#000" opacity="0.34"/>
+                <!-- arms (back view, at the sides) -->
+                <g class="armL"><path d="M19 32 L13 49" stroke="#9aa6c2" stroke-width="5" stroke-linecap="round"/></g>
+                <g class="armR"><path d="M41 32 L47 49" stroke="#9aa6c2" stroke-width="5" stroke-linecap="round"/></g>
+                <!-- legs (back view) -->
+                <g class="legL"><path d="M25 45 L21 67" stroke="#7a87a4" stroke-width="6" stroke-linecap="round"/><path d="M21 67 L18 69" stroke="#5d6b86" stroke-width="6" stroke-linecap="round"/></g>
+                <g class="legR"><path d="M35 45 L39 67" stroke="#8b97b4" stroke-width="6" stroke-linecap="round"/><path d="M39 67 L42 69" stroke="#6c799a" stroke-width="6" stroke-linecap="round"/></g>
+                <!-- backpack / torso (the PLSS we see from behind) -->
+                <rect x="18" y="25" width="24" height="24" rx="7" fill="#aeb9d0"/>
+                <rect x="20.5" y="27" width="19" height="20" rx="5" fill="#2b3650"/>
+                <rect x="24" y="30" width="3.5" height="13" rx="1.7" fill="#23F7DD" opacity="0.5"/>
+                <rect x="32.5" y="30" width="3.5" height="13" rx="1.7" fill="#23F7DD" opacity="0.5"/>
+                <rect x="18" y="25" width="24" height="24" rx="7" fill="none" class="rim" stroke-width="1.3"/>
+                <!-- helmet (top of head from behind) -->
+                <ellipse cx="30" cy="16" rx="11" ry="10" fill="#ccd5e8"/>
+                <path d="M21 17a9 9 0 0 1 18 0" fill="none" class="rim" stroke-width="1.4"/>
+                <!-- antenna -->
+                <path d="M30 6 L28 1.6" stroke="#8b97b4" stroke-width="1.4" stroke-linecap="round"/>
+                <circle cx="28" cy="1.6" r="1.6" fill="#23F7DD"/>
+              </svg>
+            </div>
           </div>
 
           <div class="center" id="center">
-            <p id="centerText">The feed streams in from ahead. Grab the good, dodge the bad, stack the most in <b>60 seconds</b>.</p>
+            <p id="centerText">The feed rushes at you down the track. Grab the good, dodge the bad, stack the most in <b>60 seconds</b>.</p>
             <div class="legend"><span><b class="g">mint</b> = grab it</span><span><b class="r">red</b> = rug, leave it</span></div>
             <button class="btn" id="startBtn" style="width:auto;min-width:170px">Start the dash</button>
           </div>
@@ -345,8 +309,8 @@
 
   <section class="card how">
     <div class="card-title"><span class="gd"></span>How it works</div>
-    The world runs toward you and the feed flies past. <span class="g">Mint</span> items are wins. Tap one to fire a
-    <b>real gasless transaction</b> that grabs it before it slips behind you, +score. <span class="r">Red</span> items are rugs,
+    You run the track and the feed rushes at you in three lanes. <span class="g">Mint</span> items are wins. Tap one to fire a
+    <b>real gasless transaction</b> that grabs it before it blows past you, +score. <span class="r">Red</span> items are rugs,
     hacks and scams; leave them. Grab a red one and the contract docks you. The round seed and your final score are computed
     <b>onchain</b>, so the score can't be faked and every run is unique. It speeds up as it goes.
     <div class="legendbar" id="legendbar"></div>
@@ -363,15 +327,14 @@ import { mountGalaxy } from "/arcade-galaxy.js";
 
 const $ = (id) => document.getElementById(id);
 const arcade = createArcade(ARCADE_CONFIG);
-const galaxy = mountGalaxy({ intensity: 0.42, focusShard: 0 });
+const galaxy = mountGalaxy({ intensity: 0.4, focusShard: 0 });
 
 // config defaults mirror the contract; onchain mode overrides from getScheduleParams.
-// rampPermil 500 = sparse/slow open, dense/fast finish; lateWindowShrinkPermil 0 = off.
-// items 180 over 60s ≈ 3/sec (ramped: forgiving open, frantic finish) reads cleanly
-// as a single-runner stream. The client always MIRRORS the deployed getScheduleParams,
-// so this is just the practice/fallback default — deploy the contract with a matching
+// items 110 over 60s ≈ 1.8/sec (ramped: forgiving open, frantic finish) — a clean,
+// readable lane stream. The client always MIRRORS the deployed getScheduleParams, so
+// this is just the practice/fallback default; deploy the contract with a matching
 // `items` (see HANDOFF) for onchain parity.
-const DEFAULTS = { roundLengthMs: 60_000, catchWindowMs: 8_000, items: 180, goodPermil: 720, rampPermil: 500, lateWindowShrinkPermil: 0 };
+const DEFAULTS = { roundLengthMs: 60_000, catchWindowMs: 8_000, items: 110, goodPermil: 720, rampPermil: 500, lateWindowShrinkPermil: 0 };
 
 // item types, mapped by id. name + icon symbol. Topical, MvX-neutral, a little funny.
 const GOOD_TYPES = [
@@ -399,67 +362,105 @@ const BAD_TYPES = [
   { n: "Exit liquidity", i: "door" },
 ];
 const LANES = 3;
+const HALF = 27; // half the 54px token, so transforms center the token
 
 let cfg = { ...DEFAULTS };
 let onchain = false;
 
 const G = {
   phase: "idle", seed: 0n, startMs: 0, roundId: 0,
-  schedule: [], travelMs: 2300, arenaW: 480, arenaH: 348,
-  xEnter: 500, xMiss: 28, laneY: [20, 96, 172], runnerX: 80,
+  schedule: [], travelMs: 2300,
+  arenaW: 480, arenaH: 380,
+  vx: 240, vy: 53, nearY: 312, laneNearX: [110, 240, 370],   // perspective anchors (set by measure)
+  astroX: 240, astroTargetX: 240,
+  rungs: [], streaks: [],
   nextIdx: 0, gotCount: 0, oopsCount: 0, collectedAmt: 0, penaltyAmt: 0, missedCount: 0, spawnSeq: 0,
   totalGood: 0, items: new Map(), score: 0, dispScore: 0, raf: null,
 };
 
-// ---------- parallax skylines (the chain as a passing city of blocks) ----------
-function buildBelt(el, count, minH, maxH) {
-  el.innerHTML = "";
-  const make = () => {
-    const half = document.createElement("div");
-    half.className = "half";
-    for (let k = 0; k < count; k++) {
-      const b = document.createElement("i");
-      const h = minH + Math.round(Math.abs(Math.sin(k * 12.9898) * 43758.5) % 1 * (maxH - minH));
-      const w = 9 + (k % 4) * 4;
-      b.style.height = h + "%";
-      b.style.width = w + "px";
-      b.style.left = ((k / count) * 100).toFixed(2) + "%";
-      half.appendChild(b);
-    }
-    return half;
+// ---------- perspective: project a lane + depth t (0 far .. 1 near) to screen ----------
+function project(lane, t) {
+  const p = t * t;                               // ease: slow + small far, rushing + big near
+  return {
+    x: G.vx + (G.laneNearX[lane] - G.vx) * p,
+    y: G.vy + (G.nearY - G.vy) * p,
+    s: 0.30 + 1.02 * p,
   };
-  el.appendChild(make());
-  el.appendChild(make()); // identical second half so the -50% scroll loops seamlessly
-}
-function buildMotes() {
-  const arena = $("arena");
-  for (let k = 0; k < 9; k++) {
-    const m = document.createElement("div");
-    m.className = "mote";
-    m.style.left = (5 + Math.random() * 90) + "%";
-    m.style.top = (8 + Math.random() * 55) + "%";
-    m.style.opacity = (0.2 + Math.random() * 0.4).toFixed(2);
-    m.style.animation = `slipped ${(5 + Math.random() * 6).toFixed(1)}s linear ${(-Math.random() * 6).toFixed(1)}s infinite`;
-    arena.appendChild(m);
-  }
 }
 
-// ---------- geometry (recomputed on start + resize) ----------
+// ---------- geometry + the static track (recomputed on start + resize) ----------
 function measure() {
   const arena = $("arena");
   G.arenaW = arena.clientWidth || 480;
-  G.arenaH = arena.clientHeight || 348;
-  G.runnerX = Math.round(G.arenaW * 0.16);
-  G.xEnter = G.arenaW + 24;
-  G.xMiss = Math.round(G.arenaW * 0.05);
-  const itemH = 54, groundH = 92, top = 12;
-  const airBot = G.arenaH - groundH - 4;
-  const usable = airBot - top;
-  const gap = Math.max(6, (usable - LANES * itemH) / (LANES + 1));
-  G.laneY = [];
-  for (let l = 0; l < LANES; l++) G.laneY.push(Math.round(top + gap + l * (itemH + gap)));
+  G.arenaH = arena.clientHeight || 380;
+  G.vx = G.arenaW / 2;
+  G.vy = Math.round(G.arenaH * 0.14);
+  G.nearY = Math.round(G.arenaH * 0.82);
+  const spread = G.arenaW * 0.30;
+  G.laneNearX = [G.vx - spread, G.vx, G.vx + spread];
+  if (G.phase !== "playing") { G.astroX = G.vx; G.astroTargetX = G.vx; }
+  buildTrack();
 }
-addEventListener("resize", () => { if (G.phase !== "playing") measure(); });
+
+function buildTrack() {
+  const lane = G.laneNearX, gap = lane[1] - lane[0];
+  const railL = lane[0] - gap / 2, railR = lane[2] + gap / 2;
+  const d1 = (lane[0] + lane[1]) / 2, d2 = (lane[1] + lane[2]) / 2;
+  const ny = G.nearY + 30, vx = G.vx, vy = G.vy; // extend the floor a touch past nearY
+  const line = (x1, y1, x2, y2, w, o) =>
+    `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="var(--c)" stroke-width="${w}" stroke-opacity="${o}" stroke-linecap="round"/>`;
+  $("tracksvg").innerHTML =
+    `<defs><linearGradient id="floorg" x1="0" y1="0" x2="0" y2="1">
+       <stop offset="0" stop-color="var(--c)" stop-opacity="0.02"/>
+       <stop offset="1" stop-color="var(--c)" stop-opacity="0.12"/></linearGradient></defs>` +
+    `<path d="M${vx} ${vy} L${railR} ${ny} L${railL} ${ny} Z" fill="url(#floorg)"/>` +
+    line(vx, vy, railL, ny, 2, 0.55) + line(vx, vy, railR, ny, 2, 0.55) +
+    line(vx, vy, d1, ny, 1.3, 0.28) + line(vx, vy, d2, ny, 1.3, 0.28);
+}
+
+// ---------- track rungs (sleepers) + speed streaks ----------
+function buildEffects() {
+  const rungBox = $("rungs");
+  rungBox.innerHTML = "";
+  G.rungs = [];
+  for (let i = 0; i < 9; i++) {
+    const el = document.createElement("div");
+    el.className = "rung";
+    rungBox.appendChild(el);
+    G.rungs.push({ el, phase: i / 9 });
+  }
+  G.streaks = [];
+  for (let i = 0; i < 7; i++) {
+    const el = document.createElement("div");
+    el.className = "streak";
+    rungBox.appendChild(el);
+    G.streaks.push({ el, phase: i / 7, side: i % 2 ? 1 : -1, off: 0.12 + (i % 4) * 0.13 });
+  }
+}
+function renderEffects(elapsed) {
+  const lane = G.laneNearX, gap = lane[1] - lane[0];
+  const railLnear = lane[0] - gap / 2, railRnear = lane[2] + gap / 2;
+  for (const r of G.rungs) {
+    const t = ((elapsed / 760) + r.phase) % 1;
+    const p = t * t;
+    const lx = G.vx + (railLnear - G.vx) * p, rx = G.vx + (railRnear - G.vx) * p;
+    const y = G.vy + (G.nearY + 30 - G.vy) * p;
+    r.el.style.transform = `translate(${lx.toFixed(1)}px, ${y.toFixed(1)}px) scaleX(${(rx - lx).toFixed(1)})`;
+    r.el.style.opacity = (0.06 + 0.34 * p).toFixed(3);
+  }
+  for (const s of G.streaks) {
+    const t = ((elapsed / 520) + s.phase) % 1;
+    const p = t * t;
+    const baseX = G.vx + s.side * (G.arenaW * s.off);
+    const x = G.vx + (baseX - G.vx) * p;
+    const y = G.vy + (G.nearY - G.vy) * p;
+    s.el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
+    s.el.style.height = (3 + 16 * p).toFixed(1) + "px";
+    s.el.style.opacity = (0.05 + 0.3 * p).toFixed(3);
+  }
+}
+
+function buildMotes() {} // (replaced by streaks)
 
 // ---------- mode detection ----------
 const UNDEPLOYED_PLACEHOLDER = "erd1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq6gq4hu";
@@ -481,7 +482,7 @@ function setMode(on, label) {
   const b = $("modeBadge");
   b.textContent = label;
   b.className = "mode " + (on ? "onchain" : "practice");
-  $("centerText").innerHTML = `The feed streams in from ahead. Grab the good, dodge the bad, stack the most in <b>${Math.round(cfg.roundLengthMs / 1000)} seconds</b>.`;
+  $("centerText").innerHTML = `The feed rushes at you down the track. Grab the good, dodge the bad, stack the most in <b>${Math.round(cfg.roundLengthMs / 1000)} seconds</b>.`;
   setStatus("", on ? "Onchain. Every grab is a real gasless transaction." : "Practice mode. Scores and NOVA go onchain once the cabinet is live.");
 }
 
@@ -528,10 +529,12 @@ function beginRound({ seed, startMs, roundId, totalGood }) {
   G.seed = seed; G.startMs = startMs; G.roundId = roundId;
   G.schedule = buildSchedule(seed, cfg);
   G.totalGood = totalGood || G.schedule.reduce((s, o) => s + (o.good ? o.amount : 0), 0);
-  // grab opportunity sits safely inside the contract's catch window (block ts = tap +
-  // relay/inclusion latency stays well under start+window). Travel = time on screen.
-  G.travelMs = Math.max(1900, Math.min(2300, cfg.catchWindowMs - 2400));
+  // grab opportunity stays well inside the contract's catch window (block ts = tap +
+  // relay/inclusion latency < start+window). travelMs = far->near time on screen.
+  G.travelMs = Math.max(1900, Math.min(2400, cfg.catchWindowMs - 2300));
   measure();
+  buildEffects();
+  G.astroX = G.vx; G.astroTargetX = G.vx;
   G.nextIdx = 0; G.gotCount = 0; G.oopsCount = 0; G.collectedAmt = 0; G.penaltyAmt = 0; G.missedCount = 0; G.spawnSeq = 0;
   G.score = 0; G.dispScore = 0;
   $("gotStat").textContent = "0";
@@ -543,7 +546,6 @@ function beginRound({ seed, startMs, roundId, totalGood }) {
   clearItems();
   hideCenter();
   setPhase("playing");
-  // catch up anything that streamed in during the onchain round-lock
   const elapsed0 = now() - G.startMs;
   while (G.nextIdx < G.schedule.length && G.schedule[G.nextIdx].spawnMs <= elapsed0) {
     activate(G.schedule[G.nextIdx], elapsed0); G.nextIdx++;
@@ -559,16 +561,18 @@ function tick() {
   while (G.nextIdx < G.schedule.length && G.schedule[G.nextIdx].spawnMs <= elapsed) {
     activate(G.schedule[G.nextIdx], elapsed); G.nextIdx++;
   }
-  const span = G.xEnter - G.xMiss;
+  renderEffects(elapsed);
   for (const [, it] of G.items) {
     if (it.state !== "live") continue;
-    const age = elapsed - it.o.spawnMs;
-    if (age >= G.travelMs) { slipItem(it); continue; }
-    const p = age / G.travelMs;
-    const x = G.xEnter - p * span;
-    it.el.style.transform = `translate(${x.toFixed(1)}px, ${it.y}px)`;
-    if (it.o.good && !it.urgent && p > 0.74) { it.urgent = true; it.el.classList.add("urgent"); }
+    const t = (elapsed - it.o.spawnMs) / G.travelMs;
+    if (t >= 1) { missItem(it); continue; }
+    place(it, t);
+    if (it.o.good && !it.urgent && t > 0.82) { it.urgent = true; it.el.classList.add("urgent"); }
   }
+  // astronaut: dart to the lane you grab in, then drift back to center
+  G.astroTargetX += (G.vx - G.astroTargetX) * 0.05;
+  G.astroX += (G.astroTargetX - G.astroX) * 0.2;
+  $("runner").style.transform = `translateX(${(G.astroX - G.vx).toFixed(1)}px)`;
   renderScore();
   const left = Math.max(0, cfg.roundLengthMs - elapsed);
   $("timeStat").textContent = (left / 1000).toFixed(1) + "s";
@@ -576,69 +580,82 @@ function tick() {
   G.raf = requestAnimationFrame(tick);
 }
 
-function activate(o, elapsed) {
-  const age = elapsed - o.spawnMs;
-  if (age >= G.travelMs) { if (o.good) G.missedCount++; return; } // already past before render
-  spawnItem(o, age);
+function place(it, t) {
+  const pr = project(it.lane, t);
+  it.px = pr.x; it.py = pr.y; it.ps = pr.s;
+  it.el.style.transform = `translate(${(pr.x - HALF).toFixed(1)}px, ${(pr.y - HALF).toFixed(1)}px) scale(${pr.s.toFixed(3)})`;
+  it.el.style.zIndex = 5 + Math.round(t * 40); // nearer items render in front
 }
 
-function spawnItem(o, age) {
+function activate(o, elapsed) {
+  const t = (elapsed - o.spawnMs) / G.travelMs;
+  if (t >= 1) { if (o.good) G.missedCount++; return; } // already past before render
+  spawnItem(o, t);
+}
+
+function spawnItem(o, t) {
   const el = document.createElement("div");
   const type = o.good ? GOOD_TYPES[Number(BigInt(o.id) % BigInt(GOOD_TYPES.length))]
                       : BAD_TYPES[Number(BigInt(o.id) % BigInt(BAD_TYPES.length))];
   const big = o.amount >= 9;
   el.className = "item " + (o.good ? "good" : "bad") + (big ? " big" : "");
-  el.title = type.n; // the funny name on hover (desktop) + accessibility, no per-item clutter
+  el.title = type.n;
   el.innerHTML =
     `<div class="tok"><span class="gi"><svg viewBox="0 0 24 24"><use href="#ic-${type.i}"/></svg></span></div>` +
     `<span class="amt">${o.amount}</span>`;
   const lane = G.spawnSeq++ % LANES;
-  const it = { o, el, state: "live", y: G.laneY[lane], urgent: false };
+  const it = { o, el, state: "live", lane, urgent: false, px: G.vx, py: G.vy, ps: 0.3 };
   el.addEventListener("pointerdown", (e) => { e.preventDefault(); tapItem(it); }, { passive: false });
   $("arena").appendChild(el);
   G.items.set(o.id, it);
-  const span = G.xEnter - G.xMiss;
-  const p = Math.max(0, age) / G.travelMs;
-  el.style.transform = `translate(${(G.xEnter - p * span).toFixed(1)}px, ${it.y}px)`;
+  place(it, Math.max(0, t));
 }
 
 function tapItem(it) {
   if (it.state !== "live") return;
   it.state = "acted";
   galaxy.pulse(0);
-  // fire the REAL grab transaction either way; the contract decides the effect.
   if (onchain) arcade.collect(G.roundId, it.o.id).catch(() => {});
-  const runner = $("runner");
+  const inner = $("runnerInner");
+  G.astroTargetX = G.laneNearX[it.lane]; // dart toward the lane you grabbed in
+  const el = it.el;
+  el.classList.add("fx");
+  el.style.transition = "transform 0.3s ease-out, opacity 0.3s ease-out, filter 0.1s";
   if (it.o.good) {
     G.gotCount++; G.collectedAmt += it.o.amount; G.score += it.o.amount;
     $("gotStat").textContent = G.gotCount;
     flashScore("up");
-    floatText(it.el, "+" + it.o.amount, "gain");
+    floatText(it.px, it.py, "+" + it.o.amount, "gain");
     blip(660, 0.07, "triangle"); if (it.o.amount >= 9) blip(990, 0.09, "triangle");
     vibrate(8);
-    // fling the item toward the runner
-    const r = it.el.getBoundingClientRect(), ar = $("arena").getBoundingClientRect();
-    it.el.style.setProperty("--gx", (G.runnerX - (r.left - ar.left)).toFixed(0) + "px");
-    it.el.classList.add("grabbed");
-    runner.classList.remove("grab"); void runner.offsetWidth; runner.classList.add("grab");
+    // pull the win to the astronaut
+    el.style.opacity = "0";
+    el.style.transform = `translate(${(G.laneNearX[it.lane] - HALF).toFixed(1)}px, ${(G.nearY - HALF).toFixed(1)}px) scale(0.42)`;
+    inner.classList.remove("grab"); void inner.offsetWidth; inner.classList.add("grab");
   } else {
     G.oopsCount++; G.penaltyAmt += it.o.amount; G.score = Math.max(0, G.score - it.o.amount);
     $("oopsStat").textContent = G.oopsCount;
     flashScore("down");
-    floatText(it.el, "−" + it.o.amount, "loss");
+    floatText(it.px, it.py, "−" + it.o.amount, "loss");
     blip(150, 0.12, "sawtooth"); vibrate(22);
-    it.el.classList.add("zapped");
-    runner.classList.remove("hit"); void runner.offsetWidth; runner.classList.add("hit");
+    el.style.opacity = "0";
+    el.style.filter = "brightness(1.7) saturate(1.5)";
+    el.style.transform = `translate(${(it.px - HALF).toFixed(1)}px, ${(it.py - HALF).toFixed(1)}px) scale(${(it.ps * 0.7).toFixed(2)}) rotate(10deg)`;
+    inner.classList.remove("hit"); void inner.offsetWidth; inner.classList.add("hit");
   }
-  setTimeout(() => removeItem(it.o.id), 420);
+  setTimeout(() => removeItem(it.o.id), 340);
 }
 
-function slipItem(it) {
-  it.state = "slipped";
+// a good item that reaches the camera ungrabbed blows past you
+function missItem(it) {
+  it.state = "passed";
   if (it.o.good) G.missedCount++;
-  it.el.style.setProperty("--sy", it.y + "px"); // keep its lane height while it exits left
-  it.el.classList.add("slipped");
-  setTimeout(() => removeItem(it.o.id), 480);
+  const el = it.el;
+  el.classList.add("fx");
+  el.style.transition = "transform 0.34s ease-in, opacity 0.34s ease-in";
+  el.style.opacity = "0";
+  el.style.transform = `translate(${(it.px - HALF).toFixed(1)}px, ${(G.arenaH + 30).toFixed(1)}px) scale(${(it.ps * 1.5).toFixed(2)})`;
+  setTimeout(() => removeItem(it.o.id), 360);
 }
 
 function removeItem(id) { const it = G.items.get(id); if (it) { it.el.remove(); G.items.delete(id); } }
@@ -663,14 +680,13 @@ function flashScore(dir) {
   clearTimeout(flashTimer);
   flashTimer = setTimeout(() => el.classList.remove("flash-up", "flash-down", "shake"), 220);
 }
-function floatText(itemEl, text, cls) {
+function floatText(x, y, text, cls) {
   const f = document.createElement("span");
   f.className = "float " + cls;
   f.textContent = text;
-  const arena = $("arena"), ar = arena.getBoundingClientRect(), cr = itemEl.getBoundingClientRect();
-  f.style.left = (cr.left - ar.left + cr.width / 2 - 12) + "px";
-  f.style.top = (cr.top - ar.top) + "px";
-  arena.appendChild(f);
+  f.style.left = (x - 12) + "px";
+  f.style.top = (y - 22) + "px";
+  $("arena").appendChild(f);
   setTimeout(() => f.remove(), 760);
 }
 
@@ -686,10 +702,6 @@ async function endRoundFlow() {
   if (!onchain) return reveal(localFinal(), 0, true);
 
   showCenter(`<div class="spin"></div><p>Run over. Tallying your score onchain…</p>`);
-  // endRound must EXECUTE (not just relay) to record the score. It only succeeds once
-  // the BLOCK timestamp passes start+length — Supernova blocks trail wall-clock
-  // slightly, so the first send can revert as "round not over yet". Resend until
-  // getRound reports ended.
   let ended = false;
   for (let i = 0; i < 12 && !ended; i++) {
     try { await arcade.endRound(G.roundId); } catch (err) { /* relay hiccup — retry */ }
@@ -719,7 +731,7 @@ function reveal(final, claimable, practice, ended = true) {
     `<div class="final">Final score${tag}<b>${fmt(final)} NOVA</b></div>` +
     `<div class="tally">` +
       `<div class="tr got"><span class="ico">▲</span><span class="lab">Grabbed<em>${G.gotCount} win${G.gotCount === 1 ? "" : "s"} collected</em></span><b>+${fmt(G.collectedAmt)}</b></div>` +
-      `<div class="tr missed"><span class="ico">·</span><span class="lab">Let slip<em>${missed} win${missed === 1 ? "" : "s"} ran past you</em></span><b>${fmt(missed)}</b></div>` +
+      `<div class="tr missed"><span class="ico">·</span><span class="lab">Let slip<em>${missed} win${missed === 1 ? "" : "s"} blew past you</em></span><b>${fmt(missed)}</b></div>` +
       `<div class="tr oops"><span class="ico">☠</span><span class="lab">Oops grabs${G.oopsCount ? `<em>${G.oopsCount} rug${G.oopsCount === 1 ? "" : "s"} grabbed</em>` : ""}</span><b>−${fmt(G.penaltyAmt)}</b></div>` +
     `</div>` +
     `<div class="row"><button class="btn" id="againBtn">Run again</button>`;
@@ -841,14 +853,12 @@ function buildLegend() {
 // headless preview, where requestAnimationFrame is paused on a hidden page, render
 // a representative frame deterministically.
 if (location.search.includes("dbg")) {
-  window.__dd = { G, getCfg: () => cfg, beginRound, tick, spawnItem, GOOD_TYPES, BAD_TYPES, randomU64 };
+  window.__dd = { G, getCfg: () => cfg, beginRound, tick, spawnItem, place, project, GOOD_TYPES, BAD_TYPES, randomU64 };
 }
 try { const s = localStorage.getItem("degendash_handle"); if (s) $("handle").value = s; } catch {}
-buildBelt($("beltFar"), 11, 24, 56);
-buildBelt($("beltMid"), 8, 30, 92);
-buildMotes();
 buildLegend();
 measure();
+buildEffects();
 $("bal").firstChild.textContent = "0";
 $("stackFill").style.transform = "scaleX(0)";
 detectMode();
