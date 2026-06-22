@@ -1,0 +1,2084 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Finality Frenzy · Supernova Sprint · MultiversX</title>
+<meta name="description" content="How many transactions can you fire in 30 seconds? Tap, watch your burst hit five chains, and see which ones finalize before you can blink." />
+<meta property="og:type" content="website" />
+<meta property="og:url" content="https://supernova-arcade.xyz/supernova-sprint" />
+<meta property="og:title" content="Finality Frenzy · Supernova Sprint" />
+<meta property="og:description" content="How many transactions can you fire in 30 seconds? Tap, watch your burst hit five chains, and see which ones finalize before you can blink." />
+<meta property="og:image" content="https://supernova-arcade.xyz/supernova-sprint-og.png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Finality Frenzy · Supernova Sprint" />
+<meta name="twitter:description" content="How many transactions can you fire in 30 seconds? Tap and watch them finalize before you can blink." />
+<meta name="twitter:image" content="https://supernova-arcade.xyz/supernova-sprint-og.png" />
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+<!--
+====================================================================================
+  SUPERNOVA SPRINT  -  a MultiversX Supernova finality showcase game
+====================================================================================
+
+  UX-REFINEMENT PASS (2026-06-17). Polish of the working prototype per
+  marketing/design/specs/supernova-game-ux-refinement.md. Refined in place.
+  What changed in this pass (the prototype logic and accuracy are unchanged):
+    - Legibility: a persistent plain-language legend under the lanes, plus
+      hover/tap tooltips on every lifecycle stage and lane label. Glosses:
+      "in block" = landed, not yet irreversible; "final" = irreversible, the
+      number that matters; intra-shard vs cross-shard each get a one-liner.
+      The accurate labels (250ms intra, ~1.8s cross, Supernova scheduled) stay.
+    - Core loop: snappier tap feedback (ring punch + particle + count pop),
+      a live odometer score, a segmented countdown ring with tension states,
+      a cleaner 3-2-1 GO start.
+    - Reveal: deterministic, staged choreography. The MultiversX lane runs
+      first and lands its win before the slow lanes fill and visibly stall.
+      The headline finalized number is the honest computed value (the old
+      build had a number that drifted from the settled count; fixed here by
+      making the exact count authoritative and the animation deterministic).
+    - Result card: a self-contained, screenshot-ready card (score, per-chain
+      finalized, Supernova label, challenge line) for sharing.
+    - Onchain hooks: STYLED PLACEHOLDERS ONLY for "Submit onchain" + a
+      leaderboard panel, matching the visual language, so the onchain build
+      (Rust contract + relayer, see onchain-leaderboard-BRIEF.md) is additive.
+      These are inert in this file (no chain calls); they are marked
+      data-onchain-placeholder and wired to a no-op explainer.
+
+  WHAT IT IS
+  A 30-second tap game. "How many transactions can you send in 30 seconds?"
+  Each tap / click / spacebar fires one transaction. The tap count is the player's
+  SCORE (they win at the tapping, always). After the clock runs out, the player's
+  real stream of tap timestamps is replayed through several chains' pipelines in
+  parallel (SUBMITTED -> INCLUDED -> FINALIZED), gated by each chain's real block
+  time and finality. On MultiversX (Supernova) the lane clears almost as fast as
+  they tap; on Ethereum, Bitcoin and Tron the transactions pile up and almost
+  nothing reaches finality inside the 30s window. The backlog is the lesson.
+
+  THIS IS A LATENCY COMPARISON (block time + finality), NOT A THROUGHPUT CLAIM.
+  There is deliberately NO TPS number anywhere in this file. The "finalized within
+  the window" counts are computed honestly from the player's own tap timestamps
+  against each chain's block-time and finality constants below.
+
+  CHAIN TIMINGS USED (hardcoded as constants, no network calls at play time)
+  ----------------------------------------------------------------------------------
+  MultiversX (Supernova)  block ~600ms
+      intra-shard finality target  250ms   (default lane)
+      cross-shard end-to-end target  ~1.8s  (three 600ms block times; toggle)
+      LABEL REQUIRED: "Supernova - scheduled to activate". Supernova is NOT live.
+      The game showcases what Supernova delivers, framed as upcoming.
+      Provenance: ~600ms block target; 250ms intra-shard finality target;
+      cross-shard settlement spans ~3 blocks end-to-end (~1.8s) because a transfer
+      crossing shards must be included on the source shard, relayed via the
+      metachain, and executed on the destination shard; ~88ms finality
+      demonstrated under load on the Battle of Nodes public test network.
+      In-game the MvX lane defaults to the 250ms intra-shard target and a simple
+      "intra-shard / cross-shard" toggle switches it to the ~1.8s cross-shard
+      figure. Both are labeled Supernova targets, scheduled. Even at 1.8s the MvX
+      lane finalizes far more of a 30s burst than Solana (~12.8s), Ethereum,
+      Bitcoin or Tron, so MvX wins in both modes; this is honest either way.
+      Source: marketing/games/supernova-finality-explainers.md ;
+              multiversx.com/blog/supernova-decoupling-consensus-and-execution
+      CANONICAL-URL CHECK (verified 2026-06-17): the "How it works ->" link
+      below now points to .../blog/supernova-decoupling-consensus-and-execution,
+      the dedicated Supernova consensus/execution explainer (live, on-topic:
+      vote/execute decoupling, 600ms blocks, sub-second finality). It previously
+      pointed to .../blog/agent-architecture, which resolves but is an AI-agent
+      infrastructure post that only mentions Supernova in passing, so it was not
+      the right canonical destination for this finality explainer. Both pages sit
+      behind a Cloudflare challenge (direct fetch returns 403); live status was
+      confirmed via the search index.
+
+  Ethereum (live, Gasper PoS)   slot 12s   finality ~12.8 min (2 epochs x 6.4 min)
+      Source: ethereum.org PoS docs - 12s slots, 32 slots/epoch (6.4 min),
+              finality at ~2 epochs (~12.8 min). Verified 2026-06-17.
+              https://ethereum.org/en/developers/docs/consensus-mechanisms/pos/
+
+  Solana (live)   slot ~400ms   deterministic finality ~12.8s (32 slots)
+      Source: solana.com confirmation guide - slots ~400ms (400-600ms);
+              finalized commitment is 32+ slots behind => ~12.8s deterministic.
+              (Optimistic confirmation is faster but we use the deterministic,
+              defensible figure. Solana finality is contested; cited here.)
+              Verified 2026-06-17.
+              https://solana.com/developers/guides/advanced/confirmation
+
+  Bitcoin (live)   block ~10 min   finality ~60 min (6 confirmations, probabilistic)
+      Source: Bitcoin Wiki Confirmation page + ecosystem consensus - ~10 min
+              blocks, 6-confirmation rule of thumb (~60 min) for high-value
+              settlement. Probabilistic finality. Verified 2026-06-17.
+              https://en.bitcoin.it/wiki/Confirmation
+
+  Tron (live, DPoS)   block ~3s   finality ~57s (19 confirmations x 3s)
+      Source: Tron DPoS - ~3s block time; a block is treated as irreversible
+              after ~19 confirmations (~57s), the standard SR irreversibility
+              threshold. Tron is the major stablecoin settlement chain (large
+              share of USDT settlement). Probabilistic until the SR threshold.
+              Verified 2026-06-17.
+
+  NOTE ON COMPETITOR ROADMAPS: Ethereum (Single Slot Finality) and Solana
+  (Alpenglow) both have faster-finality upgrades on their roadmaps, same as
+  Supernova. To stay honest and like-for-like, every lane here uses each chain's
+  CURRENT live behavior, EXCEPT MultiversX, which is explicitly the Supernova
+  showcase and is labeled "scheduled to activate" everywhere its figure appears.
+
+  VOICE / ACCURACY
+  No TPS, no "120,000 TPS", no per-second throughput figure (hard fail if present).
+  No superlatives ("fastest" etc.). "onchain" is one word. No em dashes.
+  Pre-mainnet discipline on Supernova throughout.
+
+  THINGS I'D TUNE NEXT
+  1. The MvX lane defaults to the 250ms intra-shard finality target and toggles to
+     the ~1.8s cross-shard end-to-end target. Could surface the ~88ms Battle-of-
+     Nodes demonstrated figure as a third mode for an even starker lane, but the
+     250ms / 1.8s pair keeps the framing to documented Supernova targets.
+  2. Replay animation pacing: currently a fixed ~4.5s compressed replay of the 30s.
+     Could make the time-compression ratio adjustable, or add a scrubber.
+  3. Leaderboard is local-only (localStorage personal best + a seeded ghost list).
+     A real backend leaderboard would make the PvP hook land harder.
+====================================================================================
+-->
+<style>
+/* ---------- Fonts (Roobert PRO, local @font-face) ---------- */
+@font-face{
+  font-family:'Roobert PRO';
+  src:url('/fonts/RoobertPRO-Light.otf') format('opentype');
+  font-weight:300; font-style:normal; font-display:swap;
+}
+@font-face{
+  font-family:'Roobert PRO';
+  src:url('/fonts/RoobertPRO-Regular.otf') format('opentype');
+  font-weight:400; font-style:normal; font-display:swap;
+}
+@font-face{
+  font-family:'Roobert PRO';
+  src:url('/fonts/RoobertPRO-Medium.otf') format('opentype');
+  font-weight:500; font-style:normal; font-display:swap;
+}
+@font-face{
+  font-family:'Roobert PRO';
+  src:url('/fonts/RoobertPRO-SemiBold.otf') format('opentype');
+  font-weight:600; font-style:normal; font-display:swap;
+}
+@font-face{
+  font-family:'Roobert PRO';
+  src:url('/fonts/RoobertPRO-Bold.otf') format('opentype');
+  font-weight:700; font-style:normal; font-display:swap;
+}
+@font-face{
+  font-family:'Roobert PRO';
+  src:url('/fonts/RoobertPRO-Heavy.otf') format('opentype');
+  font-weight:900; font-style:normal; font-display:swap;
+}
+
+:root{
+  --bg:#06070A;
+  --surface:#0E1117;
+  --surface-2:#141821;
+  --surface-3:#1a1f2b;
+  --border:#1E2330;
+  --border-soft:#161B25;
+  --mint:#23F7DD;
+  --mint-dim:#1ec8b4;
+  --text:#F4F6FA;
+  --text-dim:#9BA3B4;
+  --text-faint:#6B7385;
+  --blue:#5B8DEF;
+  --amber:#F5B544;
+  --coral:#FF6B9D;
+  --green:#4ADE80;
+  --lavender:#A78BFA;
+  --mono:'SFMono-Regular',ui-monospace,Menlo,Consolas,monospace;
+  --ease-out:cubic-bezier(.16,1,.3,1);
+}
+
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+html,body{height:100%;}
+body{
+  font-family:'Roobert PRO',system-ui,sans-serif;
+  background:var(--bg);
+  color:var(--text);
+  overflow:hidden;
+  position:relative;
+  touch-action:manipulation;
+  -webkit-user-select:none;user-select:none;
+}
+
+/* live Galaxy of Nodes backdrop (shared with the arcade), replaces the static glows */
+#galaxy{position:fixed;inset:0;z-index:0;display:block;pointer-events:none;}
+.cosmos{display:none;}
+.cosmos--unused{position:fixed;inset:0;z-index:0;overflow:hidden;pointer-events:none;}
+.glow{position:absolute;border-radius:50%;filter:blur(80px);opacity:.5;}
+.glow.g1{width:520px;height:520px;background:radial-gradient(circle,rgba(35,247,221,.22),transparent 70%);top:-180px;left:-120px;}
+.glow.g2{width:600px;height:600px;background:radial-gradient(circle,rgba(91,141,239,.14),transparent 70%);bottom:-260px;right:-160px;}
+.glow.g3{width:380px;height:380px;background:radial-gradient(circle,rgba(167,139,250,.10),transparent 70%);top:40%;left:55%;}
+.stars{position:absolute;inset:0;background-image:
+  radial-gradient(1px 1px at 20% 30%, rgba(244,246,250,.7), transparent),
+  radial-gradient(1px 1px at 70% 60%, rgba(244,246,250,.5), transparent),
+  radial-gradient(1px 1px at 40% 80%, rgba(244,246,250,.6), transparent),
+  radial-gradient(1px 1px at 85% 20%, rgba(244,246,250,.45), transparent),
+  radial-gradient(1px 1px at 55% 15%, rgba(244,246,250,.4), transparent),
+  radial-gradient(1px 1px at 10% 70%, rgba(244,246,250,.5), transparent),
+  radial-gradient(1px 1px at 90% 85%, rgba(244,246,250,.45), transparent),
+  radial-gradient(1px 1px at 33% 50%, rgba(244,246,250,.35), transparent);
+  background-repeat:no-repeat;opacity:.6;}
+
+#app{position:relative;z-index:1;height:100%;width:100%;display:flex;align-items:center;justify-content:center;padding:16px;}
+
+.screen{
+  width:100%;max-width:540px;height:100%;max-height:920px;
+  display:none;flex-direction:column;
+}
+.screen.active{display:flex;}
+
+/* ---------- shared bits ---------- */
+.brand-row{display:flex;align-items:center;gap:10px;justify-content:center;margin-top:6px;}
+.logo-x{
+  width:26px;height:26px;flex:0 0 auto;
+  display:flex;align-items:center;justify-content:center;
+}
+.logo-x svg{width:100%;height:100%;}
+.brand-name{font-weight:600;letter-spacing:.04em;font-size:14px;color:var(--text);}
+.chip{
+  display:inline-flex;align-items:center;gap:6px;
+  font-size:11px;font-weight:500;letter-spacing:.02em;
+  padding:5px 11px;border-radius:999px;
+  border:1px solid var(--border);background:var(--surface);
+  color:var(--text-dim);
+}
+.chip .dot{width:6px;height:6px;border-radius:50%;background:var(--mint);box-shadow:0 0 8px var(--mint);}
+
+.btn{
+  font-family:inherit;font-weight:600;font-size:16px;letter-spacing:.01em;
+  border:none;border-radius:14px;cursor:pointer;
+  padding:16px 28px;transition:transform .12s ease, box-shadow .25s ease, background .2s;
+}
+.btn-primary{
+  background:var(--mint);color:#04221F;
+  box-shadow:0 0 0 1px rgba(35,247,221,.4), 0 8px 30px rgba(35,247,221,.25);
+}
+.btn-primary:hover{transform:translateY(-2px);box-shadow:0 0 0 1px rgba(35,247,221,.6), 0 12px 40px rgba(35,247,221,.35);}
+.btn-primary:active{transform:translateY(0);}
+.btn-ghost{
+  background:var(--surface);color:var(--text);
+  border:1px solid var(--border);
+}
+.btn-ghost:hover{border-color:var(--mint-dim);color:var(--mint);}
+
+.muted{color:var(--text-dim);}
+.faint{color:var(--text-faint);}
+
+/* ---------- tooltip system (hover on desktop, tap-to-toggle on touch) ----------
+   Any element with [data-tip] shows a bubble. A dotted underline marks it as
+   explainable. On touch, a tap toggles .tip-open (handled in JS). */
+.tip{position:relative;cursor:help;}
+.tip-underline{border-bottom:1px dotted var(--text-faint);}
+.tip::after{
+  content:attr(data-tip);
+  position:absolute;left:50%;bottom:calc(100% + 9px);
+  transform:translateX(-50%) translateY(4px);
+  width:max-content;max-width:230px;
+  background:var(--surface-3);color:var(--text);
+  border:1px solid var(--border);border-radius:10px;
+  padding:9px 12px;font-size:11.5px;font-weight:400;line-height:1.45;
+  letter-spacing:0;text-transform:none;text-align:left;
+  box-shadow:0 10px 30px rgba(0,0,0,.55), 0 0 0 1px rgba(35,247,221,.06);
+  opacity:0;pointer-events:none;z-index:60;
+  transition:opacity .16s ease, transform .16s var(--ease-out);
+}
+.tip::before{
+  content:"";position:absolute;left:50%;bottom:calc(100% + 4px);
+  transform:translateX(-50%) rotate(45deg);
+  width:9px;height:9px;background:var(--surface-3);
+  border-right:1px solid var(--border);border-bottom:1px solid var(--border);
+  opacity:0;pointer-events:none;z-index:61;transition:opacity .16s ease;
+}
+@media (hover:hover){
+  .tip:hover::after{opacity:1;transform:translateX(-50%) translateY(0);}
+  .tip:hover::before{opacity:1;}
+}
+.tip.tip-open::after{opacity:1;transform:translateX(-50%) translateY(0);}
+.tip.tip-open::before{opacity:1;}
+/* tooltips near the left edge nudge their bubble so it doesn't clip */
+.tip.tip-left::after{left:0;transform:translateX(0) translateY(4px);}
+.tip.tip-left.tip-open::after{left:0;transform:translateX(0) translateY(0);}
+@media(hover:hover){.tip.tip-left:hover::after{left:0;transform:translateX(0) translateY(0);}}
+
+/* ====================================================================
+   START SCREEN
+   ==================================================================== */
+#start{justify-content:center;text-align:center;gap:0;}
+#start .top{flex:0 0 auto;}
+#start .mid{flex:1 1 auto;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:20px;}
+.kicker{font-size:12px;font-weight:600;letter-spacing:.2em;text-transform:uppercase;color:var(--mint);}
+h1.title{
+  font-weight:900;line-height:.96;letter-spacing:-.025em;
+  font-size:clamp(40px,11.5vw,64px);
+  background:linear-gradient(178deg,#FFFFFF 0%, #C9F8F2 58%, var(--mint) 128%);
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+}
+.subtitle{font-size:16px;line-height:1.52;color:var(--text-dim);max-width:368px;}
+.subtitle b{color:var(--text);font-weight:600;}
+.start-meta{display:flex;flex-direction:column;gap:11px;align-items:center;margin-top:2px;}
+.pb-line{font-size:13px;color:var(--text-faint);}
+.pb-line b{color:var(--mint);font-weight:600;font-variant-numeric:tabular-nums;}
+.hint{font-size:12px;color:var(--text-faint);}
+.hint kbd{
+  font-family:var(--mono);font-size:11px;color:var(--text-dim);
+  background:var(--surface-2);border:1px solid var(--border);border-bottom-width:2px;
+  border-radius:5px;padding:1px 6px;
+}
+#start .why-link{margin-top:2px;}
+.link-mint{color:var(--mint);font-size:13px;font-weight:500;cursor:pointer;background:none;border:none;font-family:inherit;text-decoration:none;border-bottom:1px solid transparent;transition:border-color .2s, color .2s;}
+.link-mint:hover{border-bottom-color:var(--mint-dim);}
+
+/* ====================================================================
+   PLAY SCREEN
+   ==================================================================== */
+#play{padding:4px 2px;}
+.play-head{flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;padding:10px 8px 6px;}
+.timer-wrap{display:flex;flex-direction:column;align-items:flex-start;gap:3px;}
+.timer-label{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--text-faint);}
+.timer{font-family:var(--mono);font-weight:700;font-size:30px;line-height:1;color:var(--text);font-variant-numeric:tabular-nums;transition:color .25s ease;}
+.timer.warn{color:var(--amber);}
+.timer.danger{color:var(--coral);animation:pulseT .5s ease-in-out infinite;}
+@keyframes pulseT{50%{opacity:.5;}}
+.score-wrap{display:flex;flex-direction:column;align-items:flex-end;gap:3px;}
+.score-label{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--text-faint);}
+.score{font-family:var(--mono);font-weight:900;font-size:32px;line-height:1;color:var(--mint);font-variant-numeric:tabular-nums;text-shadow:0 0 18px rgba(35,247,221,.5);transition:transform .09s var(--ease-out);will-change:transform;}
+.score.pop{transform:scale(1.16);}
+
+.progress{flex:0 0 auto;height:4px;border-radius:4px;background:var(--surface-2);margin:4px 8px 0;overflow:hidden;}
+.progress .fill{height:100%;width:100%;background:linear-gradient(90deg,var(--mint),var(--mint-dim));transition:width .12s linear, background .3s;box-shadow:0 0 12px rgba(35,247,221,.5);}
+.progress .fill.warn{background:linear-gradient(90deg,var(--amber),#e09a2c);box-shadow:0 0 12px rgba(245,181,68,.5);}
+.progress .fill.danger{background:linear-gradient(90deg,var(--coral),#e0507f);box-shadow:0 0 12px rgba(255,107,157,.5);}
+
+.tap-zone{
+  flex:1 1 auto;position:relative;margin:12px 8px;border-radius:24px;
+  border:1px solid var(--border);
+  background:
+    radial-gradient(120% 80% at 50% 0%, rgba(35,247,221,.08), transparent 60%),
+    var(--surface);
+  display:flex;align-items:center;justify-content:center;
+  overflow:hidden;cursor:pointer;
+  transition:border-color .12s ease, background .12s ease;
+}
+.tap-zone:active{border-color:var(--mint-dim);background:radial-gradient(120% 80% at 50% 0%, rgba(35,247,221,.13), transparent 60%),var(--surface);}
+.tap-core{display:flex;flex-direction:column;align-items:center;gap:18px;pointer-events:none;z-index:2;}
+
+/* tap target: a segmented countdown ring (SVG) wrapping the X core */
+.tap-target{position:relative;width:168px;height:168px;display:flex;align-items:center;justify-content:center;}
+.ring-svg{position:absolute;inset:0;width:100%;height:100%;transform:rotate(-90deg);overflow:visible;}
+.ring-track{fill:none;stroke:var(--surface-2);stroke-width:5;}
+.ring-prog{fill:none;stroke:var(--mint);stroke-width:5;stroke-linecap:round;filter:drop-shadow(0 0 6px rgba(35,247,221,.55));transition:stroke .3s ease;}
+.tap-ring{
+  width:120px;height:120px;border-radius:50%;
+  border:2px solid var(--mint);
+  display:flex;align-items:center;justify-content:center;
+  box-shadow:0 0 0 0 rgba(35,247,221,.4), inset 0 0 28px rgba(35,247,221,.12);
+  position:relative;background:rgba(35,247,221,.02);
+}
+.tap-ring .x{width:44px;height:44px;}
+.tap-ring .x svg{width:100%;height:100%;}
+.tap-prompt{font-size:15px;font-weight:600;color:var(--text);}
+.tap-sub{font-size:12px;color:var(--text-faint);}
+.pre-count{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:104px;color:var(--mint);z-index:5;pointer-events:none;text-shadow:0 0 44px rgba(35,247,221,.6);font-variant-numeric:tabular-nums;}
+.pre-count.go{font-size:84px;letter-spacing:.02em;}
+
+/* tap pulse ripples and flying tx are injected by JS */
+.ripple{position:absolute;border-radius:50%;border:2px solid var(--mint);pointer-events:none;transform:translate(-50%,-50%);animation:ripple .55s var(--ease-out) forwards;z-index:1;}
+@keyframes ripple{from{width:26px;height:26px;opacity:.85;}to{width:230px;height:230px;opacity:0;}}
+.spark{position:absolute;pointer-events:none;font-family:var(--mono);font-weight:700;font-size:13px;color:var(--mint);transform:translate(-50%,-50%);animation:spark .72s var(--ease-out) forwards;z-index:3;text-shadow:0 0 10px rgba(35,247,221,.7);white-space:nowrap;}
+@keyframes spark{0%{opacity:0;transform:translate(-50%,-50%) scale(.6);}14%{opacity:1;}100%{opacity:0;transform:translate(-50%,-180%) scale(1.05);}}
+
+.play-foot{flex:0 0 auto;text-align:center;padding:4px 6px 12px;}
+.combo{font-size:12px;color:var(--text-faint);min-height:17px;font-variant-numeric:tabular-nums;transition:opacity .2s;}
+.combo b{color:var(--mint);font-weight:700;}
+
+/* ====================================================================
+   REVEAL SCREEN
+   ==================================================================== */
+#reveal{padding:6px 2px;overflow-y:auto;scrollbar-width:none;}
+#reveal::-webkit-scrollbar{width:0;}
+.reveal-head{flex:0 0 auto;text-align:center;padding:10px 6px 2px;}
+.reveal-kicker{font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--text-dim);}
+.reveal-score{font-weight:900;font-size:clamp(44px,13vw,62px);line-height:1;margin:6px 0 2px;letter-spacing:-.02em;
+  background:linear-gradient(180deg,#FFFFFF, var(--mint));-webkit-background-clip:text;background-clip:text;color:transparent;font-variant-numeric:tabular-nums;}
+.reveal-score-sub{font-size:14px;color:var(--text-dim);}
+.reveal-pb{font-size:12px;margin-top:5px;min-height:16px;}
+.reveal-pb.win{color:var(--mint);font-weight:600;}
+.reveal-pb.norm{color:var(--text-faint);}
+
+.lanes-title{flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:18px 8px 4px;flex-wrap:wrap;}
+.lanes-title .t{font-size:13px;font-weight:600;color:var(--text);}
+.lanes-title .legend{display:flex;gap:13px;font-size:10.5px;color:var(--text-faint);}
+.lanes-title .legend span{display:inline-flex;align-items:center;gap:5px;}
+.lg-dot{width:8px;height:8px;border-radius:2px;display:inline-block;flex:0 0 auto;}
+.lg-sub{background:var(--text-faint);}
+.lg-inc{background:var(--amber);box-shadow:0 0 6px rgba(245,181,68,.5);}
+.lg-fin{background:var(--mint);box-shadow:0 0 7px rgba(35,247,221,.7);}
+
+/* persistent plain-language legend so the reveal reads without hovering */
+.legend-gloss{flex:0 0 auto;display:flex;gap:8px;padding:0 8px 4px;font-size:11px;color:var(--text-faint);line-height:1.4;flex-wrap:wrap;}
+.legend-gloss .lg-item{display:inline-flex;align-items:baseline;gap:5px;}
+.legend-gloss b{font-weight:600;}
+.legend-gloss .b-inc{color:var(--amber);}
+.legend-gloss .b-fin{color:var(--mint);}
+.legend-gloss .sep{color:var(--border);}
+
+.lanes{flex:0 0 auto;display:flex;flex-direction:column;gap:9px;padding:6px 6px 0;}
+.lane{
+  border:1px solid var(--border);border-radius:14px;background:var(--surface);
+  padding:11px 13px;position:relative;overflow:hidden;
+  opacity:0;transform:translateY(10px);
+}
+.lane.in{opacity:1;transform:translateY(0);transition:opacity .42s ease, transform .42s var(--ease-out);}
+.lane.mvx{border-color:rgba(35,247,221,.45);background:linear-gradient(100deg, rgba(35,247,221,.07), var(--surface) 55%);box-shadow:0 0 0 1px rgba(35,247,221,.08), 0 8px 30px rgba(35,247,221,.06);}
+.lane.dim{opacity:.62;}
+.lane-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:9px;}
+.lane-id{display:flex;align-items:center;gap:9px;min-width:0;}
+.lane-badge{width:22px;height:22px;border-radius:6px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:11px;color:#06070A;}
+.lane-name{font-weight:600;font-size:14px;color:var(--text);white-space:nowrap;}
+.lane-spec{font-size:10px;color:var(--text-faint);font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.lane-tag{font-size:9px;font-weight:600;letter-spacing:.04em;color:var(--mint);border:1px solid rgba(35,247,221,.4);border-radius:999px;padding:2px 8px;white-space:nowrap;background:rgba(35,247,221,.05);}
+.lane-tag .tip-underline{border-bottom-color:rgba(35,247,221,.5);}
+
+/* MvX intra-shard / cross-shard toggle (Supernova lane only) */
+.mvx-toggle{display:inline-flex;align-items:center;gap:0;margin:-2px 0 10px;border:1px solid rgba(35,247,221,.35);border-radius:999px;padding:2px;background:rgba(35,247,221,.05);}
+.mvx-toggle button{font-family:inherit;font-size:9.5px;font-weight:600;letter-spacing:.02em;color:var(--text-dim);background:none;border:none;cursor:pointer;border-radius:999px;padding:4px 11px;transition:background .18s, color .18s;white-space:nowrap;}
+.mvx-toggle button.on{background:var(--mint);color:#04221F;}
+.mvx-toggle button:not(.on):hover{color:var(--mint);}
+.lane-final{display:flex;align-items:baseline;gap:5px;flex:0 0 auto;}
+.lane-final .n{font-family:var(--mono);font-weight:900;font-size:23px;line-height:1;color:var(--text);font-variant-numeric:tabular-nums;}
+.lane-final.good .n{color:var(--mint);text-shadow:0 0 14px rgba(35,247,221,.5);}
+.lane-final .of{font-size:11px;color:var(--text-faint);font-family:var(--mono);}
+.lane-final .lab{font-size:9px;color:var(--text-faint);text-transform:uppercase;letter-spacing:.1em;margin-left:2px;}
+
+/* the pipeline track */
+.track{position:relative;height:34px;border-radius:9px;background:var(--surface-2);overflow:hidden;box-shadow:inset 0 0 0 1px var(--border-soft);}
+.track .seg-labels{position:absolute;inset:0;display:flex;pointer-events:none;}
+.track .seg-labels div{flex:1;display:flex;align-items:center;justify-content:center;font-size:8px;letter-spacing:.09em;text-transform:uppercase;color:rgba(155,163,180,.32);border-right:1px dashed rgba(30,35,48,.9);}
+.track .seg-labels div:last-child{border-right:none;}
+/* a soft "final zone" wash on the right third so the goal reads */
+.track .final-zone{position:absolute;top:0;right:0;bottom:0;width:30%;background:linear-gradient(90deg,transparent,rgba(35,247,221,.05));pointer-events:none;}
+.dot-tx{position:absolute;top:50%;width:8px;height:8px;border-radius:50%;transform:translate(-50%,-50%);transition:left .45s linear, background .35s, box-shadow .35s;}
+.dot-sub{background:var(--text-faint);}
+.dot-inc{background:var(--amber);box-shadow:0 0 6px rgba(245,181,68,.55);}
+.dot-fin{background:var(--mint);box-shadow:0 0 9px rgba(35,247,221,.8);}
+.lane-counts{display:flex;gap:16px;margin-top:8px;font-size:10.5px;font-family:var(--mono);color:var(--text-faint);font-variant-numeric:tabular-nums;}
+.lane-counts span{display:inline-flex;align-items:center;gap:5px;}
+.lane-counts b{font-weight:700;}
+.lane-counts .c-fin b{color:var(--mint);}
+.lane-counts .c-inc b{color:var(--amber);}
+.lane-counts .cdot{width:7px;height:7px;border-radius:2px;display:inline-block;}
+
+.reveal-line{flex:0 0 auto;text-align:center;font-size:13px;color:var(--text-dim);line-height:1.55;padding:16px 14px 4px;}
+.reveal-line b{color:var(--text);font-weight:600;}
+.reveal-line .mvx-h{color:var(--mint);font-weight:700;}
+
+/* ---- onchain placeholder block (inert: styled frame for the later build) ---- */
+.onchain-block{flex:0 0 auto;padding:14px 6px 2px;}
+.onchain-card{
+  border:1px dashed rgba(35,247,221,.3);border-radius:16px;
+  background:linear-gradient(160deg, rgba(35,247,221,.04), var(--surface) 70%);
+  padding:16px 16px 15px;position:relative;overflow:hidden;
+}
+.onchain-card::before{content:"";position:absolute;top:-50px;right:-40px;width:150px;height:150px;border-radius:50%;background:radial-gradient(circle,rgba(35,247,221,.1),transparent 65%);pointer-events:none;}
+.onchain-head{display:flex;align-items:center;gap:9px;margin-bottom:6px;position:relative;}
+.onchain-head .oc-ic{width:26px;height:26px;border-radius:8px;background:rgba(35,247,221,.1);border:1px solid rgba(35,247,221,.3);display:grid;place-items:center;flex:0 0 auto;}
+.onchain-head .oc-ic svg{width:15px;height:15px;}
+.onchain-head .oc-t{font-size:14px;font-weight:600;color:var(--text);}
+.onchain-soon{margin-left:auto;font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--mint);border:1px solid rgba(35,247,221,.35);border-radius:999px;padding:3px 9px;background:rgba(35,247,221,.06);}
+.onchain-copy{font-size:12.5px;color:var(--text-dim);line-height:1.5;margin-bottom:13px;position:relative;}
+.onchain-copy b{color:var(--text);font-weight:600;}
+.onchain-submit{
+  width:100%;font-family:inherit;font-weight:600;font-size:15px;letter-spacing:.01em;
+  border-radius:13px;cursor:pointer;padding:14px 20px;position:relative;
+  background:rgba(35,247,221,.08);color:var(--mint);
+  border:1px solid rgba(35,247,221,.4);
+  display:flex;align-items:center;justify-content:center;gap:9px;
+  transition:background .2s, border-color .2s, transform .12s ease;
+}
+.onchain-submit:hover{background:rgba(35,247,221,.14);border-color:var(--mint);transform:translateY(-1px);}
+.onchain-submit:active{transform:translateY(0);}
+.onchain-submit .lock{opacity:.85;}
+.onchain-submit .lock svg{width:14px;height:14px;display:block;}
+/* leaderboard preview panel (placeholder rows, blurred + locked) */
+.lb-panel{margin-top:11px;border:1px solid var(--border);border-radius:13px;background:var(--surface);overflow:hidden;position:relative;}
+.lb-head{display:flex;align-items:center;justify-content:space-between;padding:11px 14px;border-bottom:1px solid var(--border-soft);}
+.lb-head .lb-t{font-size:12px;font-weight:600;color:var(--text);display:flex;align-items:center;gap:7px;}
+.lb-head .lb-net{font-size:9px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text-faint);border:1px solid var(--border);border-radius:999px;padding:2px 8px;}
+.lb-rows{position:relative;}
+.lb-row{display:flex;align-items:center;gap:11px;padding:9px 14px;font-size:12px;border-bottom:1px solid var(--border-soft);}
+.lb-row:last-child{border-bottom:none;}
+.lb-row .lb-rank{font-family:var(--mono);font-size:11px;color:var(--text-faint);width:18px;flex:0 0 auto;}
+.lb-row .lb-handle{color:var(--text-dim);flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.lb-row .lb-score{font-family:var(--mono);font-weight:700;color:var(--text-dim);font-variant-numeric:tabular-nums;}
+.lb-row.you{background:rgba(35,247,221,.05);}
+.lb-row.you .lb-handle{color:var(--mint);font-weight:600;}
+.lb-row.you .lb-score{color:var(--mint);}
+.lb-blur{filter:blur(3px);opacity:.5;user-select:none;}
+.lb-lock{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;text-align:center;background:linear-gradient(180deg,rgba(14,17,23,.2),rgba(14,17,23,.72));}
+.lb-lock .ll-t{font-size:12px;font-weight:600;color:var(--text);}
+.lb-lock .ll-s{font-size:10.5px;color:var(--text-faint);max-width:240px;line-height:1.4;}
+/* leaderboard panel reveals its live rows once data loads */
+.lb-panel.live .lb-blur{filter:none;opacity:1;}
+.lb-panel.live .lb-lock{display:none;}
+.lb-empty{padding:16px 14px;text-align:center;font-size:11.5px;color:var(--text-faint);line-height:1.5;}
+
+/* handle input on the onchain card */
+.onchain-handle{
+  width:100%;font-family:inherit;font-size:14px;color:var(--text);
+  background:var(--surface-2);border:1px solid var(--border);border-radius:11px;
+  padding:12px 14px;margin-bottom:10px;outline:none;
+  transition:border-color .18s, box-shadow .18s;-webkit-user-select:text;user-select:text;
+}
+.onchain-handle::placeholder{color:var(--text-faint);}
+.onchain-handle:focus{border-color:var(--mint-dim);box-shadow:0 0 0 3px rgba(35,247,221,.08);}
+
+/* submit button busy/disabled state */
+.onchain-submit[disabled]{opacity:.6;cursor:default;transform:none;}
+.onchain-submit .spin{width:15px;height:15px;border:2px solid rgba(35,247,221,.3);border-top-color:var(--mint);border-radius:50%;display:inline-block;animation:ocspin .7s linear infinite;}
+@keyframes ocspin{to{transform:rotate(360deg);}}
+
+/* status / result line */
+.onchain-status{margin-top:11px;font-size:12px;line-height:1.5;border-radius:11px;padding:11px 13px;border:1px solid var(--border-soft);background:var(--surface-2);color:var(--text-dim);}
+.onchain-status.ok{border-color:rgba(35,247,221,.35);background:rgba(35,247,221,.05);color:var(--text);}
+.onchain-status.err{border-color:rgba(245,181,68,.35);background:rgba(245,181,68,.05);color:var(--text-dim);}
+.onchain-status a{color:var(--mint);text-decoration:none;border-bottom:1px solid transparent;word-break:break-all;font-family:var(--mono);font-size:11px;}
+.onchain-status a:hover{border-bottom-color:var(--mint-dim);}
+.onchain-status .st-t{font-weight:600;color:var(--text);display:block;margin-bottom:3px;}
+.onchain-status .st-hash{display:flex;align-items:baseline;gap:6px;margin-top:5px;}
+.onchain-status .st-lbl{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--text-faint);flex:0 0 auto;}
+
+.reveal-actions{flex:0 0 auto;display:flex;flex-direction:column;gap:10px;padding:16px 6px 8px;}
+.reveal-actions .row{display:flex;gap:10px;}
+.reveal-actions .row .btn{flex:1;}
+.why-toggle{text-align:center;}
+
+/* CTA to the "every tap onchain" version (/onchain). Tasteful, card-matched. */
+.onchain-cta{flex:0 0 auto;margin:4px 6px 0;display:flex;align-items:center;gap:12px;padding:13px 15px;border-radius:14px;background:linear-gradient(180deg,var(--surface-2),var(--surface));border:1px solid var(--border);text-decoration:none;transition:border-color .2s,transform .08s ease;}
+.onchain-cta:hover{border-color:var(--mint-dim);transform:translateY(-1px);}
+.onchain-cta:active{transform:scale(.99);}
+.onchain-cta .oc-ic{flex:0 0 auto;width:30px;height:30px;border-radius:9px;background:rgba(35,247,221,.10);border:1px solid rgba(35,247,221,.28);display:flex;align-items:center;justify-content:center;}
+.onchain-cta .oc-ic svg{width:17px;height:17px;}
+.onchain-cta .oc-tx{flex:1 1 auto;min-width:0;}
+.onchain-cta .oc-tx .oc-l1{font-size:12.5px;color:var(--text);font-weight:600;line-height:1.35;}
+.onchain-cta .oc-tx .oc-l2{font-size:11px;color:var(--mint);font-weight:600;margin-top:2px;}
+.onchain-cta .oc-arrow{flex:0 0 auto;color:var(--mint);font-size:18px;line-height:1;}
+
+.footnote{flex:0 0 auto;text-align:center;font-size:10px;color:var(--text-faint);line-height:1.5;padding:8px 14px 22px;}
+.footnote b{color:var(--text-dim);font-weight:600;}
+
+/* ====================================================================
+   RESULT CARD (screenshot-ready, surfaced on Share)
+   ==================================================================== */
+.card-modal{position:fixed;inset:0;z-index:55;background:rgba(4,5,8,.88);backdrop-filter:blur(7px);display:none;align-items:center;justify-content:center;padding:18px;overflow-y:auto;}
+.card-modal.open{display:flex;}
+.card-shell{width:100%;max-width:400px;display:flex;flex-direction:column;gap:14px;}
+.card-close{position:absolute;top:16px;right:18px;background:none;border:none;color:var(--text-dim);font-size:26px;cursor:pointer;line-height:1;z-index:2;}
+.card-close:hover{color:var(--mint);}
+
+/* the postable artboard. fixed aspect so a screenshot crops clean. */
+.result-card{
+  position:relative;width:100%;border-radius:20px;overflow:hidden;
+  background:
+    radial-gradient(130% 90% at 80% -10%, rgba(35,247,221,.16), transparent 55%),
+    radial-gradient(120% 100% at 0% 110%, rgba(91,141,239,.12), transparent 55%),
+    linear-gradient(165deg,#0E1117, #090B10);
+  border:1px solid var(--border);
+  box-shadow:0 24px 70px rgba(0,0,0,.6), 0 0 0 1px rgba(35,247,221,.06);
+  padding:26px 24px 22px;
+}
+.rc-stars{position:absolute;inset:0;pointer-events:none;opacity:.5;background-image:
+  radial-gradient(1px 1px at 22% 24%, rgba(244,246,250,.7), transparent),
+  radial-gradient(1px 1px at 68% 18%, rgba(244,246,250,.5), transparent),
+  radial-gradient(1px 1px at 82% 62%, rgba(244,246,250,.55), transparent),
+  radial-gradient(1px 1px at 38% 78%, rgba(244,246,250,.5), transparent),
+  radial-gradient(1px 1px at 12% 60%, rgba(244,246,250,.45), transparent);}
+.rc-top{display:flex;align-items:center;gap:9px;position:relative;margin-bottom:20px;}
+.rc-logo{width:22px;height:22px;}
+.rc-logo svg{width:100%;height:100%;}
+.rc-brand{font-weight:600;font-size:13px;letter-spacing:.03em;color:var(--text);}
+.rc-kicker-tag{margin-left:auto;font-size:9.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--mint);}
+.rc-headline{position:relative;font-size:13px;color:var(--text-dim);letter-spacing:.04em;text-transform:uppercase;font-weight:600;margin-bottom:2px;}
+.rc-score{position:relative;font-weight:900;font-size:74px;line-height:.95;letter-spacing:-.03em;font-variant-numeric:tabular-nums;
+  background:linear-gradient(178deg,#FFFFFF, #C9F8F2 55%, var(--mint));-webkit-background-clip:text;background-clip:text;color:transparent;}
+.rc-score-sub{position:relative;font-size:13px;color:var(--text-dim);margin-top:2px;margin-bottom:20px;}
+.rc-divider{position:relative;height:1px;background:var(--border);margin-bottom:16px;}
+.rc-finlabel{position:relative;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--text-faint);margin-bottom:12px;}
+.rc-rows{position:relative;display:flex;flex-direction:column;gap:0;}
+.rc-row{display:flex;align-items:center;gap:11px;padding:8px 0;border-bottom:1px solid var(--border-soft);}
+.rc-row:last-child{border-bottom:none;}
+.rc-badge{width:20px;height:20px;border-radius:5px;flex:0 0 auto;display:grid;place-items:center;font-weight:700;font-size:10px;color:#06070A;}
+.rc-name{font-size:13px;color:var(--text-dim);flex:1 1 auto;}
+.rc-row.mvx .rc-name{color:var(--text);font-weight:600;}
+.rc-tag{font-size:9px;font-weight:600;color:var(--mint);border:1px solid rgba(35,247,221,.35);border-radius:999px;padding:1px 7px;}
+.rc-bar-wrap{width:78px;height:7px;border-radius:4px;background:var(--surface-2);overflow:hidden;flex:0 0 auto;}
+.rc-bar{height:100%;border-radius:4px;}
+.rc-num{font-family:var(--mono);font-weight:700;font-size:14px;color:var(--text-dim);font-variant-numeric:tabular-nums;width:34px;text-align:right;flex:0 0 auto;}
+.rc-row.mvx .rc-num{color:var(--mint);}
+.rc-foot{position:relative;display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:18px;}
+.rc-challenge{font-size:12.5px;color:var(--text);font-weight:600;}
+.rc-challenge span{color:var(--mint);}
+.rc-url{font-size:10px;color:var(--text-faint);font-family:var(--mono);}
+.rc-note{position:relative;font-size:9px;color:var(--text-faint);margin-top:12px;line-height:1.4;}
+
+.card-actions{display:flex;flex-direction:column;gap:9px;}
+.card-actions .row{display:flex;gap:9px;}
+.card-actions .row .btn{flex:1;padding:13px 18px;font-size:14px;}
+.card-hint{text-align:center;font-size:11px;color:var(--text-faint);line-height:1.45;}
+
+/* ---------- WHY panel (explainer) ---------- */
+.why-panel{
+  position:fixed;inset:0;z-index:50;background:rgba(4,5,8,.86);backdrop-filter:blur(6px);
+  display:none;align-items:center;justify-content:center;padding:18px;
+}
+.why-panel.open{display:flex;}
+.why-card{
+  width:100%;max-width:520px;max-height:86vh;overflow-y:auto;
+  background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:24px 22px;
+  position:relative;
+}
+.why-card::-webkit-scrollbar{width:6px;}
+.why-card::-webkit-scrollbar-thumb{background:var(--border);border-radius:6px;}
+.why-close{position:absolute;top:14px;right:16px;background:none;border:none;color:var(--text-dim);font-size:24px;cursor:pointer;line-height:1;}
+.why-close:hover{color:var(--mint);}
+.why-kicker{font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--mint);margin-bottom:6px;}
+.why-card h2{font-weight:700;font-size:22px;line-height:1.1;margin-bottom:14px;letter-spacing:-.01em;}
+.why-card p{font-size:14px;line-height:1.6;color:var(--text-dim);margin-bottom:13px;}
+.why-card p b{color:var(--text);font-weight:600;}
+.why-card .scheduled{color:var(--mint);font-weight:600;}
+.why-steps{display:flex;flex-direction:column;gap:10px;margin:4px 0 16px;}
+.why-step{display:flex;gap:12px;align-items:flex-start;padding:12px 14px;background:var(--surface-2);border:1px solid var(--border);border-radius:12px;}
+.why-step .ws-n{font-family:var(--mono);font-weight:700;color:var(--mint);font-size:13px;flex:0 0 auto;margin-top:1px;}
+.why-step .ws-t{font-size:13px;line-height:1.5;color:var(--text-dim);}
+.why-step .ws-t b{color:var(--text);}
+.why-cta{display:inline-flex;align-items:center;gap:7px;color:var(--mint);font-weight:600;font-size:14px;text-decoration:none;border-bottom:1px solid transparent;transition:border-color .2s;}
+.why-cta:hover{border-bottom-color:var(--mint-dim);}
+.why-src{font-size:10px;color:var(--text-faint);line-height:1.5;margin-top:16px;border-top:1px solid var(--border);padding-top:12px;}
+.why-src b{color:var(--text-dim);}
+
+/* ---------- screen-flash on finish ---------- */
+.flash{position:fixed;inset:0;background:var(--mint);z-index:40;opacity:0;pointer-events:none;}
+.flash.go{animation:flash .5s ease-out;}
+@keyframes flash{0%{opacity:.5;}100%{opacity:0;}}
+
+@media (max-width:380px){
+  .lane-spec{display:none;}
+  h1.title{font-size:44px;}
+  .legend-gloss{font-size:10px;}
+}
+@media (min-height:760px){
+  #reveal{overflow-y:auto;}
+}
+/* desktop: a touch more presence on the tap target and headings */
+@media (min-width:560px) and (hover:hover){
+  .tap-target{width:188px;height:188px;}
+  .tap-ring{width:134px;height:134px;}
+  .tap-ring .x{width:50px;height:50px;}
+}
+@media (prefers-reduced-motion:reduce){
+  *{animation-duration:.001ms !important;animation-iteration-count:1 !important;transition-duration:.001ms !important;}
+  .lane{opacity:1;transform:none;}
+}
+</style>
+    <!-- Vercel Web Analytics -->
+    <script defer src="/_vercel/insights/script.js"></script>
+    <script type="module">
+      // live Galaxy of Nodes backdrop — same one the arcade + cabinets use.
+      // Deferred module: runs after the DOM parses, so #galaxy exists. Exposed on
+      // window so the (non-module) game code can fire a photon burst onchain.
+      import { mountGalaxy } from "/arcade-galaxy.js";
+      try { window.__arcadeGalaxy = mountGalaxy({ intensity: 0.5, focusShard: 1, canvas: "#galaxy" }); }
+      catch (e) { console.warn("[sprint] galaxy mount failed", e); }
+    </script>
+</head>
+<body>
+<canvas id="galaxy" aria-hidden="true"></canvas>
+<div class="cosmos">
+  <div class="stars"></div>
+  <div class="glow g1"></div>
+  <div class="glow g2"></div>
+  <div class="glow g3"></div>
+</div>
+<div class="flash" id="flash"></div>
+
+<div id="app">
+
+  <!-- ============================ START ============================ -->
+  <section class="screen active" id="start">
+    <div class="top">
+      <div class="brand-row" style="display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;">
+        <a href="/" style="display:inline-flex;align-items:center;gap:6px;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:12px;color:#9BA3B4;text-decoration:none;border:1px solid #1E2330;border-radius:11px;padding:7px 12px;background:rgba(14,17,23,.7);white-space:nowrap;">&larr; Arcade</a>
+        <img class="brand-logo" src="/mvx-wordmark.svg" alt="MultiversX" style="height:22px;width:auto;display:block;" />
+        <span style="font-family:'JetBrains Mono',ui-monospace,monospace;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:#23F7DD;border:1px solid rgba(35,247,221,.32);background:rgba(35,247,221,.1);padding:5px 11px;border-radius:999px;white-space:nowrap;">shard 1</span>
+      </div>
+    </div>
+    <div class="mid">
+      <div class="kicker">Finality Frenzy · Supernova Sprint</div>
+      <h1 class="title">How many<br/>transactions<br/>can you fire?</h1>
+      <p class="subtitle">Tap as fast as you can for 30 seconds. Then watch your burst hit five blockchains at once, and <b>see which ones keep up.</b></p>
+      <div class="start-meta">
+        <span class="chip"><span class="dot"></span>30 seconds &nbsp;&middot;&nbsp; tap &middot; click &middot; spacebar</span>
+        <div class="pb-line" id="pbLine"></div>
+      </div>
+      <button class="btn btn-primary" id="startBtn" style="min-width:220px;">Start sprint</button>
+      <div class="hint">Press <kbd>Space</kbd> or tap the button to begin</div>
+      <div class="why-link"><button class="link-mint" id="whyStartBtn">Why is it this fast? &rarr;</button></div>
+    </div>
+  </section>
+
+  <!-- ============================ PLAY ============================ -->
+  <section class="screen" id="play">
+    <div class="play-head">
+      <div class="timer-wrap">
+        <span class="timer-label">Time left</span>
+        <span class="timer" id="timer">30.0</span>
+      </div>
+      <div class="score-wrap">
+        <span class="score-label">Transactions</span>
+        <span class="score" id="score">0</span>
+      </div>
+    </div>
+    <div class="progress"><div class="fill" id="progressFill"></div></div>
+
+    <div class="tap-zone" id="tapZone">
+      <div class="tap-core" id="tapCore">
+        <div class="tap-target">
+          <svg class="ring-svg" viewBox="0 0 120 120" aria-hidden="true">
+            <circle class="ring-track" cx="60" cy="60" r="56"></circle>
+            <circle class="ring-prog" id="ringProg" cx="60" cy="60" r="56"></circle>
+          </svg>
+          <div class="tap-ring" id="tapRing">
+            <span class="x" aria-hidden="true">
+              <svg viewBox="0 0 48 37" fill="none"><path d="M26.6389 18.408L48.0001 6.93761L44.4089 0L24.8488 7.95166C24.3452 8.15668 23.7868 8.15668 23.2831 7.95166L3.72305 0L0.131836 6.93761L21.493 18.408L0.131836 29.8783L3.72305 36.8159L23.2831 28.8642C23.7868 28.6592 24.3452 28.6592 24.8488 28.8642L44.4089 36.8159L48.0001 29.8783L26.6389 18.408Z" fill="#23F7DD"/></svg>
+            </span>
+          </div>
+        </div>
+        <div class="tap-prompt" id="tapPrompt">Tap to send</div>
+        <div class="tap-sub">each tap fires one transaction</div>
+      </div>
+      <div class="pre-count" id="preCount" style="display:none;">3</div>
+    </div>
+
+    <div class="play-foot">
+      <div class="combo" id="combo">&nbsp;</div>
+    </div>
+  </section>
+
+  <!-- ============================ REVEAL ============================ -->
+  <section class="screen" id="reveal">
+    <div class="reveal-head">
+      <div class="reveal-kicker">In 30 seconds you sent</div>
+      <div class="reveal-score" id="revealScore">0</div>
+      <div class="reveal-score-sub">transactions</div>
+      <div class="reveal-pb" id="revealPb"></div>
+    </div>
+
+    <div class="lanes-title">
+      <span class="t">Finalized within the window</span>
+      <span class="legend">
+        <span class="tip" data-tip="Sent. Instant on any chain."><i class="lg-dot lg-sub"></i><span class="tip-underline">sent</span></span>
+        <span class="tip" data-tip="Landed in a block. Still reversible."><i class="lg-dot lg-inc"></i><span class="tip-underline">in block</span></span>
+        <span class="tip" data-tip="Irreversible. The number that matters."><i class="lg-dot lg-fin"></i><span class="tip-underline">final</span></span>
+      </span>
+    </div>
+    <!-- persistent plain-language legend: reads without hovering -->
+    <div class="legend-gloss">
+      <span class="lg-item"><b class="b-inc">In block</b> = landed, not yet irreversible</span>
+      <span class="sep">&middot;</span>
+      <span class="lg-item"><b class="b-fin">Final</b> = irreversible, the number that counts</span>
+    </div>
+    <div class="lanes" id="lanes"><!-- lanes injected by JS --></div>
+
+    <div class="reveal-line" id="revealLine"></div>
+
+    <!-- ONCHAIN PLACEHOLDER (inert): styled frame for the later onchain build.
+         The onchain agent (Rust leaderboard contract + Relayed v3 relayer,
+         see onchain-leaderboard-BRIEF.md) replaces the no-op handlers here
+         with: build+sign+send the score tx, show the real tx hash + devnet
+         explorer link, and read+render the live leaderboard into .lb-panel. -->
+    <div class="onchain-block" id="onchainBlock">
+      <div class="onchain-card">
+        <div class="onchain-head">
+          <span class="oc-ic" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none"><path d="M12 2 L20 6.5 V15 L12 22 L4 15 V6.5 Z" stroke="#23F7DD" stroke-width="1.6" stroke-linejoin="round"/><path d="M9 12 l2.2 2.2 L15 9.5" stroke="#23F7DD" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </span>
+          <span class="oc-t">Put your score onchain</span>
+          <span class="onchain-soon" id="onchainNet">Testnet</span>
+        </div>
+        <div class="onchain-copy">That was a game. This part is real. <b>Transact on MultiversX:</b> submit your score as a live transaction and land on a leaderboard read straight from the chain. Gasless, no wallet needed.</div>
+
+        <!-- handle input: who you are on the leaderboard -->
+        <input class="onchain-handle" id="onchainHandle" type="text" maxlength="20" autocomplete="off" spellcheck="false" placeholder="Pick a handle (e.g. novapilot)" />
+
+        <button class="onchain-submit" id="onchainSubmitBtn" type="button" data-onchain-hook="submit">
+          <span class="lock" id="onchainSubmitIcon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M5 12 h14 M13 6 l6 6 -6 6" stroke="#23F7DD" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+          <span id="onchainSubmitLabel">Submit onchain</span>
+        </button>
+
+        <!-- live status / result line (tx hash + explorer link, or error) -->
+        <div class="onchain-status" id="onchainStatus" hidden></div>
+
+        <!-- leaderboard panel: rows read live from the testnet contract -->
+        <div class="lb-panel" id="lbPanel" data-onchain-hook="leaderboard">
+          <div class="lb-head">
+            <span class="lb-t">
+              <span aria-hidden="true" style="width:7px;height:7px;border-radius:50%;background:var(--mint);box-shadow:0 0 7px var(--mint);display:inline-block;"></span>
+              Onchain leaderboard
+            </span>
+            <span class="lb-net">Testnet</span>
+          </div>
+          <div class="lb-rows" id="lbRows">
+            <!-- sample/blurred rows shown until live data loads or onchain is unavailable -->
+            <div class="lb-blur" id="lbBlur" aria-hidden="true">
+              <div class="lb-row"><span class="lb-rank">1</span><span class="lb-handle">novapilot</span><span class="lb-score">312</span></div>
+              <div class="lb-row"><span class="lb-rank">2</span><span class="lb-handle">shardrunner</span><span class="lb-score">298</span></div>
+              <div class="lb-row you"><span class="lb-rank">3</span><span class="lb-handle">you</span><span class="lb-score" id="lbYouScore">0</span></div>
+              <div class="lb-row"><span class="lb-rank">4</span><span class="lb-handle">blocktempo</span><span class="lb-score">241</span></div>
+            </div>
+            <div class="lb-lock" id="lbLock">
+              <div class="ll-t">Live leaderboard</div>
+              <div class="ll-s">Submit onchain to claim your spot. Reads live from a MultiversX testnet contract.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CTA: the "every tap is a real transaction" version of the game -->
+    <a class="onchain-cta" href="/onchain">
+      <span class="oc-ic" aria-hidden="true"><svg viewBox="0 0 48 37" fill="none"><path d="M26.6389 18.408L48.0001 6.93761L44.4089 0L24.8488 7.95166C24.3452 8.15668 23.7868 8.15668 23.2831 7.95166L3.72305 0L0.131836 6.93761L21.493 18.408L0.131836 29.8783L3.72305 36.8159L23.2831 28.8642C23.7868 28.6592 24.3452 28.6592 24.8488 28.8642L44.4089 36.8159L48.0001 29.8783L26.6389 18.408Z" fill="#23F7DD"/></svg></span>
+      <span class="oc-tx">
+        <span class="oc-l1">Want every tap to be a real onchain transaction?</span>
+        <span class="oc-l2">Play the onchain version</span>
+      </span>
+      <span class="oc-arrow" aria-hidden="true">&rarr;</span>
+    </a>
+
+    <div class="reveal-actions">
+      <div class="why-toggle"><button class="link-mint" id="whyRevealBtn">Why does MultiversX clear instantly? &rarr;</button></div>
+      <div class="row">
+        <button class="btn btn-ghost" id="againBtn">Play again</button>
+        <button class="btn btn-primary" id="shareBtn">Share result</button>
+      </div>
+    </div>
+
+    <div class="footnote" id="footnote"></div>
+  </section>
+
+</div>
+
+<!-- ============================ RESULT CARD ============================ -->
+<div class="card-modal" id="cardModal">
+  <button class="card-close" id="cardClose" aria-label="Close">&times;</button>
+  <div class="card-shell">
+    <div class="result-card" id="resultCard">
+      <div class="rc-stars"></div>
+      <div class="rc-top">
+        <span class="rc-logo" aria-hidden="true">
+          <svg viewBox="0 0 32 32" fill="none"><path d="M6 6 L16 16 L6 26 M26 6 L16 16 L26 26" stroke="#23F7DD" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </span>
+        <img class="rc-brand" src="/mvx-wordmark.svg" alt="MultiversX" style="height:18px;width:auto;" />
+        <span class="rc-kicker-tag">Finality Frenzy · Supernova Sprint</span>
+      </div>
+      <div class="rc-headline">In 30 seconds I sent</div>
+      <div class="rc-score" id="rcScore">0</div>
+      <div class="rc-score-sub">transactions</div>
+      <div class="rc-divider"></div>
+      <div class="rc-finlabel">Finalized within the window</div>
+      <div class="rc-rows" id="rcRows"><!-- injected --></div>
+      <div class="rc-foot">
+        <div class="rc-challenge">Beat my number. <span>Finality Frenzy · Supernova Sprint</span></div>
+      </div>
+      <div class="rc-note" id="rcNote"></div>
+    </div>
+    <div class="card-actions">
+      <div class="row">
+        <button class="btn btn-ghost" id="cardBackBtn">Back</button>
+        <button class="btn btn-primary" id="cardShareBtn">Share on X</button>
+      </div>
+      <div class="card-hint">Screenshot the card to post the image, or tap Share on X for the text.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================ WHY PANEL ============================ -->
+<div class="why-panel" id="whyPanel">
+  <div class="why-card">
+    <button class="why-close" id="whyClose" aria-label="Close">&times;</button>
+    <div class="why-kicker">Supernova &middot; coming to MultiversX</div>
+    <h2>Why is it this fast?</h2>
+    <p>Most blockchains work in sequence. Propose a block, vote on it, then run the transactions inside it, each step strictly after the last. That ordering is where the seconds go.</p>
+    <p><b>Supernova overlaps the steps.</b> The network votes and executes at the same time, so a block that used to take about six seconds now targets around 600 milliseconds, and intra-shard finality targets around 250 milliseconds. About the length of a blink.</p>
+    <div class="why-steps">
+      <div class="why-step"><span class="ws-n">1</span><span class="ws-t"><b>Submitted.</b> You clicked. Instant, your action, on any chain.</span></div>
+      <div class="why-step"><span class="ws-n">2</span><span class="ws-t"><b>In a block.</b> Gated by the chain's block time. Tap faster than its cadence and your transactions queue for the next block.</span></div>
+      <div class="why-step"><span class="ws-n">3</span><span class="ws-t"><b>Final.</b> Irreversible. Gated by the chain's finality. This is where slow chains fall behind your thumb.</span></div>
+    </div>
+    <p>The hard part was doing this without breaking the rule that a payment crossing between shards either completes on both sides or does not happen at all. A cross-shard transfer settles end-to-end across about three blocks, near 1.8 seconds. Supernova keeps that guarantee intact and runs the clock roughly ten times faster. Use the toggle on the MultiversX lane to compare the intra-shard and cross-shard targets.</p>
+    <p><span class="scheduled">Supernova is coming to MultiversX.</span></p>
+    <!-- Canonical Supernova explainer, verified live 2026-06-17 (changed from agent-architecture, an AI-agent post that only mentions Supernova; see top-of-file CANONICAL-URL CHECK) -->
+    <a class="why-cta" href="https://multiversx.com/blog/supernova-decoupling-consensus-and-execution" target="_blank" rel="noopener">How it works &rarr;</a>
+    <div class="why-src">
+      <b>Honest numbers.</b> This is a latency comparison of block time and finality, not a throughput claim. MultiversX figures are Supernova finality targets, ahead of its mainnet launch: 250ms intra-shard and about 1.8s cross-shard end-to-end. Competitor figures (Ethereum, Solana, Bitcoin, Tron) use each chain's current live behavior, from that chain's own documentation. Sources listed at the foot of the result.
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+/* ============================================================================
+   CHAIN MODEL  (latency only - block time + finality. NO throughput anywhere.)
+   All timings in milliseconds. Sourced + dated in the top-of-file comment block.
+   ============================================================================ */
+var GAME_MS = 30000; // 30 second sprint
+
+/* MvX finality modes. Default intra-shard; cross-shard via the lane toggle.
+   Both are Supernova targets (scheduled), not live behavior. */
+var MVX_INTRA_FINALITY_MS = 250;   // intra-shard finality target
+var MVX_CROSS_FINALITY_MS = 1800;  // cross-shard end-to-end target (~3 x 600ms blocks)
+
+var CHAINS = [
+  {
+    key:'mvx',
+    name:'MultiversX',
+    badge:'X',
+    color:'#23F7DD',
+    blockMs:600,                       // ~600ms Supernova block target
+    finalityMs:MVX_INTRA_FINALITY_MS,  // 250ms intra-shard finality target (default)
+    spec:'~600ms block · 250ms intra-shard final',
+    tag:'Supernova · intra-shard finality',
+    isMvx:true,
+    mvxMode:'intra'                    // 'intra' | 'cross' (set by the lane toggle)
+  },
+  {
+    key:'sol',
+    name:'Solana',
+    badge:'S',
+    color:'#A78BFA',
+    blockMs:400,          // ~400ms slot
+    finalityMs:12800,     // ~12.8s deterministic finality (32 slots)
+    spec:'~400ms slot · ~12.8s final',
+    tag:null,
+    isMvx:false
+  },
+  {
+    key:'eth',
+    name:'Ethereum',
+    badge:'E',
+    color:'#5B8DEF',
+    blockMs:12000,        // 12s slot
+    finalityMs:768000,    // ~12.8 min finality (2 epochs of 6.4 min)
+    spec:'12s slot · ~12.8min final',
+    tag:null,
+    isMvx:false
+  },
+  {
+    key:'btc',
+    name:'Bitcoin',
+    badge:'B',
+    color:'#F5B544',
+    blockMs:600000,       // ~10 min block
+    finalityMs:3600000,   // ~60 min (6 confirmations)
+    spec:'~10min block · ~60min final',
+    tag:null,
+    isMvx:false
+  },
+  {
+    key:'trx',
+    name:'Tron',
+    badge:'T',
+    color:'#FF6B9D',      // coral accent (distinct from blue/amber/lavender)
+    blockMs:3000,         // ~3s block (DPoS)
+    finalityMs:57000,     // ~57s (19 confirmations x 3s)
+    spec:'~3s block · ~57s final',
+    tag:null,
+    isMvx:false
+  }
+];
+
+/* Apply the MvX lane finality mode and keep its spec/finalityMs consistent. */
+function setMvxMode(mode){
+  var c = CHAINS[0];
+  c.mvxMode = mode;
+  if(mode==='cross'){
+    c.finalityMs = MVX_CROSS_FINALITY_MS;
+    c.spec = '~600ms block · ~1.8s cross-shard final';
+    c.tag = 'Supernova · cross-shard finality';
+  } else {
+    c.finalityMs = MVX_INTRA_FINALITY_MS;
+    c.spec = '~600ms block · 250ms intra-shard final';
+    c.tag = 'Supernova · intra-shard finality';
+  }
+}
+
+/* For a tap at time t (ms from sprint start), compute when it lands in a block
+   and when it is final on a given chain. INCLUDED at the next block boundary
+   after t (queues behind the chain's cadence); FINAL = inclusion + finality. */
+function lifecycle(tapT, chain){
+  var included = Math.ceil((tapT + 1) / chain.blockMs) * chain.blockMs;
+  var finalAt = included + chain.finalityMs;
+  return { included: included, finalAt: finalAt };
+}
+
+/* Count finalized within the 30s window, honestly, from the player's taps. */
+function countFinalized(taps, chain){
+  var n = 0;
+  for (var i=0;i<taps.length;i++){
+    if (lifecycle(taps[i], chain).finalAt <= GAME_MS) n++;
+  }
+  return n;
+}
+
+/* Map a results array ([{chain, finalized}, ...]) to finalized counts by key,
+   so reveal/share text does not depend on lane ordering. */
+function finalizedByKey(results){
+  var out = { mvx:0, sol:0, eth:0, btc:0, trx:0 };
+  results.forEach(function(r){ out[r.chain.key] = r.finalized; });
+  return out;
+}
+
+/* ============================================================================
+   STATE
+   ============================================================================ */
+var state = {
+  running:false,
+  startTime:0,
+  taps:[],          // timestamps (ms from start) of each tap = the player's burst
+  score:0,
+  rafId:null,
+  lastTapWall:0,
+  comboPeak:0
+};
+
+var PB_KEY = 'mvx_supernova_sprint_pb';
+function getPB(){ var v = parseInt(localStorage.getItem(PB_KEY)||'0',10); return isNaN(v)?0:v; }
+function setPB(v){ try{ localStorage.setItem(PB_KEY, String(v)); }catch(e){} }
+
+/* ============================================================================
+   DOM
+   ============================================================================ */
+var $ = function(id){ return document.getElementById(id); };
+var screens = { start:$('start'), play:$('play'), reveal:$('reveal') };
+function show(name){
+  for (var k in screens){ screens[k].classList.toggle('active', k===name); }
+}
+
+/* ---------- start screen pb ---------- */
+function refreshStartPB(){
+  var pb = getPB();
+  $('pbLine').innerHTML = pb>0 ? ('Your best: <b>'+pb+'</b> transactions') : 'No runs yet. Set a number to beat.';
+}
+refreshStartPB();
+
+/* ============================================================================
+   PLAY: countdown, loop, taps
+   ============================================================================ */
+/* countdown-ring geometry (circle r=56) */
+var RING_C = 2 * Math.PI * 56;
+(function initRing(){
+  var rp = $('ringProg');
+  if(rp){ rp.style.strokeDasharray = RING_C.toFixed(2); rp.style.strokeDashoffset = '0'; }
+})();
+function setRing(frac, cls){
+  var rp = $('ringProg');
+  if(!rp) return;
+  rp.style.strokeDashoffset = (RING_C * (1 - frac)).toFixed(2);
+  rp.style.stroke = cls==='danger' ? 'var(--coral)' : (cls==='warn' ? 'var(--amber)' : 'var(--mint)');
+}
+
+function beginSprint(){
+  setMvxMode('intra');   // MvX lane always starts on the intra-shard (250ms) default
+  show('play');
+  $('score').textContent='0';
+  $('timer').textContent=(GAME_MS/1000).toFixed(1);
+  $('timer').className='timer';
+  var pf=$('progressFill'); pf.className='fill'; pf.style.width='100%';
+  $('combo').innerHTML='&nbsp;';
+  setRing(1,'');
+  state.taps=[]; state.score=0; state.comboPeak=0;
+  // countdown 3..2..1..GO
+  var pc = $('preCount');
+  var core = $('tapCore');
+  core.style.opacity='.18';
+  pc.className='pre-count';
+  pc.style.display='flex';
+  var seq=['3','2','1','GO'];
+  var i=0;
+  function tick(){
+    pc.textContent=seq[i];
+    pc.className = seq[i]==='GO' ? 'pre-count go' : 'pre-count';
+    // pop the count in
+    pc.animate([{transform:'scale(.6)',opacity:0},{transform:'scale(1)',opacity:1}],{duration:200,easing:'cubic-bezier(.16,1,.3,1)'});
+    if(seq[i]!=='GO') pulseRing();
+    i++;
+    if(i<seq.length){ setTimeout(tick, 650); }
+    else {
+      setTimeout(function(){
+        pc.style.display='none';
+        core.style.opacity='1';
+        startClock();
+      }, 420);
+    }
+  }
+  tick();
+}
+
+function startClock(){
+  state.running=true;
+  state.startTime=performance.now();
+  state.lastTapWall=state.startTime;
+  loop();
+}
+
+function loop(){
+  if(!state.running) return;
+  var elapsed = performance.now()-state.startTime;
+  var left = Math.max(0, GAME_MS-elapsed);
+  var secs = left/1000;
+  var frac = left/GAME_MS;
+  $('timer').textContent = secs.toFixed(1);
+  var pf=$('progressFill');
+  pf.style.width = (frac*100)+'%';
+  var t = $('timer');
+  var cls = secs<=5 ? 'danger' : (secs<=10 ? 'warn' : '');
+  t.className = 'timer'+(cls?(' '+cls):'');
+  pf.className = 'fill'+(cls?(' '+cls):'');
+  setRing(frac, cls);
+  if(left<=0){ endSprint(); return; }
+  state.rafId=requestAnimationFrame(loop);
+}
+
+function registerTap(clientX, clientY){
+  if(!state.running) return;
+  var now = performance.now();
+  var t = now - state.startTime;
+  if(t<0 || t>GAME_MS) return;
+  state.taps.push(t);
+  state.score++;
+  var scoreEl = $('score');
+  scoreEl.textContent = state.score;
+  // score pop: one satisfying beat per tap
+  scoreEl.classList.remove('pop');
+  void scoreEl.offsetWidth;     // restart the transition
+  scoreEl.classList.add('pop');
+
+  // combo / cadence feedback (NOT a tps claim, just tap rhythm juice)
+  var gap = now - state.lastTapWall;
+  state.lastTapWall = now;
+  if(gap<170){
+    state.comboPeak = Math.min(state.comboPeak+1, 99);
+  } else if(gap>500){
+    state.comboPeak = 0;
+  }
+  if(state.comboPeak>=3){
+    $('combo').innerHTML = 'on a roll &nbsp;<b>x'+state.comboPeak+'</b>';
+  } else {
+    $('combo').innerHTML = '&nbsp;';
+  }
+
+  juice(clientX, clientY);
+}
+
+/* visual juice on tap. One spark per tap, varied lightly so it stays alive. */
+var SPARKS = ['+1','sent','+1','fired','+1'];
+function juice(clientX, clientY){
+  var zone = $('tapZone');
+  var rect = zone.getBoundingClientRect();
+  var x, y;
+  if(clientX==null){ x = rect.width/2; y = rect.height/2 - 34; }
+  else { x = clientX-rect.left; y = clientY-rect.top; }
+
+  pulseRing();
+
+  var r = document.createElement('div');
+  r.className='ripple';
+  r.style.left=x+'px'; r.style.top=y+'px';
+  zone.appendChild(r);
+  setTimeout(function(){ r.remove(); }, 560);
+
+  var s = document.createElement('div');
+  s.className='spark';
+  s.textContent = SPARKS[state.score % SPARKS.length];
+  // slight horizontal scatter so rapid taps do not perfectly overlap
+  s.style.left=(x + (Math.random()*26-13))+'px'; s.style.top=y+'px';
+  zone.appendChild(s);
+  setTimeout(function(){ s.remove(); }, 740);
+}
+
+function pulseRing(){
+  var ring=$('tapRing');
+  ring.animate(
+    [{transform:'scale(1)',boxShadow:'0 0 0 0 rgba(35,247,221,.5), inset 0 0 30px rgba(35,247,221,.12)'},
+     {transform:'scale(.93)'},
+     {transform:'scale(1)',boxShadow:'0 0 0 14px rgba(35,247,221,0), inset 0 0 30px rgba(35,247,221,.12)'}],
+    {duration:280, easing:'ease-out'}
+  );
+}
+
+function endSprint(){
+  state.running=false;
+  if(state.rafId) cancelAnimationFrame(state.rafId);
+  $('timer').textContent='0.0';
+  $('progressFill').style.width='0%';
+  setRing(0,'danger');
+  var f=$('flash'); f.classList.add('go'); setTimeout(function(){f.classList.remove('go');},520);
+  setTimeout(buildReveal, 300);
+}
+
+/* ============================================================================
+   REVEAL: score, per-chain finalized counts, animated lanes, share
+   ============================================================================ */
+var lastResult = null;
+
+function buildReveal(){
+  show('reveal');
+  $('reveal').scrollTop = 0;
+  var score = state.score;
+
+  // personal best
+  var prevPB = getPB();
+  var isPB = score>prevPB;
+  if(isPB) setPB(score);
+
+  $('revealScore').textContent='0';
+  animateNumber($('revealScore'), 0, score, 750);
+
+  var pbEl=$('revealPb');
+  if(isPB && score>0){ pbEl.className='reveal-pb win'; pbEl.textContent='New personal best. Previous: '+prevPB+'.'; }
+  else if(score>0){ pbEl.className='reveal-pb norm'; pbEl.textContent='Your best: '+prevPB+'. Go again to beat it.'; }
+  else{ pbEl.className='reveal-pb norm'; pbEl.textContent='Zero taps. The chains had nothing to finalize.'; }
+
+  // compute per-chain finalized counts honestly
+  var results = CHAINS.map(function(c){
+    return { chain:c, finalized: countFinalized(state.taps, c) };
+  });
+  lastResult = { score:score, results:results };
+
+  // build lanes (hidden; staged in below)
+  var wrap=$('lanes');
+  wrap.innerHTML='';
+  var laneEls = results.map(function(res){
+    var el = makeLane(res.chain, res.finalized, score);
+    wrap.appendChild(el);
+    return el;
+  });
+
+  // reveal sentence (look results up by chain key, order-independent)
+  var fin = finalizedByKey(results);
+  $('revealLine').innerHTML =
+    'Finalized in that time: <span class="mvx-h">MultiversX '+fin.mvx+'</span> &middot; <b>Solana '+fin.sol+'</b> &middot; <b>Ethereum '+fin.eth+'</b> &middot; <b>Bitcoin '+fin.btc+'</b> &middot; <b>Tron '+fin.trx+'</b>.<br/>'+
+    'Your burst cleared on MultiversX about as fast as you sent it.';
+
+  // footnote with sources + supernova label
+  $('footnote').innerHTML =
+    '<b>Supernova is the upgrade bringing this to MultiversX.</b> A latency comparison of block time and finality, not throughput.'+
+    'Sources: ethereum.org, solana.com, Bitcoin Wiki, Tron DPoS docs, MultiversX Supernova (Battle of Nodes telemetry).';
+
+  // reflect the score on the (placeholder) leaderboard "you" row
+  var lbYou = $('lbYouScore'); if(lbYou) lbYou.textContent = score;
+
+  // STAGE the reveal so the contrast breathes: the MultiversX lane enters and
+  // runs first (it lands its win almost instantly), then the slow lanes drop in
+  // one by one and visibly stall. Deterministic timing, no reliance on sampling.
+  var STAGGER = 460;           // gap between lanes appearing
+  laneEls.forEach(function(el, idx){
+    var delay = 220 + idx*STAGGER;
+    setTimeout(function(){
+      el.classList.add('in');
+      replayLane(el);          // start this lane's dots when it appears
+    }, delay);
+  });
+}
+
+function makeLane(chain, finalized, score){
+  var lane=document.createElement('div');
+  lane.className='lane'+(chain.isMvx?' mvx':'');
+  lane.setAttribute('data-key', chain.key);
+
+  var good = chain.isMvx || (score>0 && finalized/score>0.5);
+
+  // lane tag carries the plain-language gloss for intra/cross-shard targets
+  var tagTip = '';
+  if(chain.isMvx){
+    tagTip = chain.mvxMode==='cross'
+      ? 'Cross-shard: between shards. Settled across about three blocks.'
+      : 'Intra-shard: sender and receiver on the same shard.';
+  }
+  var tagHtml = chain.tag
+    ? '<span class="lane-tag tip" data-tip="'+tagTip+'"><span class="tip-underline">'+chain.tag+'</span></span>'
+    : '';
+
+  // MvX-only intra-shard / cross-shard finality toggle
+  var toggleHtml = '';
+  if(chain.isMvx){
+    var intraOn = chain.mvxMode!=='cross';
+    toggleHtml =
+      '<div class="mvx-toggle" role="group" aria-label="MultiversX finality mode">'+
+        '<button type="button" data-mode="intra" class="'+(intraOn?'on':'')+'">intra-shard 250ms</button>'+
+        '<button type="button" data-mode="cross" class="'+(intraOn?'':'on')+'">cross-shard ~1.8s</button>'+
+      '</div>';
+  }
+
+  lane.innerHTML =
+    '<div class="lane-head">'+
+      '<div class="lane-id">'+
+        '<span class="lane-badge" style="background:'+chain.color+';">'+chain.badge+'</span>'+
+        '<span class="lane-name">'+chain.name+'</span>'+
+        '<span class="lane-spec">'+chain.spec+'</span>'+
+      '</div>'+
+      '<div class="lane-final'+(good?' good':'')+'">'+
+        '<span class="n" data-fin="'+finalized+'">0</span>'+
+        '<span class="of">/ '+score+'</span>'+
+        '<span class="lab">final</span>'+
+      '</div>'+
+    '</div>'+
+    (tagHtml?('<div style="margin:-2px 0 8px;">'+tagHtml+'</div>'):'')+
+    toggleHtml+
+    '<div class="track">'+
+      '<div class="final-zone"></div>'+
+      '<div class="seg-labels">'+
+        '<div class="tip tip-left" data-tip="Sent. Instant on any chain.">Submitted</div>'+
+        '<div class="tip" data-tip="Landed in a block. Still reversible.">In block</div>'+
+        '<div class="tip" data-tip="Irreversible. The number that matters.">Final</div>'+
+      '</div>'+
+    '</div>'+
+    '<div class="lane-counts">'+
+      '<span class="c-sub"><i class="cdot" style="background:var(--text-faint)"></i>sent <b>'+score+'</b></span>'+
+      '<span class="c-inc"><i class="cdot" style="background:var(--amber)"></i>in block <b class="inc-n">0</b></span>'+
+      '<span class="c-fin"><i class="cdot" style="background:var(--mint)"></i>final <b class="fin-n">0</b></span>'+
+    '</div>';
+  return lane;
+}
+
+/* Replay the player's burst through one lane, time-compressed. The 30s window
+   plays over the first part of the replay; finality tails resolve after. The
+   contrast is the point: MvX dots reach "final"; slow-chain dots stall and pile
+   up in "in block". The HONEST finalized count (data-fin, computed exactly in
+   countFinalized) is authoritative: the headline animates to it and the live
+   counts settle to it. Sampling only affects how many DOTS are drawn, never the
+   numbers. */
+var REPLAY_MS = 4600; // compressed replay duration on screen
+
+/* Replay a single lane. Used for the staged reveal and when the MvX intra/cross
+   toggle rebuilds just the MultiversX lane. Cancels any prior replay on the lane
+   so re-runs never overlap or leave the headline number drifting. */
+function replayLane(lane){
+  // cancel a prior in-flight replay on this lane (prevents number drift)
+  if(lane._raf){ cancelAnimationFrame(lane._raf); lane._raf=null; }
+
+  var key = lane.getAttribute('data-key');
+  var chain = CHAINS.filter(function(c){return c.key===key;})[0];
+  var track = lane.querySelector('.track');
+  var incN = lane.querySelector('.inc-n');
+  var finN = lane.querySelector('.fin-n');
+  var finBig = lane.querySelector('.lane-final .n');
+  var exactFin = parseInt(finBig.getAttribute('data-fin'),10) || 0;
+
+  // clear any leftover dots from a previous replay of this lane
+  var old = track.querySelectorAll('.dot-tx');
+  for(var j=0;j<old.length;j++){ old[j].remove(); }
+
+  var taps = state.taps.slice();
+  if(taps.length===0){
+    finN.textContent='0'; incN.textContent='0'; finBig.textContent='0';
+    return;
+  }
+
+  // cap rendered dots for performance/readability; sample evenly if huge
+  var MAX_DOTS = 56;
+  var rendered = taps;
+  if(taps.length>MAX_DOTS){
+    rendered = [];
+    var step = taps.length/MAX_DOTS;
+    for(var i=0;i<MAX_DOTS;i++){ rendered.push(taps[Math.floor(i*step)]); }
+  }
+  var dotScale = taps.length/rendered.length; // each rendered dot stands for ~this many
+
+  // create dots, each carrying a small stable jitter so piles read as piles
+  var dots = rendered.map(function(tapT, idx){
+    var d=document.createElement('div');
+    d.className='dot-tx dot-sub';
+    d.style.left='4%';
+    // vertical spread so overlapping dots in a backlog are visible as a cluster
+    var vy = 50 + ((idx % 5) - 2) * 13;  // five rows across the 34px track
+    d.style.top = vy + '%';
+    track.appendChild(d);
+    var lc = lifecycle(tapT, chain);
+    return { el:d, tapT:tapT, included:lc.included, finalAt:lc.finalAt, jx:(idx%7)/7 };
+  });
+
+  // segment x-positions. Stalled dots spread ACROSS the in-block band (using jx)
+  // so a backlog looks like a pile, not one overlapping point.
+  function xFor(stage, frac, jx){
+    if(stage===0) return 4 + frac*26;                  // submitted -> in-block edge
+    if(stage===1) return 37 + jx*24 + frac*2;          // in-block band (spread)
+    return 72 + 6 + jx*18;                             // final zone (clustered right)
+  }
+
+  var animStart = performance.now();
+
+  function frame(){
+    var rt = performance.now()-animStart;       // replay ms elapsed
+    var prog = Math.min(1, rt/REPLAY_MS);
+    // virtual time covers the full window plus a tail so MvX dots finalize on screen
+    var vtMax = GAME_MS * 1.18;
+    var vt = prog * vtMax;                       // virtual sprint ms
+
+    var incCount=0, finCount=0;
+    dots.forEach(function(o){
+      var stage, frac;
+      if(vt < o.tapT){
+        stage=0; frac=0;
+      } else if(vt < o.included){
+        stage=0; frac=Math.min(1,(vt-o.tapT)/Math.max(1,(o.included-o.tapT)));
+      } else if(vt < o.finalAt){
+        stage=1;
+        frac=Math.min(1,(vt-o.included)/Math.max(1,(o.finalAt-o.included)));
+        incCount++;
+      } else {
+        stage=2; frac=1; finCount++;
+      }
+      o.el.style.left = xFor(stage, frac, o.jx).toFixed(2)+'%';
+      var cls = stage===0?'dot-sub':(stage===1?'dot-inc':'dot-fin');
+      if(o.el.className!=='dot-tx '+cls) o.el.className='dot-tx '+cls;
+    });
+
+    // live counts (scaled back up to the real totals, just for the running feel)
+    incN.textContent = Math.round(incCount*dotScale);
+    finN.textContent = Math.round(finCount*dotScale);
+
+    if(prog<1){ lane._raf=requestAnimationFrame(frame); }
+    else {
+      lane._raf=null;
+      // settle on the HONEST numbers (exact, not sampled)
+      finN.textContent = exactFin;
+      incN.textContent = Math.max(0, state.score - exactFin); // rest still "in block"
+      animateNumber(finBig, 0, exactFin, 650);
+      // settle the DOTS to match the honest counts: the share that finalized within
+      // the window lands in "final", the rest stay in "in block". Without this, the
+      // replay's tail finalizes every MvX dot on screen, leaving "in block" showing a
+      // count with no dots beneath it.
+      var finalDots = Math.round((exactFin/Math.max(1,state.score)) * dots.length);
+      dots.forEach(function(o, i){
+        var isFin = i < finalDots;
+        o.el.style.left = xFor(isFin?2:1, 1, o.jx).toFixed(2)+'%';
+        o.el.className = 'dot-tx ' + (isFin?'dot-fin':'dot-inc');
+      });
+    }
+  }
+  lane._raf=requestAnimationFrame(frame);
+}
+
+/* Toggle the MvX lane between intra-shard (250ms) and cross-shard (~1.8s),
+   recompute its finalized-in-window count, rebuild the lane, and re-run its
+   replay. Other lanes are untouched. */
+function onMvxModeToggle(mode){
+  if(CHAINS[0].mvxMode===mode) return;
+  setMvxMode(mode);
+
+  var mvxChain = CHAINS[0];
+  var finalized = countFinalized(state.taps, mvxChain);
+  var score = lastResult ? lastResult.score : state.score;
+
+  // keep lastResult in sync so reveal text + share reflect the active mode
+  if(lastResult){
+    for(var i=0;i<lastResult.results.length;i++){
+      if(lastResult.results[i].chain.key==='mvx'){ lastResult.results[i].finalized = finalized; }
+    }
+  }
+
+  // replace just the MvX lane node, preserving its position
+  var oldLane = document.querySelector('.lane[data-key="mvx"]');
+  if(oldLane){
+    var newLane = makeLane(mvxChain, finalized, score);
+    newLane.classList.add('in'); // show immediately; an in-place swap has no staged drop-in
+    oldLane.parentNode.replaceChild(newLane, oldLane);
+    replayLane(newLane);
+  }
+
+  // refresh the reveal summary sentence with the new MvX number
+  if(lastResult){
+    var fin = finalizedByKey(lastResult.results);
+    var modeWord = mvxChain.mvxMode==='cross' ? 'cross-shard' : 'intra-shard';
+    $('revealLine').innerHTML =
+      'Finalized in that time: <span class="mvx-h">MultiversX '+fin.mvx+'</span> &middot; <b>Solana '+fin.sol+'</b> &middot; <b>Ethereum '+fin.eth+'</b> &middot; <b>Bitcoin '+fin.btc+'</b> &middot; <b>Tron '+fin.trx+'</b>.<br/>'+
+      'MultiversX still clears the most, even '+modeWord+' (scheduled).';
+  }
+}
+
+// delegated click handler for the MvX intra/cross toggle (buttons live in the lane)
+$('lanes').addEventListener('click', function(e){
+  var btn = e.target.closest ? e.target.closest('.mvx-toggle button') : null;
+  if(!btn) return;
+  onMvxModeToggle(btn.getAttribute('data-mode'));
+});
+
+/* ============================================================================
+   RESULT CARD (screenshot-ready) + X intent
+   ============================================================================ */
+/* Populate the postable card from the last result and open it. */
+function openResultCard(){
+  if(!lastResult) return;
+  var score = lastResult.score;
+  var fin = finalizedByKey(lastResult.results);
+  $('rcScore').textContent = score;
+
+  // rows: same chain order as the lanes, with a proportional bar
+  var rows = $('rcRows');
+  rows.innerHTML='';
+  var maxFin = Math.max(1, score);
+  lastResult.results.forEach(function(res){
+    var c = res.chain;
+    var pct = Math.round(res.finalized/maxFin*100);
+    var barColor = c.isMvx ? 'var(--mint)' : c.color;
+    var tag = c.isMvx ? '<span class="rc-tag">Supernova</span>' : '';
+    var row = document.createElement('div');
+    row.className = 'rc-row'+(c.isMvx?' mvx':'');
+    row.innerHTML =
+      '<span class="rc-badge" style="background:'+c.color+'">'+c.badge+'</span>'+
+      '<span class="rc-name">'+c.name+'</span>'+
+      tag+
+      '<span class="rc-bar-wrap"><span class="rc-bar" style="width:'+pct+'%;background:'+barColor+'"></span></span>'+
+      '<span class="rc-num">'+res.finalized+'</span>';
+    rows.appendChild(row);
+  });
+
+  var modeWord = CHAINS[0].mvxMode==='cross' ? 'cross-shard' : 'intra-shard';
+  $('rcNote').textContent =
+    'Finalized within the 30s window. MultiversX shows Supernova '+modeWord+' finality. '+
+    'A latency comparison, not throughput.';
+
+  $('cardModal').classList.add('open');
+}
+function closeResultCard(){ $('cardModal').classList.remove('open'); }
+
+/* X intent with the pre-filled text (the image is the screenshotted card). */
+function buildShare(){
+  if(!lastResult) return;
+  var score = lastResult.score;
+  var fin = finalizedByKey(lastResult.results);
+  var mvxMode = CHAINS[0].mvxMode==='cross' ? 'cross-shard, scheduled' : 'intra-shard, scheduled';
+  var lines = [
+    'I sent '+score+' transactions in 30 seconds.',
+    '',
+    'Finalized in that window:',
+    'MultiversX '+fin.mvx+' (Supernova '+mvxMode+')',
+    'Solana '+fin.sol,
+    'Ethereum '+fin.eth,
+    'Bitcoin '+fin.btc,
+    'Tron '+fin.trx,
+    '',
+    'Beat my number. Finality Frenzy · Supernova Sprint',
+    'https://supernova-arcade.xyz/supernova-sprint'
+  ];
+  var text = lines.join('\n');
+  var url = 'https://twitter.com/intent/tweet?text='+encodeURIComponent(text);
+  window.open(url, '_blank', 'noopener');
+}
+
+/* ============================================================================
+   small utils
+   ============================================================================ */
+function animateNumber(el, from, to, dur){
+  var start=performance.now();
+  function step(now){
+    var p=Math.min(1,(now-start)/dur);
+    var eased=1-Math.pow(1-p,3);
+    el.textContent = Math.round(from+(to-from)*eased);
+    if(p<1) requestAnimationFrame(step);
+    else el.textContent = to;
+  }
+  requestAnimationFrame(step);
+}
+
+/* ============================================================================
+   EVENTS
+   ============================================================================ */
+// start
+$('startBtn').addEventListener('click', beginSprint);
+$('againBtn').addEventListener('click', function(){ refreshStartPB(); beginSprint(); });
+
+// tap zone: pointer (covers touch + mouse), avoids double-fire
+var tapZone=$('tapZone');
+tapZone.addEventListener('pointerdown', function(e){
+  e.preventDefault();
+  registerTap(e.clientX, e.clientY);
+});
+
+// keyboard: space fires a tap during play, or starts from menu
+window.addEventListener('keydown', function(e){
+  if(e.code==='Space' || e.key===' '){
+    // do not hijack space while a panel/card is open
+    if($('cardModal').classList.contains('open') || $('whyPanel').classList.contains('open')) return;
+    e.preventDefault();
+    if(screens.start.classList.contains('active')){ beginSprint(); return; }
+    if(state.running){ registerTap(null,null); return; }
+    if(screens.reveal.classList.contains('active')){ refreshStartPB(); beginSprint(); return; }
+  }
+  if(e.key==='Escape'){ closeWhy(); closeResultCard(); }
+});
+
+// result card: Share opens the postable card; the card has the X-intent button
+$('shareBtn').addEventListener('click', openResultCard);
+$('cardShareBtn').addEventListener('click', buildShare);
+$('cardClose').addEventListener('click', closeResultCard);
+$('cardBackBtn').addEventListener('click', closeResultCard);
+$('cardModal').addEventListener('click', function(e){ if(e.target===$('cardModal')) closeResultCard(); });
+
+// why panel
+function openWhy(){ $('whyPanel').classList.add('open'); }
+function closeWhy(){ $('whyPanel').classList.remove('open'); }
+$('whyStartBtn').addEventListener('click', openWhy);
+$('whyRevealBtn').addEventListener('click', openWhy);
+$('whyClose').addEventListener('click', closeWhy);
+$('whyPanel').addEventListener('click', function(e){ if(e.target===$('whyPanel')) closeWhy(); });
+
+/* ============================================================================
+   ONCHAIN LEADERBOARD  (testnet, gasless via Relayed v3)
+   ============================================================================
+   Replaces the old inert no-op. The full round-trip:
+     1. Generate an ephemeral ed25519 keypair in the browser (no wallet, no
+        funds). Grind it into the relayer's shard (Relayed v3 needs sender and
+        relayer in the same shard).
+     2. Build a submitScore(handle, score) transaction, sender = ephemeral key,
+        relayer = the hosted relayer. Sign it with the ephemeral key.
+     3. POST the signed tx to /api/relay. The relayer adds its signature and
+        pays testnet gas, so the player pays nothing.
+     4. Show the real tx hash + a testnet explorer link.
+     5. Read the leaderboard live from the contract and render it.
+
+   HONEST CAVEAT: the score is computed in the browser (a tap count) and is
+   therefore spoofable. Acceptable for a fun community leaderboard on a test
+   network. Integrity (server-side replay attestation) is a separate later
+   phase, deliberately not built here.
+
+   TESTNET: the public network currently on Supernova (600ms rounds), so the
+   submission finalizes on the Supernova clock. Testnet can be reset, which
+   would clear the leaderboard.
+
+   FAIL-SOFT: every onchain path is wrapped so a failure (CDN down, no relayer
+   key, network error) never blocks the game. The card just shows an
+   unavailable / error state; play and reveal always work.
+   ============================================================================ */
+var OC = {
+  // must match src/lib/onchain/leaderboard.config.ts
+  contract: 'erd1qqqqqqqqqqqqqpgqpy7j8ha5pkudun8qleh7l0zjdxnnjnulenwsynzhhf',
+  relayer:  'erd1ru08dt4u5e0psfrwth38u0dfed0hw8289xqdd9yghl3ec24uppuq6hgphm',
+  api:      'https://testnet-api.multiversx.com',
+  explorer: 'https://testnet-explorer.multiversx.com',
+  chainID:  'T',
+  gasLimit: 10000000,
+  gasPrice: 1000000000,
+  numShards: 3,
+  submitted: false,   // one onchain submit per run
+  libs: null          // lazily-loaded { ed, bech32 }
+};
+
+/* ---- tiny helpers ---- */
+function ocBytesToHex(bytes){
+  var h=''; for(var i=0;i<bytes.length;i++){ h += bytes[i].toString(16).padStart(2,'0'); } return h;
+}
+function ocUtf8ToHex(str){
+  var enc = new TextEncoder().encode(str);
+  return ocBytesToHex(enc);
+}
+function ocU64ToHex(n){
+  // minimal even-length big-endian hex for a non-negative integer
+  var h = BigInt(n).toString(16);
+  if(h.length % 2) h = '0' + h;
+  return h;
+}
+/* bech32 needs the pubkey words; the address shard comes straight off the
+   last byte of the 32-byte pubkey (matches sdk-core AddressComputer). */
+function ocShardOfPubkey(pub){
+  var last = pub[31];
+  var shard = last & 3;          // maskHigh = 0b11
+  if(shard > OC.numShards - 1){ shard = last & 1; } // maskLow = 0b01
+  return shard;
+}
+var OC_RELAYER_SHARD = 0; // erd1ru08... is in shard 0 (verified); fallback grind handles any value
+
+/* Lazy-load the crypto libs from a CDN. Resolves to null on any failure so the
+   caller fails soft. */
+function ocLoadLibs(){
+  if(OC.libs) return Promise.resolve(OC.libs);
+  return Promise.all([
+    import('https://esm.sh/@noble/ed25519@2.1.0'),
+    import('https://esm.sh/@scure/base@1.1.6')
+  ]).then(function(mods){
+    var ed = mods[0];
+    var base = mods[1];
+    var bech32 = base.bech32;
+    OC.libs = { ed: ed, bech32: bech32 };
+    return OC.libs;
+  }).catch(function(err){
+    console.warn('[onchain] crypto libs failed to load:', err);
+    return null;
+  });
+}
+
+/* Build an erd1 bech32 address from a 32-byte public key. */
+function ocAddressFromPubkey(bech32, pub){
+  var words = bech32.toWords(pub);
+  return bech32.encode('erd', words, 256);
+}
+
+/* Generate an ephemeral keypair whose address lands in the relayer's shard. */
+async function ocGenerateEphemeral(libs){
+  var ed = libs.ed, bech32 = libs.bech32;
+  for(var tries=0; tries<200; tries++){
+    var priv = ed.utils.randomPrivateKey();           // 32 bytes
+    var pub = await ed.getPublicKeyAsync(priv);        // 32 bytes
+    if(ocShardOfPubkey(pub) === OC_RELAYER_SHARD){
+      return { priv: priv, pub: pub, address: ocAddressFromPubkey(bech32, pub) };
+    }
+  }
+  throw new Error('could not derive a key in the relayer shard');
+}
+
+/* Canonical signing bytes for the transaction. Field ORDER and encoding match
+   sdk-core TransactionComputer.computeBytesForSigning exactly:
+   nonce, value, receiver, sender, gasPrice, gasLimit, data(base64), chainID,
+   version, relayer. */
+function ocSigningString(tx){
+  return JSON.stringify({
+    nonce: tx.nonce,
+    value: tx.value,
+    receiver: tx.receiver,
+    sender: tx.sender,
+    gasPrice: tx.gasPrice,
+    gasLimit: tx.gasLimit,
+    data: tx.dataB64,
+    chainID: tx.chainID,
+    version: tx.version,
+    relayer: tx.relayer
+  });
+}
+
+/* The status line under the submit button. */
+function ocStatus(kind, html){
+  var el = $('onchainStatus');
+  if(!el) return;
+  el.hidden = false;
+  el.className = 'onchain-status' + (kind ? (' '+kind) : '');
+  el.innerHTML = html;
+}
+function ocSetSubmitting(on){
+  var btn = $('onchainSubmitBtn');
+  var label = $('onchainSubmitLabel');
+  var icon = $('onchainSubmitIcon');
+  if(!btn) return;
+  btn.disabled = on;
+  if(on){
+    if(icon) icon.innerHTML = '<span class="spin"></span>';
+    if(label) label.textContent = 'Submitting to testnet...';
+  } else {
+    if(icon) icon.innerHTML = '<svg viewBox="0 0 24 24" fill="none"><path d="M5 12 h14 M13 6 l6 6 -6 6" stroke="#23F7DD" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    if(label) label.textContent = 'Submit onchain';
+  }
+}
+
+/* The main submit flow. */
+async function ocSubmit(){
+  if(OC.submitted) return;
+
+  var score = (lastResult && lastResult.score) ? lastResult.score : state.score;
+  if(!score || score <= 0){
+    ocStatus('err', 'Play a run first, then submit your score.');
+    return;
+  }
+
+  var handle = ($('onchainHandle').value || '').trim();
+  if(!handle){
+    ocStatus('err', 'Pick a handle so you show up on the leaderboard.');
+    $('onchainHandle').focus();
+    return;
+  }
+  // keep handle within the contract's 32-byte cap (UTF-8)
+  if(new TextEncoder().encode(handle).length > 32){
+    ocStatus('err', 'That handle is a bit long. Keep it under 32 characters.');
+    return;
+  }
+
+  ocSetSubmitting(true);
+  ocStatus('', 'Preparing your transaction...');
+
+  try {
+    var libs = await ocLoadLibs();
+    if(!libs){ throw new Error('crypto-unavailable'); }
+
+    // 1. ephemeral key in the relayer's shard
+    var key = await ocGenerateEphemeral(libs);
+
+    // 2. fetch the ephemeral account's nonce (fresh key => 0, but be correct)
+    var nonce = 0;
+    try {
+      var accRes = await fetch(OC.api + '/accounts/' + key.address);
+      if(accRes.ok){ var accJson = await accRes.json(); nonce = accJson.nonce || 0; }
+    } catch(e){ /* fresh key, nonce stays 0 */ }
+
+    // 3. build the submitScore tx
+    var dataStr = 'submitScore@' + ocUtf8ToHex(handle) + '@' + ocU64ToHex(score);
+    var dataB64 = btoa(dataStr);
+    var txForSign = {
+      nonce: nonce,
+      value: '0',
+      receiver: OC.contract,
+      sender: key.address,
+      gasPrice: OC.gasPrice,
+      gasLimit: OC.gasLimit,
+      dataB64: dataB64,
+      chainID: OC.chainID,
+      version: 2,
+      relayer: OC.relayer
+    };
+
+    // 4. sign with the ephemeral key
+    var signBytes = new TextEncoder().encode(ocSigningString(txForSign));
+    var sigBytes = await libs.ed.signAsync(signBytes, key.priv);
+    var signatureHex = ocBytesToHex(sigBytes);
+
+    // 5. assemble the plain tx object the relayer expects
+    var plainTx = {
+      nonce: nonce,
+      value: '0',
+      receiver: OC.contract,
+      sender: key.address,
+      senderUsername: undefined,
+      receiverUsername: undefined,
+      gasPrice: OC.gasPrice,
+      gasLimit: OC.gasLimit,
+      data: dataB64,
+      chainID: OC.chainID,
+      version: 2,
+      relayer: OC.relayer,
+      signature: signatureHex
+    };
+
+    ocStatus('', 'Relaying (gasless) and waiting for finality...');
+
+    // 6. send to the relayer
+    var res = await fetch('/api/relay', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ transaction: plainTx })
+    });
+    var out = await res.json();
+
+    if(!res.ok || out.error){
+      var msg = ocRelayerErrorMessage(out, res.status);
+      ocStatus('err', msg);
+      ocSetSubmitting(false);
+      return;
+    }
+
+    // 7. success: show the real tx hash + explorer link
+    OC.submitted = true;
+    try { if (window.__arcadeGalaxy) window.__arcadeGalaxy.pulse(1, 8); } catch (e) {} // photon burst into shard 1 as the score lands onchain
+    var hash = out.txHash;
+    var url = out.explorerUrl || (OC.explorer + '/transactions/' + hash);
+    ocStatus('ok',
+      '<span class="st-t">Submitted onchain on MultiversX testnet.</span>' +
+      'Your score is now a real transaction, finalizing on the Supernova clock.' +
+      '<div class="st-hash"><span class="st-lbl">Tx</span>' +
+      '<a href="' + url + '" target="_blank" rel="noopener">' + hash + '</a></div>'
+    );
+    var label = $('onchainSubmitLabel');
+    var btn = $('onchainSubmitBtn');
+    if(label) label.textContent = 'Submitted';
+    if(btn) btn.disabled = true;
+
+    // 8. poll the live leaderboard until the new entry lands. A single early read
+    //    misses it: the relayed tx needs a moment to finalize and index. Stop once
+    //    the board renders rows (or after a bounded number of tries).
+    (async function(){
+      // Poll several times so the just-submitted entry finalizes, indexes, and
+      // shows. Do NOT break on the first non-empty read: an already-populated
+      // board would stop before the player's own new entry lands.
+      for(var i=0;i<9;i++){
+        await new Promise(function(r){ setTimeout(r, 1500); });
+        await ocLoadLeaderboard();
+      }
+    })();
+
+  } catch(err){
+    console.warn('[onchain] submit failed:', err);
+    if(err && err.message === 'crypto-unavailable'){
+      ocStatus('err', 'The onchain libraries could not load. Your score still counts in this game; the onchain submission is just unavailable right now.');
+    } else {
+      ocStatus('err', 'Could not submit onchain right now. Your run still counts here. ' + (err && err.message ? '('+err.message+')' : ''));
+    }
+    ocSetSubmitting(false);
+  }
+}
+
+/* Map relayer error codes to friendly, honest messages. */
+function ocRelayerErrorMessage(out, status){
+  var code = out && out.error;
+  if(code === 'relayer_unavailable'){
+    return 'The gasless relayer is not switched on yet. Your score still counts in this game; onchain submission goes live once the relayer key is set.';
+  }
+  if(code === 'relayer_misconfigured'){
+    return 'The relayer is misconfigured. Flagged for the team. Your run still counts here.';
+  }
+  if(code === 'broadcast_failed'){
+    return 'The network did not accept the transaction. Testnet can be busy or resetting. Try again in a moment.';
+  }
+  if(code === 'rate_limited'){
+    return 'Easy, speedrunner. Too many submissions in a short window. Try again in a minute.';
+  }
+  return 'Onchain submission is unavailable right now (' + (code || ('HTTP '+status)) + '). Your run still counts in this game.';
+}
+
+/* ---- read the leaderboard live from the contract ---- */
+
+/* Decode one base64 ScoreEntry struct: address(32) + handleLen(4 BE) +
+   handle(utf8) + score(u64 BE) + timestamp(u64 BE). */
+function ocDecodeEntry(b64, bech32){
+  var bin = atob(b64);
+  var bytes = new Uint8Array(bin.length);
+  for(var i=0;i<bin.length;i++){ bytes[i] = bin.charCodeAt(i); }
+  if(bytes.length < 32 + 4 + 8 + 8) return null;
+  var off = 0;
+  var pub = bytes.slice(off, off+32); off += 32;
+  var hlen = (bytes[off]<<24) | (bytes[off+1]<<16) | (bytes[off+2]<<8) | bytes[off+3]; off += 4;
+  var handle = new TextDecoder().decode(bytes.slice(off, off+hlen)); off += hlen;
+  var score = 0n;
+  for(var s=0;s<8;s++){ score = (score<<8n) | BigInt(bytes[off+s]); } off += 8;
+  var ts = 0n;
+  for(var t=0;t<8;t++){ ts = (ts<<8n) | BigInt(bytes[off+t]); } off += 8;
+  var address = '';
+  try { address = ocAddressFromPubkey(bech32, pub); } catch(e){}
+  return { address: address, handle: handle, score: Number(score), timestamp: Number(ts) };
+}
+
+/* Query getTopScores(n) via the testnet API vm-values endpoint. */
+async function ocLoadLeaderboard(){
+  try {
+    var libs = await ocLoadLibs();
+    if(!libs) return; // leave the sample/locked state in place
+
+    // getTopScores(10): arg is a u32 => 8-hex (4 bytes BE), but minimal hex also works
+    var nHex = (10).toString(16).padStart(2,'0');
+    var body = {
+      scAddress: OC.contract,
+      funcName: 'getTopScores',
+      args: [nHex]
+    };
+    var res = await fetch(OC.api + '/vm-values/query', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    if(!res.ok) return;
+    var json = await res.json();
+    var data = json && json.data && json.data.data ? json.data.data : null;
+    if(!data || data.returnCode !== 'ok') return;
+    var parts = data.returnData || [];
+    var entries = [];
+    for(var i=0;i<parts.length;i++){
+      if(!parts[i]) continue;
+      var e = ocDecodeEntry(parts[i], libs.bech32);
+      if(e) entries.push(e);
+    }
+    ocRenderLeaderboard(entries);
+  } catch(err){
+    console.warn('[onchain] leaderboard read failed:', err);
+    // leave the existing panel state; never throw
+  }
+}
+
+/* Render live rows into #lbRows, marking the player's own row. */
+function ocRenderLeaderboard(entries){
+  var rows = $('lbRows');
+  var panel = $('lbPanel');
+  if(!rows || !panel) return;
+
+  if(!entries || entries.length === 0){
+    rows.innerHTML = '<div class="lb-empty">No scores onchain yet. Submit yours to be first.</div>';
+    panel.classList.add('live');
+    return;
+  }
+
+  var myHandle = ($('onchainHandle').value || '').trim();
+  var html = '';
+  for(var i=0;i<entries.length;i++){
+    var e = entries[i];
+    var mine = (OC.submitted && myHandle && e.handle === myHandle);
+    var safeHandle = ocEscape(e.handle);
+    html += '<div class="lb-row' + (mine?' you':'') + '">' +
+      '<span class="lb-rank">' + (i+1) + '</span>' +
+      '<span class="lb-handle">' + safeHandle + '</span>' +
+      '<span class="lb-score">' + e.score + '</span>' +
+    '</div>';
+  }
+  rows.innerHTML = html;
+  panel.classList.add('live');
+}
+
+function ocEscape(s){
+  return String(s).replace(/[&<>"']/g, function(c){
+    return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c];
+  });
+}
+
+/* prefill the handle with the player's local best-known handle if any */
+(function(){
+  try {
+    var saved = localStorage.getItem('mvx_supernova_handle');
+    if(saved && $('onchainHandle')){ $('onchainHandle').value = saved; }
+  } catch(e){}
+})();
+
+/* wire the submit button */
+$('onchainSubmitBtn').addEventListener('click', function(){
+  try { localStorage.setItem('mvx_supernova_handle', ($('onchainHandle').value||'').trim()); } catch(e){}
+  ocSubmit();
+});
+
+/* reset the per-run submit lock + load the live board whenever a reveal is built.
+   Hook into buildReveal without rewriting it. */
+(function(){
+  var _origBuildReveal = buildReveal;
+  buildReveal = function(){
+    _origBuildReveal.apply(this, arguments);
+    OC.submitted = false;
+    var st = $('onchainStatus'); if(st){ st.hidden = true; st.innerHTML=''; }
+    ocSetSubmitting(false);
+    var label = $('onchainSubmitLabel'); if(label) label.textContent = 'Submit onchain';
+    var btn = $('onchainSubmitBtn'); if(btn) btn.disabled = false;
+    // load the live leaderboard (fail-soft; leaves sample state if unavailable)
+    ocLoadLeaderboard();
+  };
+})();
+
+// prevent context menu long-press on mobile tap zone
+tapZone.addEventListener('contextmenu', function(e){ e.preventDefault(); });
+
+/* ---- tooltip tap-to-toggle for touch devices (hover handles desktop) ----
+   On a touch tap, open the tapped tip and close others. A second tap or an
+   outside tap closes it. Also flips the bubble to the left if it would clip. */
+(function(){
+  var isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints>0);
+  document.addEventListener('click', function(e){
+    var tip = e.target.closest ? e.target.closest('.tip') : null;
+    var open = document.querySelectorAll('.tip.tip-open');
+    for(var i=0;i<open.length;i++){ if(open[i]!==tip) open[i].classList.remove('tip-open'); }
+    if(tip && isTouch){
+      var willOpen = !tip.classList.contains('tip-open');
+      // edge-guard: nudge bubble left if the element sits near the right edge
+      var r = tip.getBoundingClientRect();
+      tip.classList.toggle('tip-left', r.left > window.innerWidth*0.6);
+      tip.classList.toggle('tip-open', willOpen);
+    }
+  });
+})();
+
+</script>
+</body>
+</html>
