@@ -88,6 +88,10 @@
   /* speed streaks (stars rushing past) */
   .streak { position: absolute; width: 2px; border-radius: 2px; background: linear-gradient(180deg, transparent, rgba(180,205,255,0.7)); z-index: 3; pointer-events: none; }
 
+  /* active-lane glow pad under the astronaut (moves with you; left/top set by JS) */
+  .lanepad { position: absolute; left: 50%; top: 0; width: 92px; height: 28px; z-index: 3; pointer-events: none; transform: translate(-50%, -50%);
+    background: radial-gradient(closest-side, color-mix(in srgb, var(--c) 36%, transparent), transparent 78%); opacity: 0.8; }
+
   /* ---- the astronaut (back view, running away from camera) ---- */
   .runner { position: absolute; left: 50%; bottom: 14px; width: 60px; height: 78px; margin-left: -30px; z-index: 20; will-change: transform; }
   .runnerInner { width: 100%; height: 100%; animation: bob 0.4s ease-in-out infinite; }
@@ -229,7 +233,7 @@
   </header>
 
   <h1>DEGEN <span class="x">DASH</span></h1>
-  <p class="sub">Run the track. Grab the wins, dodge the rugs. Every grab is a <b>real onchain transaction</b>.</p>
+  <p class="sub">Swipe between lanes. Line up the wins, dodge the rugs. Every grab is a <b>real onchain transaction</b>.</p>
   <div class="modewrap"><span class="mode" id="modeBadge">connecting…</span></div>
 
   <div class="onetap"><span class="ic"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M13 2 3 14h7l-1 8 10-12h-7z" stroke="#FFD23F" stroke-width="1.6" stroke-linejoin="round"/></svg></span><span class="t"><b>No wallet, just play.</b> A key is created in your browser and we cover the gas.</span></div>
@@ -254,6 +258,7 @@
           <div class="horizonglow"></div>
           <svg class="tracksvg" id="tracksvg" preserveAspectRatio="none"></svg>
           <div class="rungs" id="rungs"></div>
+          <div class="lanepad" id="lanepad"></div>
           <div class="runner" id="runner">
             <div class="runnerInner" id="runnerInner">
               <svg viewBox="0 0 60 78" aria-hidden="true">
@@ -281,8 +286,8 @@
           </div>
 
           <div class="center" id="center">
-            <p id="centerText">The feed rushes at you down the track. Grab the good, dodge the bad, stack the most in <b>60 seconds</b>.</p>
-            <div class="legend"><span><b class="g">mint</b> = grab it</span><span><b class="r">red</b> = rug, leave it</span></div>
+            <p id="centerText">Swipe to switch lanes. Line up the mint wins, dodge the red rugs, stack the most in <b>60 seconds</b>.</p>
+            <div class="legend"><span><b class="g">mint</b> = line it up</span><span><b class="r">red</b> = dodge it</span></div>
             <button class="btn" id="startBtn" style="width:auto;min-width:170px">Start the dash</button>
           </div>
         </section>
@@ -309,10 +314,11 @@
 
   <section class="card how">
     <div class="card-title"><span class="gd"></span>How it works</div>
-    You run the track and the feed rushes at you in three lanes. <span class="g">Mint</span> items are wins. Tap one to fire a
-    <b>real gasless transaction</b> that grabs it before it blows past you, +score. <span class="r">Red</span> items are rugs,
-    hacks and scams; leave them. Grab a red one and the contract docks you. The round seed and your final score are computed
-    <b>onchain</b>, so the score can't be faked and every run is unique. It speeds up as it goes.
+    You run the track and the feed rushes at you in three lanes. Swipe (or use the arrow keys) to switch lanes. Line a
+    <span class="g">mint</span> win up with your lane and you grab it automatically, firing a <b>real gasless transaction</b>,
+    +score. <span class="r">Red</span> items are rugs, hacks and scams; steer out of their lane before they reach you. Eat one
+    and the contract docks you. The round seed and your final score are computed <b>onchain</b>, so the score can't be faked
+    and every run is unique. It speeds up as it goes.
     <div class="legendbar" id="legendbar"></div>
   </section>
 
@@ -363,6 +369,7 @@ const BAD_TYPES = [
 ];
 const LANES = 3;
 const HALF = 27; // half the 54px token, so transforms center the token
+const GRAB_T = 0.9; // depth at which an item reaches you: in your lane here = auto-grab
 
 let cfg = { ...DEFAULTS };
 let onchain = false;
@@ -372,7 +379,7 @@ const G = {
   schedule: [], travelMs: 2300,
   arenaW: 480, arenaH: 380,
   vx: 240, vy: 53, nearY: 312, laneNearX: [110, 240, 370],   // perspective anchors (set by measure)
-  astroX: 240, astroTargetX: 240,
+  astroLane: 1, astroX: 240, astroTargetX: 240,
   rungs: [], streaks: [],
   nextIdx: 0, gotCount: 0, oopsCount: 0, collectedAmt: 0, penaltyAmt: 0, missedCount: 0, spawnSeq: 0,
   totalGood: 0, items: new Map(), score: 0, dispScore: 0, raf: null,
@@ -398,7 +405,7 @@ function measure() {
   G.nearY = Math.round(G.arenaH * 0.82);
   const spread = G.arenaW * 0.30;
   G.laneNearX = [G.vx - spread, G.vx, G.vx + spread];
-  if (G.phase !== "playing") { G.astroX = G.vx; G.astroTargetX = G.vx; }
+  if (G.phase !== "playing") { G.astroLane = 1; G.astroX = G.laneNearX[1]; G.astroTargetX = G.laneNearX[1]; }
   buildTrack();
 }
 
@@ -482,7 +489,7 @@ function setMode(on, label) {
   const b = $("modeBadge");
   b.textContent = label;
   b.className = "mode " + (on ? "onchain" : "practice");
-  $("centerText").innerHTML = `The feed rushes at you down the track. Grab the good, dodge the bad, stack the most in <b>${Math.round(cfg.roundLengthMs / 1000)} seconds</b>.`;
+  $("centerText").innerHTML = `Swipe to switch lanes. Line up the mint wins, dodge the red rugs, stack the most in <b>${Math.round(cfg.roundLengthMs / 1000)} seconds</b>.`;
   setStatus("", on ? "Onchain. Every grab is a real gasless transaction." : "Practice mode. Scores and NOVA go onchain once the cabinet is live.");
 }
 
@@ -534,7 +541,7 @@ function beginRound({ seed, startMs, roundId, totalGood }) {
   G.travelMs = Math.max(1900, Math.min(2400, cfg.catchWindowMs - 2300));
   measure();
   buildEffects();
-  G.astroX = G.vx; G.astroTargetX = G.vx;
+  G.astroLane = 1; G.astroX = G.laneNearX[1]; G.astroTargetX = G.laneNearX[1];
   G.nextIdx = 0; G.gotCount = 0; G.oopsCount = 0; G.collectedAmt = 0; G.penaltyAmt = 0; G.missedCount = 0; G.spawnSeq = 0;
   G.score = 0; G.dispScore = 0;
   $("gotStat").textContent = "0";
@@ -565,14 +572,18 @@ function tick() {
   for (const [, it] of G.items) {
     if (it.state !== "live") continue;
     const t = (elapsed - it.o.spawnMs) / G.travelMs;
-    if (t >= 1) { missItem(it); continue; }
+    if (t >= 1) { passItem(it); continue; }      // reached you but not in your lane
     place(it, t);
-    if (it.o.good && !it.urgent && t > 0.82) { it.urgent = true; it.el.classList.add("urgent"); }
+    if (it.o.good && !it.urgent && t > 0.8) { it.urgent = true; it.el.classList.add("urgent"); }
+    // it has reached the front IN your lane -> auto-grab (one real onchain tx)
+    if (t >= GRAB_T && it.lane === G.astroLane) resolveGrab(it);
   }
-  // astronaut: dart to the lane you grab in, then drift back to center
-  G.astroTargetX += (G.vx - G.astroTargetX) * 0.05;
-  G.astroX += (G.astroTargetX - G.astroX) * 0.2;
+  // astronaut holds whichever lane you have steered to
+  G.astroTargetX = G.laneNearX[G.astroLane];
+  G.astroX += (G.astroTargetX - G.astroX) * 0.22;
   $("runner").style.transform = `translateX(${(G.astroX - G.vx).toFixed(1)}px)`;
+  const pad = $("lanepad");
+  if (pad) { pad.style.left = G.astroX.toFixed(1) + "px"; pad.style.top = (G.nearY + 16).toFixed(1) + "px"; }
   renderScore();
   const left = Math.max(0, cfg.roundLengthMs - elapsed);
   $("timeStat").textContent = (left / 1000).toFixed(1) + "s";
@@ -605,19 +616,19 @@ function spawnItem(o, t) {
     `<span class="amt">${o.amount}</span>`;
   const lane = G.spawnSeq++ % LANES;
   const it = { o, el, state: "live", lane, urgent: false, px: G.vx, py: G.vy, ps: 0.3 };
-  el.addEventListener("pointerdown", (e) => { e.preventDefault(); tapItem(it); }, { passive: false });
   $("arena").appendChild(el);
   G.items.set(o.id, it);
   place(it, Math.max(0, t));
 }
 
-function tapItem(it) {
+// an item reached the front in the astronaut's lane: auto-grab it. ALWAYS one real
+// onchain tx; the contract referees good (+) vs bad (penalty) by block timestamp.
+function resolveGrab(it) {
   if (it.state !== "live") return;
   it.state = "acted";
   galaxy.pulse(0);
   if (onchain) arcade.collect(G.roundId, it.o.id).catch(() => {});
   const inner = $("runnerInner");
-  G.astroTargetX = G.laneNearX[it.lane]; // dart toward the lane you grabbed in
   const el = it.el;
   el.classList.add("fx");
   el.style.transition = "transform 0.3s ease-out, opacity 0.3s ease-out, filter 0.1s";
@@ -646,8 +657,9 @@ function tapItem(it) {
   setTimeout(() => removeItem(it.o.id), 340);
 }
 
-// a good item that reaches the camera ungrabbed blows past you
-function missItem(it) {
+// an item reached the front but NOT in your lane: it blows past. A good one is a
+// missed win (no penalty); a bad one is safely dodged. Either way, no tx.
+function passItem(it) {
   it.state = "passed";
   if (it.o.good) G.missedCount++;
   const el = it.el;
@@ -848,15 +860,40 @@ function buildLegend() {
   ).join("");
 }
 
+// ---------- controls: swipe / tap-a-side / arrow keys to switch lanes ----------
+function moveLane(d) {
+  if (G.phase !== "playing") return;
+  G.astroLane = Math.max(0, Math.min(LANES - 1, G.astroLane + d));
+}
+function setupControls() {
+  const arena = $("arena");
+  let downX = null;
+  arena.addEventListener("pointerdown", (e) => { downX = e.clientX; }, { passive: true });
+  arena.addEventListener("pointerup", (e) => {
+    if (downX == null) return;
+    const dx = e.clientX - downX; downX = null;
+    if (Math.abs(dx) > 22) return moveLane(dx > 0 ? 1 : -1); // a swipe
+    const r = arena.getBoundingClientRect(), rel = e.clientX - r.left; // a tap on a side
+    if (rel < r.width * 0.42) moveLane(-1);
+    else if (rel > r.width * 0.58) moveLane(1);
+  }, { passive: true });
+  arena.addEventListener("pointercancel", () => { downX = null; }, { passive: true });
+  addEventListener("keydown", (e) => {
+    if (e.key === "ArrowLeft" || e.key === "a") moveLane(-1);
+    else if (e.key === "ArrowRight" || e.key === "d") moveLane(1);
+  });
+}
+
 // ---------- boot ----------
 // offline-verify hook (only with ?dbg in the URL; inert in production). Lets a
 // headless preview, where requestAnimationFrame is paused on a hidden page, render
 // a representative frame deterministically.
 if (location.search.includes("dbg")) {
-  window.__dd = { G, getCfg: () => cfg, beginRound, tick, spawnItem, place, project, GOOD_TYPES, BAD_TYPES, randomU64 };
+  window.__dd = { G, getCfg: () => cfg, beginRound, tick, spawnItem, place, project, moveLane, GOOD_TYPES, BAD_TYPES, randomU64 };
 }
 try { const s = localStorage.getItem("degendash_handle"); if (s) $("handle").value = s; } catch {}
 buildLegend();
+setupControls();
 measure();
 buildEffects();
 $("bal").firstChild.textContent = "0";
