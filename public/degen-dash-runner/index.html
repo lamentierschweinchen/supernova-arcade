@@ -1,0 +1,858 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Degen Dash · Supernova Arcade</title>
+<meta name="description" content="An onchain auto-runner. Dash through the crypto feed, grab the wins, dodge the rugs. Every grab is a real gasless transaction on MultiversX, no wallet. A fun game on a valueless token." />
+<link rel="icon" href="/favicon.svg" />
+<link rel="stylesheet" href="/arcade-shell.css" />
+<!--
+  DEGEN DASH — a Supernova Arcade auto-runner (model A: the contract is the referee).
+
+  The world scrolls toward you and the crypto feed flies past. GOOD items (EGLD, a
+  green candle, an airdrop, staking yield, an NFT, a clean 100x) are wins: TAP to
+  grab them, +score. BAD items (a rug, a hack, a gas spike, an MEV sandwich, a red
+  candle) are hazards: LEAVE them. Grab one by mistake and you take the hit. Stack
+  the most over a 60s run. It ramps: forgiving open, frantic finish.
+
+  Each grab is a REAL gasless onchain transaction. The contract decides, by the real
+  block timestamp, whether the grab landed inside the item's catch window, and
+  whether it was good (+) or bad (penalty). The score is contract-computed and the
+  seed comes from the chain (every run unique), so it can't be faked. Bots welcome:
+  a bot just sends more real grab transactions. Score is the count of real onchain
+  grabs the contract credits, never distance or time.
+
+  FUN ONLY: NOVA is a valueless in-game token. Nothing here is yield, a reward, or a
+  financial promise of any kind.
+
+  Two modes: ONCHAIN (deployed contract + relayer — real gasless txs + real NOVA)
+  and PRACTICE (no contract configured — fully playable locally, nothing onchain).
+
+  This is the side-scrolling rebuild of Degen Dash. It reuses the EXACT onchain
+  plumbing of the original cabinet (arcade.js / arcade.config.js / schedule.js /
+  contract) byte-for-byte; only the presentation — parallax, the runner, item art,
+  the grab loop — is new.
+-->
+<style>
+  /* Degen Dash inherits the canon (Roobert, #06070A cosmos, surfaces, buttons,
+     leaderboard, status, brackets) from /arcade-shell.css. Cabinet accent --c is
+     warm amber (shard 0). Per-game item colors: GOOD = --mint, big GOOD = --lavender
+     jackpot, BAD = --coral. Bright + energetic, distinct from Clawback's coral tension. */
+  .wrap { max-width: 520px; }
+  h1 { text-align: center; }
+  h1 .x { color: var(--c); }
+  .sub { text-align: center; }
+  .modewrap { text-align: center; margin-bottom: 14px; }
+  .mode { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600;
+    letter-spacing: 0.05em; text-transform: uppercase; padding: 4px 11px; border-radius: 999px;
+    border: 1px solid var(--border); color: var(--text-dim); }
+  .mode.onchain { color: var(--mint); border-color: rgba(35,247,221,0.4); background: rgba(35,247,221,0.05); }
+  .mode.practice { color: var(--amber); border-color: rgba(245,181,68,0.4); }
+
+  /* ---- score hero ---- */
+  .hero { background: radial-gradient(120% 80% at 80% -10%, rgba(35,247,221,0.12), transparent 55%), var(--surface);
+    border: 1px solid var(--border); border-radius: 16px; padding: 14px 16px 13px; text-align: center; margin-bottom: 12px; }
+  .hero .cap { color: var(--text-faint); font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em; font-weight: 600; }
+  .bal { font-family: var(--mono); font-size: 44px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1.05;
+    letter-spacing: -0.02em; margin: 2px 0 0; transition: color 0.18s ease; color: var(--text); }
+  .bal .unit { font-family: 'Roobert PRO', system-ui, sans-serif; font-size: 15px; color: var(--text-dim); font-weight: 600; margin-left: 6px; letter-spacing: 0; }
+  .bal.flash-up { color: var(--mint); }
+  .bal.flash-down { color: var(--coral); }
+  .bal.shake { animation: shake 0.32s ease; }
+  @keyframes shake { 0%,100%{transform:translateX(0)} 20%{transform:translateX(-6px)} 40%{transform:translateX(5px)} 60%{transform:translateX(-3px)} 80%{transform:translateX(2px)} }
+  .stack { height: 7px; border-radius: 5px; background: #0c1119; margin: 11px 0 4px; overflow: hidden; border: 1px solid var(--border); }
+  .stack > i { display: block; height: 100%; width: 100%; border-radius: 5px;
+    background: linear-gradient(90deg, var(--mint) 0%, var(--lavender) 100%);
+    transform-origin: left; transform: scaleX(0); transition: transform 0.18s ease; box-shadow: 0 0 12px rgba(35,247,221,0.25); }
+  .meta { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--text-faint); font-variant-numeric: tabular-nums; margin-top: 9px; }
+  .meta b { font-family: var(--mono); color: var(--text); }
+  .meta .got b { color: var(--mint); }
+  .meta .oops b { color: var(--coral); }
+  .rtimer { height: 4px; border-radius: 4px; background: #0c1119; overflow: hidden; border: 1px solid var(--border); margin-top: 9px; }
+  .rtimer > i { display: block; height: 100%; width: 100%; background: linear-gradient(90deg, var(--mint), var(--lavender)); transform-origin: left; }
+
+  /* ============================ THE RUNNER ARENA ============================ */
+  .arena { position: relative; height: 372px; border-radius: 12px; overflow: hidden;
+    background: linear-gradient(180deg, #070a12 0%, #0a0e18 52%, #0c1018 70%, #0a0d14 100%);
+    touch-action: manipulation; user-select: none; -webkit-user-select: none; cursor: pointer; }
+
+  /* parallax layers (CSS-driven; the world always runs). z below items + runner. */
+  .layer { position: absolute; left: 0; bottom: 0; pointer-events: none; }
+  .belt { position: absolute; bottom: 0; left: 0; height: 100%; width: 200%; display: flex; will-change: transform; }
+  .belt .half { width: 50%; height: 100%; position: relative; flex: 0 0 50%; }
+  .belt .half > i { position: absolute; bottom: 0; border-radius: 2px 2px 0 0; }
+  /* far skyline of "blocks" (the chain as a distant city) */
+  .range.far { height: 58%; opacity: 0.62; }
+  .range.far .belt { animation: scrollBelt 26s linear infinite; }
+  .range.far .half > i { background: linear-gradient(180deg, rgba(74,96,128,0.32), rgba(74,96,128,0.05)); box-shadow: inset 0 1px 0 rgba(130,160,205,0.45); }
+  .range.mid { height: 42%; opacity: 0.85; }
+  .range.mid .belt { animation: scrollBelt 12s linear infinite; }
+  .range.mid .half > i { background: linear-gradient(180deg, rgba(35,247,221,0.2), rgba(35,247,221,0.03)); box-shadow: inset 0 1px 0 rgba(35,247,221,0.55); }
+  @keyframes scrollBelt { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+
+  /* the running track + ground (near layer, fast = speed) */
+  .ground { position: absolute; left: 0; right: 0; bottom: 0; height: 84px;
+    background: linear-gradient(180deg, rgba(255,210,63,0.05), rgba(8,10,16,0) 30%), linear-gradient(180deg, #0b0e15, #07090e); }
+  .ground::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--c) 60%, transparent), transparent); box-shadow: 0 0 14px color-mix(in srgb, var(--c) 35%, transparent); }
+  .dashes { position: absolute; left: -10%; right: -10%; top: 26px; height: 6px;
+    background-image: repeating-linear-gradient(90deg, color-mix(in srgb, var(--c) 55%, transparent) 0 26px, transparent 26px 64px);
+    opacity: 0.5; animation: dashRun 0.7s linear infinite; }
+  .dashes.slow { top: 50px; height: 4px; opacity: 0.28; animation-duration: 1.15s; background-image: repeating-linear-gradient(90deg, color-mix(in srgb, var(--c) 40%, transparent) 0 18px, transparent 18px 70px); }
+  @keyframes dashRun { from { transform: translateX(0); } to { transform: translateX(-64px); } }
+
+  /* drifting feed motes for depth */
+  .mote { position: absolute; width: 3px; height: 3px; border-radius: 50%; background: rgba(180,200,255,0.5); pointer-events: none; }
+
+  /* ---- the cosmonaut ---- */
+  .runner { position: absolute; bottom: 50px; left: 16%; width: 56px; height: 70px; z-index: 4;
+    transform-origin: 50% 100%; will-change: transform; animation: bob 0.42s ease-in-out infinite; }
+  .runner svg { width: 100%; height: 100%; display: block; overflow: visible; filter: drop-shadow(0 6px 8px rgba(0,0,0,0.5)); }
+  .runner .legF { transform-origin: 28px 46px; animation: legA 0.42s linear infinite; }
+  .runner .legB { transform-origin: 28px 46px; animation: legB 0.42s linear infinite; }
+  .runner .armF { transform-origin: 31px 30px; animation: legB 0.42s linear infinite; }
+  .runner .armB { transform-origin: 31px 30px; animation: legA 0.42s linear infinite; }
+  @keyframes bob { 0%,100% { transform: translateY(0) rotate(-2deg); } 50% { transform: translateY(-3px) rotate(0deg); } }
+  @keyframes legA { 0% { transform: rotate(30deg); } 50% { transform: rotate(-28deg); } 100% { transform: rotate(30deg); } }
+  @keyframes legB { 0% { transform: rotate(-28deg); } 50% { transform: rotate(30deg); } 100% { transform: rotate(-28deg); } }
+  .runner .visor { fill: var(--mint); }
+  .runner .glow { stroke: color-mix(in srgb, var(--mint) 70%, transparent); }
+  .runner.grab { animation: hop 0.34s ease; }
+  .runner.grab .armF { animation: reach 0.34s ease; }
+  @keyframes hop { 0% { transform: translateY(0); } 40% { transform: translateY(-13px) rotate(2deg); } 100% { transform: translateY(0); } }
+  @keyframes reach { 0% { transform: rotate(0); } 45% { transform: rotate(-118deg); } 100% { transform: rotate(0); } }
+  .runner.hit { animation: stumble 0.38s ease; }
+  .runner.hit svg { filter: drop-shadow(0 0 9px var(--coral)) saturate(0.4) brightness(1.3); }
+  @keyframes stumble { 0% { transform: translateX(0) rotate(0); } 30% { transform: translateX(-9px) rotate(-9deg); } 60% { transform: translateX(-3px) rotate(4deg); } 100% { transform: translateX(0); } }
+  /* the spot where grabs resolve (just ahead of the runner) */
+  .grabglow { position: absolute; bottom: 40px; left: 16%; width: 70px; height: 150px; transform: translateX(-12px); z-index: 2; pointer-events: none;
+    background: radial-gradient(60% 50% at 50% 70%, color-mix(in srgb, var(--c) 16%, transparent), transparent 72%); opacity: 0.7; }
+
+  /* ---- the flying items (compact tokens: icon + amount badge) ---- */
+  .item { position: absolute; left: 0; top: 0; z-index: 5; width: 54px; height: 54px; will-change: transform; cursor: pointer; }
+  .item .tok { position: relative; width: 54px; height: 54px; border-radius: 15px; display: grid; place-items: center;
+    border: 1.5px solid var(--border); background: linear-gradient(165deg, #1b2433, #10151d); box-shadow: 0 6px 14px -8px rgba(0,0,0,0.7); transition: transform 0.08s ease; }
+  .item .gi { width: 30px; height: 30px; }
+  .item .gi svg { width: 100%; height: 100%; display: block; }
+  .item .amt { position: absolute; bottom: -7px; right: -8px; font-family: var(--mono); font-size: 11px; font-weight: 800; line-height: 1;
+    padding: 2px 5px; border-radius: 8px; background: #090c12; border: 1px solid var(--border); font-variant-numeric: tabular-nums; color: var(--text-dim); z-index: 6; }
+  .item:active .tok { transform: scale(0.9); }
+  /* GOOD — grab them (mint) */
+  .item.good { color: var(--mint); }
+  .item.good .tok { border-color: rgba(35,247,221,0.55); background: linear-gradient(165deg, rgba(35,247,221,0.18), rgba(13,17,23,0.9)); }
+  .item.good .amt { color: var(--mint); border-color: rgba(35,247,221,0.4); }
+  .item.good .amt::before { content: "+"; }
+  /* BAD — leave them (coral) */
+  .item.bad { color: var(--coral); }
+  .item.bad .tok { border-color: rgba(255,107,157,0.55); background: linear-gradient(165deg, rgba(255,107,157,0.13), rgba(13,17,23,0.9)); }
+  .item.bad .amt { color: var(--coral); border-color: rgba(255,107,157,0.4); }
+  .item.bad .amt::before { content: "−"; }
+  /* big GOOD — the jackpots (lavender) */
+  .item.big.good { color: var(--lavender); }
+  .item.big.good .tok { border-color: var(--lavender); box-shadow: 0 0 0 1px rgba(167,139,250,0.6), 0 8px 20px -8px rgba(167,139,250,0.6); animation: bigpulse 1s ease-in-out infinite; }
+  .item.big.good .amt { color: var(--lavender); border-color: rgba(167,139,250,0.5); }
+  @keyframes bigpulse { 0%,100% { box-shadow: 0 0 0 1px rgba(167,139,250,0.55), 0 8px 18px -10px rgba(167,139,250,0.4); } 50% { box-shadow: 0 0 0 2px rgba(167,139,250,0.95), 0 10px 24px -8px rgba(167,139,250,0.75); } }
+  /* big BAD — the nukes (hot coral) */
+  .item.big.bad .tok { box-shadow: 0 0 0 1px rgba(255,107,157,0.8), 0 8px 20px -8px rgba(255,107,157,0.5); }
+  /* urgency: a good item about to slip past flashes amber */
+  .item.urgent .tok { border-color: var(--amber); box-shadow: 0 0 0 1px rgba(245,181,68,0.7), 0 0 14px -2px rgba(245,181,68,0.55); }
+  .item.grabbed { animation: grabbed 0.4s ease-out forwards; pointer-events: none; }
+  @keyframes grabbed { to { transform: translate(var(--gx,-30px), -52px) scale(1.18); opacity: 0; } }
+  .item.zapped { animation: zapped 0.36s ease-out forwards; pointer-events: none; }
+  @keyframes zapped { 0% { filter: brightness(1.9) saturate(1.6); } 100% { transform: scale(0.84) rotate(8deg); opacity: 0; } }
+  .item.slipped { animation: slipped 0.5s ease-in forwards; pointer-events: none; }
+  @keyframes slipped { to { transform: translate(-72px, var(--sy, 0)); opacity: 0; } }
+
+  .float { position: absolute; pointer-events: none; font-family: var(--mono); font-weight: 800; font-size: 17px; z-index: 7;
+    animation: rise 0.75s ease-out forwards; font-variant-numeric: tabular-nums; }
+  .float.gain { color: var(--mint); } .float.loss { color: var(--coral); }
+  @keyframes rise { from { opacity: 1; transform: translateY(0) scale(1); } to { opacity: 0; transform: translateY(-36px) scale(1.25); } }
+
+  .center { position: absolute; inset: 0; z-index: 8; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; padding: 22px; gap: 12px; background: radial-gradient(120% 100% at 50% 40%, rgba(6,7,10,0.5), rgba(6,7,10,0.86)); backdrop-filter: blur(2px); }
+  .center.hide { display: none; }
+  .center p { color: var(--text-dim); font-size: 13px; margin: 0; max-width: 340px; line-height: 1.5; }
+  .center .legend { display: flex; gap: 18px; font-size: 12px; }
+  .center .legend b { font-weight: 700; } .center .legend .g { color: var(--mint); } .center .legend .r { color: var(--coral); }
+  .center .final { font-size: 13px; color: var(--text-dim); }
+  .center .final b { font-family: var(--mono); font-size: 40px; color: var(--mint); display: block; font-variant-numeric: tabular-nums; font-weight: 800; text-shadow: 0 0 16px rgba(35,247,221,0.4); }
+  .tally { width: 100%; max-width: 300px; display: flex; flex-direction: column; gap: 8px; margin: 2px 0; }
+  .tally .tr { display: grid; grid-template-columns: 16px 1fr auto; align-items: baseline; gap: 9px; font-size: 13.5px; color: var(--text-dim); text-align: left; }
+  .tally .tr .ico { font-size: 13px; line-height: 1; }
+  .tally .tr .lab { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+  .tally .tr .lab em { font-style: normal; font-size: 10.5px; color: var(--text-faint); }
+  .tally .tr b { font-family: var(--mono); font-weight: 800; font-variant-numeric: tabular-nums; font-size: 15px; }
+  .tally .tr.got b { color: var(--mint); } .tally .tr.got .ico { color: var(--mint); }
+  .tally .tr.missed b { color: var(--text-dim); } .tally .tr.missed .ico { color: var(--text-faint); }
+  .tally .tr.oops b { color: var(--coral); } .tally .tr.oops .ico { color: var(--coral); }
+  .spin { width: 26px; height: 26px; border-radius: 50%; border: 3px solid rgba(255,255,255,0.15); border-top-color: var(--mint); animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .row { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+  .row .btn { width: auto; flex: 1 1 auto; min-width: 130px; }
+  .btn.gold { color: #2a1c02; background: var(--amber); box-shadow: 0 0 0 1px rgba(245,181,68,0.4), 0 8px 24px rgba(245,181,68,0.24); border-bottom-color: #b9842a; }
+  .claim { display: none; gap: 10px; margin: 12px 0 0; }
+  .claim.show { display: flex; }
+
+  .global { text-align: center; }
+  .global .num.big { color: var(--mint); }
+  .global .lbl { color: var(--text-faint); font-size: 12px; margin-top: 4px; }
+  .how { font-size: 12.5px; color: var(--text-dim); line-height: 1.55; }
+  .how .g { color: var(--mint); font-weight: 700; } .how .r { color: var(--coral); font-weight: 700; } .how b { color: var(--text); }
+  .legendbar { display: flex; flex-wrap: wrap; gap: 7px 12px; margin: 10px 0 2px; font-size: 11.5px; color: var(--text-dim); }
+  .legendbar span { display: inline-flex; align-items: center; gap: 6px; }
+  .legendbar .gi { width: 18px; height: 18px; }
+  .legendbar .gi svg { width: 100%; height: 100%; }
+  .legendbar .g { color: var(--mint); } .legendbar .r { color: var(--coral); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .item.big.good .chip { animation: none; }
+  }
+  @media (max-width: 430px) { .arena { height: 348px; } }
+</style>
+<!-- Vercel Web Analytics -->
+<script defer src="/_vercel/insights/script.js"></script>
+</head>
+<body style="--c:#FFD23F" data-shard="shard 0">
+<div class="scan"></div><div class="vignette"></div><div class="floor"></div>
+<div class="brk tl"></div><div class="brk tr"></div><div class="brk bl"></div><div class="brk br"></div>
+
+<!-- ===== inline SVG icon set (the item art). currentColor = item color ===== -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <!-- GOOD -->
+    <symbol id="ic-egld" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="8.4"/><path d="M8.2 8.2l7.6 7.6M15.8 8.2l-7.6 7.6"/></symbol>
+    <symbol id="ic-yield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M5 19L19 6"/><circle cx="7.5" cy="8" r="2.4"/><circle cx="16" cy="16.5" r="2.4"/><path d="M15.5 4.5l4 0 0 4"/></symbol>
+    <symbol id="ic-gem" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round">
+      <path d="M6 4h12l3.2 5L12 20.5 2.8 9z"/><path d="M2.8 9h18.4M9 4 6 9l6 11.5L18 9l-3-5"/></symbol>
+    <symbol id="ic-candle-up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 3v3"/><rect x="9" y="6" width="6" height="7" rx="1" fill="currentColor" fill-opacity="0.18"/><path d="M12 13v8"/></symbol>
+    <symbol id="ic-airdrop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3.5 11a8.5 8.5 0 0 1 17 0"/><path d="M3.5 11c2 0 3 1.2 3 3M20.5 11c-2 0-3 1.2-3 3M12 11v3"/><rect x="9.8" y="14" width="4.4" height="4.4" rx="0.8"/></symbol>
+    <symbol id="ic-rocket" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 2.5c2.8 2.2 4.4 5.6 4.4 9.4L14 14.6h-4L7.6 11.9C7.6 8.1 9.2 4.7 12 2.5z"/><circle cx="12" cy="9.5" r="1.5"/><path d="M9.5 16.5 7.5 21M14.5 16.5 16.5 21M12 16.5V21"/></symbol>
+    <symbol id="ic-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 3l7 2.6v5.2c0 4.8-3.3 7.8-7 9.4-3.7-1.6-7-4.6-7-9.4V5.6z"/><path d="M9 12l2.2 2.2L15.5 10"/></symbol>
+    <symbol id="ic-bridge" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3 15c4 0 4-6 9-6s5 6 9 6"/><path d="M3 15v4M21 15v4M9 12.2V19M15 12.2V19"/></symbol>
+    <!-- BAD -->
+    <symbol id="ic-rug" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M6 3v18"/><path d="M6 4.2h11l-2.6 3.6L17 11.4H6z" fill="currentColor" fill-opacity="0.16"/></symbol>
+    <symbol id="ic-skull" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M5 11a7 7 0 0 1 14 0v3l-1.6 1.6V18H6.6v-2.4L5 14z"/><circle cx="9" cy="11.5" r="1.5" fill="currentColor"/><circle cx="15" cy="11.5" r="1.5" fill="currentColor"/><path d="M10 18v2M14 18v2M12 14l-.8 1.6h1.6z" fill="currentColor"/></symbol>
+    <symbol id="ic-gas" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M5 20V6a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v14"/><path d="M4 20h10"/><path d="M5 10h8"/><path d="M13 8l3 2v7a1.8 1.8 0 0 0 3.6 0V11l-2-2"/><path d="M8 16l1.6-3 1.6 3"/></symbol>
+    <symbol id="ic-sandwich" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3 8c0-1.9 4-3.2 9-3.2S21 6.1 21 8s-4 3.2-9 3.2S3 9.9 3 8z"/><path d="M4.5 12.4c1.6 1 4.4 1.6 7.5 1.6s5.9-.6 7.5-1.6"/><path d="M4.5 15.8c1.6 1 4.4 1.6 7.5 1.6s5.9-.6 7.5-1.6"/></symbol>
+    <symbol id="ic-candle-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 3v8"/><rect x="9" y="11" width="6" height="7" rx="1" fill="currentColor" fill-opacity="0.16"/><path d="M12 18v3"/></symbol>
+    <symbol id="ic-hook" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M13.5 4.2 14.8 3"/><path d="M13.5 4.2V13a4.5 4.5 0 1 1-4.5-4.5"/><circle cx="13.5" cy="3.6" r="0.4" fill="currentColor"/></symbol>
+    <symbol id="ic-door" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M4 4h7v16H4z"/><path d="M8.6 12h.01"/><path d="M13 12h7M17 9l3 3-3 3"/></symbol>
+  </defs>
+</svg>
+
+<div class="wrap">
+  <header class="abar">
+    <a class="back" href="/arcade"><span aria-hidden="true">&larr;</span> Arcade</a>
+    <span class="lockup"><img src="/mvx-wordmark.svg" alt="MultiversX" /><span class="shard">shard 0</span></span>
+  </header>
+
+  <h1>DEGEN <span class="x">DASH</span></h1>
+  <p class="sub">Dash the feed. Grab the wins, dodge the rugs. Every grab is a <b>real onchain transaction</b>.</p>
+  <div class="modewrap"><span class="mode" id="modeBadge">connecting…</span></div>
+
+  <div class="onetap"><span class="ic"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M13 2 3 14h7l-1 8 10-12h-7z" stroke="#FFD23F" stroke-width="1.6" stroke-linejoin="round"/></svg></span><span class="t"><b>No wallet, just play.</b> A key is created in your browser and we cover the gas.</span></div>
+
+  <div class="cabinet">
+    <div class="cab-marquee">Degen Dash · grab the wins, dodge the rugs</div>
+    <div class="screen">
+      <div style="width:100%;display:flex;flex-direction:column;gap:12px;align-items:stretch;">
+        <section class="hero">
+          <div class="cap">Score</div>
+          <div class="bal" id="bal">0<span class="unit">NOVA</span></div>
+          <div class="stack"><i id="stackFill"></i></div>
+          <div class="meta">
+            <span class="got">grabbed <b id="gotStat">0</b></span>
+            <span>time <b id="timeStat">60.0s</b></span>
+            <span class="oops">oops <b id="oopsStat">0</b></span>
+          </div>
+          <div class="rtimer"><i id="rtimerFill"></i></div>
+        </section>
+
+        <section class="arena" id="arena">
+          <div class="layer range far"><div class="belt" id="beltFar"></div></div>
+          <div class="layer range mid"><div class="belt" id="beltMid"></div></div>
+          <div class="ground"><div class="dashes slow"></div><div class="dashes"></div></div>
+          <div class="grabglow"></div>
+          <div class="runner" id="runner">
+            <svg viewBox="0 0 56 70" aria-hidden="true">
+              <!-- back arm + back leg (drawn first, darker for depth) -->
+              <g class="armB"><path d="M30 31 L20 39" stroke="#5a6884" stroke-width="4.6" stroke-linecap="round"/></g>
+              <g class="legB"><path d="M27 45 L19 62" stroke="#525f7a" stroke-width="5.2" stroke-linecap="round"/><path d="M19 62 L14 63.5" stroke="#525f7a" stroke-width="5.2" stroke-linecap="round"/></g>
+              <!-- backpack with a teal vent -->
+              <rect x="20" y="24" width="10" height="17" rx="3" fill="#27314a"/>
+              <rect x="22" y="27" width="3" height="10" rx="1.5" fill="#23F7DD" opacity="0.45"/>
+              <!-- torso (suit) -->
+              <path d="M25 26 q10 -3 12 4 l-1 13 q-10 3 -13 -1 z" fill="#bcc6da"/>
+              <path d="M27 31 l8 1" class="glow" stroke-width="1.2" fill="none" opacity="0.7"/>
+              <circle cx="29.5" cy="36" r="1.7" fill="#23F7DD" opacity="0.9"/>
+              <!-- front leg + front arm (lighter, foremost) -->
+              <g class="legF"><path d="M29 45 L37 62" stroke="#9aa6c2" stroke-width="5.2" stroke-linecap="round"/><path d="M37 62 L42 63.5" stroke="#9aa6c2" stroke-width="5.2" stroke-linecap="round"/></g>
+              <g class="armF"><path d="M31 31 L43 36" stroke="#cdd6ea" stroke-width="4.6" stroke-linecap="round"/></g>
+              <!-- antenna -->
+              <path d="M31 6 L29 1.5" stroke="#8b97b4" stroke-width="1.4" stroke-linecap="round"/>
+              <circle cx="29" cy="1.5" r="1.6" fill="#23F7DD"/>
+              <!-- helmet shell + dark visor with teal sheen -->
+              <circle cx="32" cy="15" r="11.5" fill="#ccd5e8"/>
+              <circle cx="32" cy="15" r="11.5" fill="none" class="glow" stroke-width="1.5"/>
+              <path d="M33 6.5 a9 9 0 0 1 2.5 17 a8.5 8.5 0 0 1 -7 -3 a11 11 0 0 0 1.5 -12 a7 7 0 0 1 3 -2z" fill="#0a1426"/>
+              <path d="M33 9 a6.5 6.5 0 0 1 2.6 6" stroke="#23F7DD" stroke-width="1.6" fill="none" stroke-linecap="round" opacity="0.75"/>
+              <circle cx="31.5" cy="11.5" r="1.5" fill="#eafffb" opacity="0.85"/>
+            </svg>
+          </div>
+
+          <div class="center" id="center">
+            <p id="centerText">The feed streams in from ahead. Grab the good, dodge the bad, stack the most in <b>60 seconds</b>.</p>
+            <div class="legend"><span><b class="g">mint</b> = grab it</span><span><b class="r">red</b> = rug, leave it</span></div>
+            <button class="btn" id="startBtn" style="width:auto;min-width:170px">Start the dash</button>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <div class="claim" id="claim">
+    <input class="name-input" id="handle" maxlength="32" placeholder="Pick a handle for the board" autocomplete="off" />
+    <button class="btn" id="claimBtn" style="width:auto">Claim spot</button>
+  </div>
+  <div class="status" id="status" style="margin-bottom:14px"><span class="dot"></span><span id="statusText">Booting the cabinet…</span></div>
+
+  <section class="card global">
+    <div class="card-title"><span class="gd"></span>Global onchain actions</div>
+    <div class="num big" id="globalNum">···</div>
+    <div class="lbl">grab transactions fired across everyone, read from the chain</div>
+  </section>
+
+  <section class="card">
+    <div class="card-title"><span class="gd"></span>Top runs · most stacked</div>
+    <ul class="lb" id="lbRows"><li class="empty">Reading the chain…</li></ul>
+  </section>
+
+  <section class="card how">
+    <div class="card-title"><span class="gd"></span>How it works</div>
+    The world runs toward you and the feed flies past. <span class="g">Mint</span> items are wins. Tap one to fire a
+    <b>real gasless transaction</b> that grabs it before it slips behind you, +score. <span class="r">Red</span> items are rugs,
+    hacks and scams; leave them. Grab a red one and the contract docks you. The round seed and your final score are computed
+    <b>onchain</b>, so the score can't be faked and every run is unique. It speeds up as it goes.
+    <div class="legendbar" id="legendbar"></div>
+  </section>
+
+  <footer class="afoot"><span class="sn">Supernova · live on testnet</span> · 600ms rounds on MultiversX · gasless, no wallet · every grab lands onchain</footer>
+</div>
+
+<script type="module">
+import { createArcade } from "/degen-dash-runner/arcade.js";
+import { ARCADE_CONFIG } from "/degen-dash-runner/arcade.config.js";
+import { buildSchedule } from "/degen-dash-runner/schedule.js";
+import { mountGalaxy } from "/arcade-galaxy.js";
+
+const $ = (id) => document.getElementById(id);
+const arcade = createArcade(ARCADE_CONFIG);
+const galaxy = mountGalaxy({ intensity: 0.42, focusShard: 0 });
+
+// config defaults mirror the contract; onchain mode overrides from getScheduleParams.
+// rampPermil 500 = sparse/slow open, dense/fast finish; lateWindowShrinkPermil 0 = off.
+// items 180 over 60s ≈ 3/sec (ramped: forgiving open, frantic finish) reads cleanly
+// as a single-runner stream. The client always MIRRORS the deployed getScheduleParams,
+// so this is just the practice/fallback default — deploy the contract with a matching
+// `items` (see HANDOFF) for onchain parity.
+const DEFAULTS = { roundLengthMs: 60_000, catchWindowMs: 8_000, items: 180, goodPermil: 720, rampPermil: 500, lateWindowShrinkPermil: 0 };
+
+// item types, mapped by id. name + icon symbol. Topical, MvX-neutral, a little funny.
+const GOOD_TYPES = [
+  { n: "EGLD",          i: "egld" },
+  { n: "Staking yield", i: "yield" },
+  { n: "Fresh NFT",     i: "gem" },
+  { n: "Green candle",  i: "candle-up" },
+  { n: "Airdrop hit",   i: "airdrop" },
+  { n: "Clean 100x",    i: "rocket" },
+  { n: "Blue chip",     i: "shield" },
+  { n: "Bridged safe",  i: "bridge" },
+  { n: "Bought the dip", i: "candle-up" },
+  { n: "Diamond hands", i: "gem" },
+];
+const BAD_TYPES = [
+  { n: "Rug pull",      i: "rug" },
+  { n: "Got hacked",    i: "skull" },
+  { n: "Gas spike",     i: "gas" },
+  { n: "MEV sandwich",  i: "sandwich" },
+  { n: "Red candle",    i: "candle-down" },
+  { n: "Honeypot",      i: "hook" },
+  { n: "Scam mint",     i: "skull" },
+  { n: "Phishing link", i: "hook" },
+  { n: "Down bad",      i: "candle-down" },
+  { n: "Exit liquidity", i: "door" },
+];
+const LANES = 3;
+
+let cfg = { ...DEFAULTS };
+let onchain = false;
+
+const G = {
+  phase: "idle", seed: 0n, startMs: 0, roundId: 0,
+  schedule: [], travelMs: 2300, arenaW: 480, arenaH: 348,
+  xEnter: 500, xMiss: 28, laneY: [20, 96, 172], runnerX: 80,
+  nextIdx: 0, gotCount: 0, oopsCount: 0, collectedAmt: 0, penaltyAmt: 0, missedCount: 0, spawnSeq: 0,
+  totalGood: 0, items: new Map(), score: 0, dispScore: 0, raf: null,
+};
+
+// ---------- parallax skylines (the chain as a passing city of blocks) ----------
+function buildBelt(el, count, minH, maxH) {
+  el.innerHTML = "";
+  const make = () => {
+    const half = document.createElement("div");
+    half.className = "half";
+    for (let k = 0; k < count; k++) {
+      const b = document.createElement("i");
+      const h = minH + Math.round(Math.abs(Math.sin(k * 12.9898) * 43758.5) % 1 * (maxH - minH));
+      const w = 9 + (k % 4) * 4;
+      b.style.height = h + "%";
+      b.style.width = w + "px";
+      b.style.left = ((k / count) * 100).toFixed(2) + "%";
+      half.appendChild(b);
+    }
+    return half;
+  };
+  el.appendChild(make());
+  el.appendChild(make()); // identical second half so the -50% scroll loops seamlessly
+}
+function buildMotes() {
+  const arena = $("arena");
+  for (let k = 0; k < 9; k++) {
+    const m = document.createElement("div");
+    m.className = "mote";
+    m.style.left = (5 + Math.random() * 90) + "%";
+    m.style.top = (8 + Math.random() * 55) + "%";
+    m.style.opacity = (0.2 + Math.random() * 0.4).toFixed(2);
+    m.style.animation = `slipped ${(5 + Math.random() * 6).toFixed(1)}s linear ${(-Math.random() * 6).toFixed(1)}s infinite`;
+    arena.appendChild(m);
+  }
+}
+
+// ---------- geometry (recomputed on start + resize) ----------
+function measure() {
+  const arena = $("arena");
+  G.arenaW = arena.clientWidth || 480;
+  G.arenaH = arena.clientHeight || 348;
+  G.runnerX = Math.round(G.arenaW * 0.16);
+  G.xEnter = G.arenaW + 24;
+  G.xMiss = Math.round(G.arenaW * 0.05);
+  const itemH = 54, groundH = 92, top = 12;
+  const airBot = G.arenaH - groundH - 4;
+  const usable = airBot - top;
+  const gap = Math.max(6, (usable - LANES * itemH) / (LANES + 1));
+  G.laneY = [];
+  for (let l = 0; l < LANES; l++) G.laneY.push(Math.round(top + gap + l * (itemH + gap)));
+}
+addEventListener("resize", () => { if (G.phase !== "playing") measure(); });
+
+// ---------- mode detection ----------
+const UNDEPLOYED_PLACEHOLDER = "erd1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq6gq4hu";
+function isPlaceholder(addr) {
+  return !addr || addr === UNDEPLOYED_PLACEHOLDER || /^erd1q{50,}/.test(addr) || /^erd1?0{20,}/.test(addr);
+}
+async function detectMode() {
+  const configured = !isPlaceholder(ARCADE_CONFIG.contract) && !isPlaceholder(ARCADE_CONFIG.relayer);
+  if (!configured) { setMode(false, "Practice · not yet deployed"); return; }
+  const ok = await arcade.ready().catch(() => false);
+  if (!ok) { setMode(false, "Practice · relayer offline"); return; }
+  const params = await arcade.getScheduleParams().catch(() => null);
+  if (params && params.items > 0) cfg = params;
+  setMode(true, "Onchain · Supernova");
+  refreshBoard();
+}
+function setMode(on, label) {
+  onchain = on;
+  const b = $("modeBadge");
+  b.textContent = label;
+  b.className = "mode " + (on ? "onchain" : "practice");
+  $("centerText").innerHTML = `The feed streams in from ahead. Grab the good, dodge the bad, stack the most in <b>${Math.round(cfg.roundLengthMs / 1000)} seconds</b>.`;
+  setStatus("", on ? "Onchain. Every grab is a real gasless transaction." : "Practice mode. Scores and NOVA go onchain once the cabinet is live.");
+}
+
+// ---------- start ----------
+$("startBtn").addEventListener("click", onStart);
+async function onStart() {
+  if (G.phase === "starting" || G.phase === "playing") return;
+  initAudio();
+  $("claim").classList.remove("show");
+  if (onchain) return startOnchain();
+  return startLocal();
+}
+function startLocal() {
+  beginRound({ seed: randomU64(), startMs: Date.now(), roundId: G.roundId });
+}
+async function startOnchain() {
+  setPhase("starting");
+  showCenter(`<div class="spin"></div><p>Locking your run on Supernova…<br/>the feed is being seeded onchain.</p>`);
+  const prevRound = G.roundId;
+  try {
+    await arcade.startRound();
+  } catch (err) {
+    return fallbackToPractice("Couldn't reach the relayer. Playing in practice mode.");
+  }
+  for (let i = 0; i < 10; i++) {
+    await wait(1200);
+    const r = await arcade.getRound().catch(() => null);
+    if (r && r.roundId > prevRound && r.seed !== "0") {
+      G.roundId = r.roundId;
+      return beginRound({ seed: BigInt(r.seed), startMs: r.startMs, roundId: r.roundId, totalGood: r.totalGood });
+    }
+  }
+  fallbackToPractice("The run didn't confirm in time. Playing in practice mode.");
+}
+function fallbackToPractice(msg) {
+  onchain = false;
+  cfg = { ...DEFAULTS };
+  setMode(false, "Practice · fallback");
+  setStatus("err", msg);
+  startLocal();
+}
+
+function beginRound({ seed, startMs, roundId, totalGood }) {
+  G.seed = seed; G.startMs = startMs; G.roundId = roundId;
+  G.schedule = buildSchedule(seed, cfg);
+  G.totalGood = totalGood || G.schedule.reduce((s, o) => s + (o.good ? o.amount : 0), 0);
+  // grab opportunity sits safely inside the contract's catch window (block ts = tap +
+  // relay/inclusion latency stays well under start+window). Travel = time on screen.
+  G.travelMs = Math.max(1900, Math.min(2300, cfg.catchWindowMs - 2400));
+  measure();
+  G.nextIdx = 0; G.gotCount = 0; G.oopsCount = 0; G.collectedAmt = 0; G.penaltyAmt = 0; G.missedCount = 0; G.spawnSeq = 0;
+  G.score = 0; G.dispScore = 0;
+  $("gotStat").textContent = "0";
+  $("oopsStat").textContent = "0";
+  $("timeStat").textContent = (cfg.roundLengthMs / 1000).toFixed(1) + "s";
+  $("bal").firstChild.textContent = "0";
+  $("stackFill").style.transform = "scaleX(0)";
+  $("rtimerFill").style.transform = "scaleX(1)";
+  clearItems();
+  hideCenter();
+  setPhase("playing");
+  // catch up anything that streamed in during the onchain round-lock
+  const elapsed0 = now() - G.startMs;
+  while (G.nextIdx < G.schedule.length && G.schedule[G.nextIdx].spawnMs <= elapsed0) {
+    activate(G.schedule[G.nextIdx], elapsed0); G.nextIdx++;
+  }
+  G.raf = requestAnimationFrame(tick);
+}
+
+// ---------- the loop ----------
+function tick() {
+  const elapsed = now() - G.startMs;
+  if (elapsed >= cfg.roundLengthMs) return endRoundFlow();
+
+  while (G.nextIdx < G.schedule.length && G.schedule[G.nextIdx].spawnMs <= elapsed) {
+    activate(G.schedule[G.nextIdx], elapsed); G.nextIdx++;
+  }
+  const span = G.xEnter - G.xMiss;
+  for (const [, it] of G.items) {
+    if (it.state !== "live") continue;
+    const age = elapsed - it.o.spawnMs;
+    if (age >= G.travelMs) { slipItem(it); continue; }
+    const p = age / G.travelMs;
+    const x = G.xEnter - p * span;
+    it.el.style.transform = `translate(${x.toFixed(1)}px, ${it.y}px)`;
+    if (it.o.good && !it.urgent && p > 0.74) { it.urgent = true; it.el.classList.add("urgent"); }
+  }
+  renderScore();
+  const left = Math.max(0, cfg.roundLengthMs - elapsed);
+  $("timeStat").textContent = (left / 1000).toFixed(1) + "s";
+  $("rtimerFill").style.transform = `scaleX(${(left / cfg.roundLengthMs).toFixed(3)})`;
+  G.raf = requestAnimationFrame(tick);
+}
+
+function activate(o, elapsed) {
+  const age = elapsed - o.spawnMs;
+  if (age >= G.travelMs) { if (o.good) G.missedCount++; return; } // already past before render
+  spawnItem(o, age);
+}
+
+function spawnItem(o, age) {
+  const el = document.createElement("div");
+  const type = o.good ? GOOD_TYPES[Number(BigInt(o.id) % BigInt(GOOD_TYPES.length))]
+                      : BAD_TYPES[Number(BigInt(o.id) % BigInt(BAD_TYPES.length))];
+  const big = o.amount >= 9;
+  el.className = "item " + (o.good ? "good" : "bad") + (big ? " big" : "");
+  el.title = type.n; // the funny name on hover (desktop) + accessibility, no per-item clutter
+  el.innerHTML =
+    `<div class="tok"><span class="gi"><svg viewBox="0 0 24 24"><use href="#ic-${type.i}"/></svg></span></div>` +
+    `<span class="amt">${o.amount}</span>`;
+  const lane = G.spawnSeq++ % LANES;
+  const it = { o, el, state: "live", y: G.laneY[lane], urgent: false };
+  el.addEventListener("pointerdown", (e) => { e.preventDefault(); tapItem(it); }, { passive: false });
+  $("arena").appendChild(el);
+  G.items.set(o.id, it);
+  const span = G.xEnter - G.xMiss;
+  const p = Math.max(0, age) / G.travelMs;
+  el.style.transform = `translate(${(G.xEnter - p * span).toFixed(1)}px, ${it.y}px)`;
+}
+
+function tapItem(it) {
+  if (it.state !== "live") return;
+  it.state = "acted";
+  galaxy.pulse(0);
+  // fire the REAL grab transaction either way; the contract decides the effect.
+  if (onchain) arcade.collect(G.roundId, it.o.id).catch(() => {});
+  const runner = $("runner");
+  if (it.o.good) {
+    G.gotCount++; G.collectedAmt += it.o.amount; G.score += it.o.amount;
+    $("gotStat").textContent = G.gotCount;
+    flashScore("up");
+    floatText(it.el, "+" + it.o.amount, "gain");
+    blip(660, 0.07, "triangle"); if (it.o.amount >= 9) blip(990, 0.09, "triangle");
+    vibrate(8);
+    // fling the item toward the runner
+    const r = it.el.getBoundingClientRect(), ar = $("arena").getBoundingClientRect();
+    it.el.style.setProperty("--gx", (G.runnerX - (r.left - ar.left)).toFixed(0) + "px");
+    it.el.classList.add("grabbed");
+    runner.classList.remove("grab"); void runner.offsetWidth; runner.classList.add("grab");
+  } else {
+    G.oopsCount++; G.penaltyAmt += it.o.amount; G.score = Math.max(0, G.score - it.o.amount);
+    $("oopsStat").textContent = G.oopsCount;
+    flashScore("down");
+    floatText(it.el, "−" + it.o.amount, "loss");
+    blip(150, 0.12, "sawtooth"); vibrate(22);
+    it.el.classList.add("zapped");
+    runner.classList.remove("hit"); void runner.offsetWidth; runner.classList.add("hit");
+  }
+  setTimeout(() => removeItem(it.o.id), 420);
+}
+
+function slipItem(it) {
+  it.state = "slipped";
+  if (it.o.good) G.missedCount++;
+  it.el.style.setProperty("--sy", it.y + "px"); // keep its lane height while it exits left
+  it.el.classList.add("slipped");
+  setTimeout(() => removeItem(it.o.id), 480);
+}
+
+function removeItem(id) { const it = G.items.get(id); if (it) { it.el.remove(); G.items.delete(id); } }
+function clearItems() { for (const [, it] of G.items) it.el.remove(); G.items.clear(); }
+
+// ---------- score (tweened) ----------
+function renderScore() {
+  const target = Math.max(0, G.score);
+  G.dispScore += (target - G.dispScore) * 0.25;
+  if (Math.abs(target - G.dispScore) < 0.5) G.dispScore = target;
+  $("bal").firstChild.textContent = fmt(Math.round(G.dispScore));
+  const ceiling = G.totalGood || 1;
+  $("stackFill").style.transform = `scaleX(${Math.max(0, Math.min(1, G.dispScore / ceiling)).toFixed(3)})`;
+}
+let flashTimer = null;
+function flashScore(dir) {
+  const el = $("bal");
+  el.classList.remove("flash-up", "flash-down", "shake");
+  void el.offsetWidth;
+  el.classList.add(dir === "up" ? "flash-up" : "flash-down");
+  if (dir === "down") el.classList.add("shake");
+  clearTimeout(flashTimer);
+  flashTimer = setTimeout(() => el.classList.remove("flash-up", "flash-down", "shake"), 220);
+}
+function floatText(itemEl, text, cls) {
+  const f = document.createElement("span");
+  f.className = "float " + cls;
+  f.textContent = text;
+  const arena = $("arena"), ar = arena.getBoundingClientRect(), cr = itemEl.getBoundingClientRect();
+  f.style.left = (cr.left - ar.left + cr.width / 2 - 12) + "px";
+  f.style.top = (cr.top - ar.top) + "px";
+  arena.appendChild(f);
+  setTimeout(() => f.remove(), 760);
+}
+
+// ---------- end of round ----------
+async function endRoundFlow() {
+  if (G.phase !== "playing") return;
+  setPhase("ending");
+  cancelAnimationFrame(G.raf);
+  clearItems();
+  $("timeStat").textContent = "0.0s";
+  $("rtimerFill").style.transform = "scaleX(0)";
+
+  if (!onchain) return reveal(localFinal(), 0, true);
+
+  showCenter(`<div class="spin"></div><p>Run over. Tallying your score onchain…</p>`);
+  // endRound must EXECUTE (not just relay) to record the score. It only succeeds once
+  // the BLOCK timestamp passes start+length — Supernova blocks trail wall-clock
+  // slightly, so the first send can revert as "round not over yet". Resend until
+  // getRound reports ended.
+  let ended = false;
+  for (let i = 0; i < 12 && !ended; i++) {
+    try { await arcade.endRound(G.roundId); } catch (err) { /* relay hiccup — retry */ }
+    await wait(1500);
+    const r = await arcade.getRound().catch(() => null);
+    if (r && r.ended) ended = true;
+  }
+  let final = ended ? await arcade.getFinal().catch(() => null) : null;
+  if (final == null) final = localFinal();
+  const claimable = (await arcade.getClaimable().catch(() => 0)) || 0;
+  reveal(final, claimable, false, ended);
+  refreshBoard();
+}
+
+function localFinal() { return Math.max(0, Math.round(G.score)); }
+
+function reveal(final, claimable, practice, ended = true) {
+  setPhase("done");
+  G.score = final; G.dispScore = final;
+  $("bal").firstChild.textContent = fmt(final);
+  const ceiling = G.totalGood || 1;
+  $("stackFill").style.transform = `scaleX(${Math.max(0, Math.min(1, final / ceiling)).toFixed(3)})`;
+
+  const missed = Math.max(0, G.missedCount);
+  const tag = practice ? " (practice)" : " (onchain)";
+  let html =
+    `<div class="final">Final score${tag}<b>${fmt(final)} NOVA</b></div>` +
+    `<div class="tally">` +
+      `<div class="tr got"><span class="ico">▲</span><span class="lab">Grabbed<em>${G.gotCount} win${G.gotCount === 1 ? "" : "s"} collected</em></span><b>+${fmt(G.collectedAmt)}</b></div>` +
+      `<div class="tr missed"><span class="ico">·</span><span class="lab">Let slip<em>${missed} win${missed === 1 ? "" : "s"} ran past you</em></span><b>${fmt(missed)}</b></div>` +
+      `<div class="tr oops"><span class="ico">☠</span><span class="lab">Oops grabs${G.oopsCount ? `<em>${G.oopsCount} rug${G.oopsCount === 1 ? "" : "s"} grabbed</em>` : ""}</span><b>−${fmt(G.penaltyAmt)}</b></div>` +
+    `</div>` +
+    `<div class="row"><button class="btn" id="againBtn">Run again</button>`;
+  if (onchain && claimable > 0) html += `<button class="btn gold" id="claimNovaBtn">Claim ${fmt(claimable)} NOVA</button>`;
+  html += `</div>`;
+  showCenter(html);
+  $("againBtn").addEventListener("click", onStart);
+  if (onchain && claimable > 0) $("claimNovaBtn").addEventListener("click", () => claimNova(claimable));
+
+  if (onchain && ended && final > 0) { $("claim").classList.add("show"); $("handle").focus({ preventScroll: true }); }
+  else if (onchain && ended && final === 0) setStatus("", "Score 0 this run. Grab a win to land on the board.");
+  else if (onchain && !ended) setStatus("err", "Couldn't finalize onchain in time. Your score shows but didn't record. Run again to land on the board.");
+  else if (!onchain) setStatus("", "Practice run. Scores and NOVA go onchain once the cabinet is live.");
+}
+
+async function claimNova(amount) {
+  const btn = $("claimNovaBtn");
+  if (btn) { btn.disabled = true; btn.textContent = "Minting…"; }
+  try {
+    const r = await arcade.claim();
+    setStatus("ok", `Minted ${fmt(amount)} NOVA to your wallet. <a href="${r.explorerUrl}" target="_blank" rel="noopener">View tx ↗</a>`);
+    if (btn) btn.textContent = "Claimed ✓";
+  } catch (err) {
+    if (btn) { btn.disabled = false; btn.textContent = `Claim ${fmt(amount)} NOVA`; }
+    setStatus("err", "Couldn't claim right now. Try again.");
+  }
+}
+
+// ---------- claim a handle ----------
+$("claimBtn").addEventListener("click", claimHandle);
+$("handle").addEventListener("keydown", (e) => { if (e.key === "Enter") claimHandle(); });
+async function claimHandle() {
+  const handle = ($("handle").value || "").trim();
+  if (!handle) return setStatus("err", "Type a handle first.");
+  if (new TextEncoder().encode(handle).length > 32) return setStatus("err", "Keep it under 32 characters.");
+  $("claimBtn").disabled = true;
+  setStatus("", "Putting your handle onchain…");
+  try {
+    localStorage.setItem("degendash_handle", handle);
+    const r = await arcade.setHandle(handle);
+    setStatus("ok", `On the board. <a href="${r.explorerUrl}" target="_blank" rel="noopener">View tx ↗</a>`);
+    $("claimBtn").textContent = "On the board ✓";
+    for (let i = 0; i < 6; i++) { await wait(1500); await refreshBoard(); }
+  } catch (err) {
+    $("claimBtn").disabled = false;
+    setStatus("err", friendlyError(err));
+  }
+}
+
+// ---------- onchain reads on a ~2s tick ----------
+async function refreshBoard() {
+  if (!onchain) return;
+  const [global, board] = await Promise.all([arcade.getGlobalActions(), arcade.getLeaderboard(10)]);
+  if (global != null) $("globalNum").textContent = fmt(global);
+  renderLeaderboard(board);
+}
+setInterval(refreshBoard, 2000);
+
+function renderLeaderboard(entries) {
+  const box = $("lbRows");
+  if (!onchain) { box.innerHTML = '<li class="empty">Live once the cabinet is deployed.</li>'; return; }
+  if (!entries || entries.length === 0) { box.innerHTML = '<li class="empty">No runs yet. Be the first to stack a score.</li>'; return; }
+  const me = arcade.address;
+  box.innerHTML = entries.map((e, i) => {
+    const mine = me && e.address === me ? " you" : "";
+    const name = e.handle ? escapeHtml(e.handle) : shortAddr(e.address);
+    return `<li><span class="rank">${i + 1}</span><span class="who${mine}">${name}</span><span class="sc">${fmt(e.score)}</span></li>`;
+  }).join("");
+}
+
+// ---------- helpers ----------
+function setPhase(p) { G.phase = p; }
+function showCenter(html) { const c = $("center"); c.innerHTML = html; c.classList.remove("hide"); }
+function hideCenter() { $("center").classList.add("hide"); }
+function setStatus(kind, html) { const el = $("status"); el.className = "status " + kind; $("statusText").innerHTML = html; }
+function now() { return Date.now(); }
+function wait(ms) { return new Promise((r) => setTimeout(r, ms)); }
+function fmt(n) { return Number(n).toLocaleString("en-US"); }
+function shortAddr(a) { return a ? a.slice(0, 6) + "…" + a.slice(-4) : "anon"; }
+function escapeHtml(s) { return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+function randomU64() { const b = new Uint8Array(8); (self.crypto || window.crypto).getRandomValues(b); let v = 0n; for (const x of b) v = (v << 8n) | BigInt(x); return v; }
+function friendlyError(err) {
+  if (!err) return "Something went wrong.";
+  if (err.code === "relayer_unavailable" || err.code === "unavailable") return "The gasless relayer isn't switched on yet.";
+  if (err.code === "play first") return "Play a run first, then claim a handle.";
+  return "Couldn't set your handle right now.";
+}
+
+// ---------- audio + haptics ----------
+let actx = null;
+function initAudio() { try { if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)(); } catch {} }
+function blip(freq, dur, type) {
+  if (!actx) return;
+  try {
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.type = type || "sine"; o.frequency.value = freq;
+    g.gain.value = 0.05; o.connect(g); g.connect(actx.destination);
+    o.start(); g.gain.exponentialRampToValueAtTime(0.0001, actx.currentTime + dur);
+    o.stop(actx.currentTime + dur + 0.02);
+  } catch {}
+}
+function vibrate(ms) { try { navigator.vibrate && navigator.vibrate(ms); } catch {} }
+
+// ---------- legend (icons in the "how it works" panel) ----------
+function buildLegend() {
+  const items = [
+    { c: "g", i: "egld", n: "EGLD" }, { c: "g", i: "candle-up", n: "Green candle" },
+    { c: "g", i: "airdrop", n: "Airdrop" }, { c: "g", i: "gem", n: "NFT" }, { c: "g", i: "yield", n: "Yield" },
+    { c: "r", i: "rug", n: "Rug" }, { c: "r", i: "skull", n: "Hack" },
+    { c: "r", i: "gas", n: "Gas spike" }, { c: "r", i: "sandwich", n: "MEV" }, { c: "r", i: "candle-down", n: "Red candle" },
+  ];
+  $("legendbar").innerHTML = items.map((x) =>
+    `<span class="${x.c}"><span class="gi"><svg viewBox="0 0 24 24"><use href="#ic-${x.i}"/></svg></span>${x.n}</span>`
+  ).join("");
+}
+
+// ---------- boot ----------
+// offline-verify hook (only with ?dbg in the URL; inert in production). Lets a
+// headless preview, where requestAnimationFrame is paused on a hidden page, render
+// a representative frame deterministically.
+if (location.search.includes("dbg")) {
+  window.__dd = { G, getCfg: () => cfg, beginRound, tick, spawnItem, GOOD_TYPES, BAD_TYPES, randomU64 };
+}
+try { const s = localStorage.getItem("degendash_handle"); if (s) $("handle").value = s; } catch {}
+buildBelt($("beltFar"), 11, 24, 56);
+buildBelt($("beltMid"), 8, 30, 92);
+buildMotes();
+buildLegend();
+measure();
+$("bal").firstChild.textContent = "0";
+$("stackFill").style.transform = "scaleX(0)";
+detectMode();
+refreshBoard();
+</script>
+</body>
+</html>
