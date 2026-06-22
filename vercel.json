@@ -8,9 +8,7 @@
     { "source": "/reaction", "destination": "/reaction.html" },
     { "source": "/clawback", "destination": "/clawback/index.html" },
     { "source": "/degen-dash", "destination": "/degen-dash/index.html" },
-    { "source": "/onchain", "destination": "/onchain.html" }
-  ],
-  "redirects": [
-    { "source": "/supernova-sprint", "destination": "https://supernova-sprint.xyz/supernova-sprint", "permanent": false }
+    { "source": "/onchain", "destination": "/onchain.html" },
+    { "source": "/supernova-sprint", "destination": "/supernova-sprint.html" }
   ]
 }
