@@ -90,7 +90,8 @@ export const CLAWBACK_CONTRACT =
  * plays locally in practice mode until the real address is set.
  */
 export const DEGENDASH_CONTRACT =
-  process.env.NEXT_PUBLIC_DEGENDASH_CONTRACT || UNDEPLOYED_PLACEHOLDER;
+  process.env.NEXT_PUBLIC_DEGENDASH_CONTRACT ||
+  "erd1qqqqqqqqqqqqqpgqt4560zpw4yhdm0tmzj2thxkh9snerm58ppuqp7kyxt"; // testnet, shard 0
 
 /** Relayed endpoints for the cabinets. */
 export const PULL_FUNCTION = "pull";

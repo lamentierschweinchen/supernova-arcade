@@ -4,59 +4,63 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>Degen Dash · Supernova Arcade</title>
-<meta name="description" content="A crypto-event run game. Tap to collect the wins, dodge the rugs. Every collect is a real onchain transaction on MultiversX, gasless and no wallet. A fun game on a valueless token." />
+<meta name="description" content="An onchain lane runner. Run the track, grab the wins, dodge the rugs. Every grab is a real gasless transaction on MultiversX, no wallet. A fun game on a valueless token." />
 <link rel="icon" href="/favicon.svg" />
 <link rel="stylesheet" href="/arcade-shell.css" />
 <!--
-  DEGEN DASH — a Supernova Arcade game (model A: the contract is the referee).
+  DEGEN DASH — a Supernova Arcade lane runner (model A: the contract is the referee).
 
-  A stream of crypto events flies in. GOOD ones (a blue chip, a clean 100x, an
-  airdrop, a staking reward) are wins: TAP to collect them, +score. BAD ones (a
-  rug, an ugly JPG, a scam mint, a presale that nukes) are hazards: LEAVE them.
-  Tap a bad one and you take a penalty (the oops). Stack the most over a 60s round.
-  Velocity ramps: forgiving open, frantic finish.
+  Classic endless-runner feel: you run a track into the screen and the crypto feed
+  rushes toward you down 3 lanes. GOOD items (EGLD, a green candle, an airdrop,
+  staking yield, an NFT, a clean 100x) are wins: TAP to grab them, +score. BAD items
+  (a rug, a hack, a gas spike, an MEV sandwich, a red candle) are hazards: LEAVE
+  them. Grab one by mistake and you take the hit. Stack the most over a 60s run. It
+  ramps: forgiving open, frantic finish.
 
-  Each collect tap is a REAL gasless onchain transaction. The contract decides, by
-  the real block timestamp, whether the grab landed inside the item's catch window,
-  and whether it was good (+) or bad (penalty). The score is contract-computed, the
-  seed comes from the chain (every run unique), so the score can't be faked. Bots
-  are welcome — a bot just sends more real collect transactions.
+  Each grab is a REAL gasless onchain transaction. The contract decides, by the real
+  block timestamp, whether the grab landed inside the item's catch window, and
+  whether it was good (+) or bad (penalty). The score is contract-computed and the
+  seed comes from the chain (every run unique), so it can't be faked. Bots welcome:
+  a bot just sends more real grab transactions. Score is the count of real onchain
+  grabs the contract credits, never distance or time.
 
-  FUN ONLY: NOVA is a valueless in-game token. Nothing here is yield, a reward, or
-  a financial promise of any kind.
+  FUN ONLY: NOVA is a valueless in-game token. Nothing here is yield, a reward, or a
+  financial promise of any kind.
 
   Two modes: ONCHAIN (deployed contract + relayer — real gasless txs + real NOVA)
   and PRACTICE (no contract configured — fully playable locally, nothing onchain).
+
+  This reuses the EXACT onchain plumbing of the original Degen Dash cabinet
+  (arcade.js / arcade.config.js / schedule.js / contract) byte-for-byte; only the
+  presentation — the perspective track, the astronaut, item art, the grab loop — is
+  new.
 -->
 <style>
-  /* Degen Dash inherits the canon (Roobert, #06070A cosmos, mint, surfaces, buttons,
-     leaderboard, reset) from /arcade-shell.css. Per-game accents: GOOD/collect = --mint
-     with a playful --lavender highlight on big wins; BAD/hazard = --coral. Bright,
-     energetic, distinct from Clawback's coral-led tension. */
-  .wrap { max-width: 460px; display: flex; flex-direction: column; gap: 13px; }
-  header { text-align: center; }
-  h1 { margin: 0; font-size: 30px; letter-spacing: -0.01em; font-weight: 800; color: var(--text); }
-  h1 .x { color: var(--mint); }
-  .sub { color: var(--text-dim); font-size: 13px; margin-top: 4px; line-height: 1.5; }
-  .mode { display: inline-flex; align-items: center; gap: 6px; margin-top: 8px; font-size: 11px; font-weight: 600;
+  /* Inherits the canon (Roobert, #06070A cosmos, surfaces, buttons, leaderboard,
+     status, brackets) from /arcade-shell.css. Cabinet accent --c = warm amber
+     (shard 0). Item colors: GOOD = --mint, big GOOD = --lavender jackpot, BAD = --coral. */
+  .wrap { max-width: 520px; }
+  h1 { text-align: center; }
+  h1 .x { color: var(--c); }
+  .sub { text-align: center; }
+  .modewrap { text-align: center; margin-bottom: 14px; }
+  .mode { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600;
     letter-spacing: 0.05em; text-transform: uppercase; padding: 4px 11px; border-radius: 999px;
     border: 1px solid var(--border); color: var(--text-dim); }
   .mode.onchain { color: var(--mint); border-color: rgba(35,247,221,0.4); background: rgba(35,247,221,0.05); }
   .mode.practice { color: var(--amber); border-color: rgba(245,181,68,0.4); }
 
-  /* score hero */
+  /* ---- score hero ---- */
   .hero { background: radial-gradient(120% 80% at 80% -10%, rgba(35,247,221,0.12), transparent 55%), var(--surface);
-    border: 1px solid var(--border); border-radius: 18px; padding: 16px 18px 14px; text-align: center;
-    position: relative; overflow: hidden; }
+    border: 1px solid var(--border); border-radius: 16px; padding: 14px 16px 13px; text-align: center; margin-bottom: 12px; }
   .hero .cap { color: var(--text-faint); font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em; font-weight: 600; }
-  .bal { font-family: var(--mono); font-size: 48px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1.05;
-    letter-spacing: -0.02em; margin: 4px 0 0; transition: color 0.18s ease; color: var(--text); }
-  .bal .unit { font-family: 'Roobert PRO', system-ui, sans-serif; font-size: 16px; color: var(--text-dim); font-weight: 600; margin-left: 6px; letter-spacing: 0; }
+  .bal { font-family: var(--mono); font-size: 44px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1.05;
+    letter-spacing: -0.02em; margin: 2px 0 0; transition: color 0.18s ease; color: var(--text); }
+  .bal .unit { font-family: 'Roobert PRO', system-ui, sans-serif; font-size: 15px; color: var(--text-dim); font-weight: 600; margin-left: 6px; letter-spacing: 0; }
   .bal.flash-up { color: var(--mint); }
   .bal.flash-down { color: var(--coral); }
   .bal.shake { animation: shake 0.32s ease; }
   @keyframes shake { 0%,100%{transform:translateX(0)} 20%{transform:translateX(-6px)} 40%{transform:translateX(5px)} 60%{transform:translateX(-3px)} 80%{transform:translateX(2px)} }
-  /* progress bar toward the perfect-run ceiling (all good collected) */
   .stack { height: 7px; border-radius: 5px; background: #0c1119; margin: 11px 0 4px; overflow: hidden; border: 1px solid var(--border); }
   .stack > i { display: block; height: 100%; width: 100%; border-radius: 5px;
     background: linear-gradient(90deg, var(--mint) 0%, var(--lavender) 100%);
@@ -68,63 +72,85 @@
   .rtimer { height: 4px; border-radius: 4px; background: #0c1119; overflow: hidden; border: 1px solid var(--border); margin-top: 9px; }
   .rtimer > i { display: block; height: 100%; width: 100%; background: linear-gradient(90deg, var(--mint), var(--lavender)); transform-origin: left; }
 
-  /* arena */
-  .arena { position: relative; height: 384px; border: 1px solid var(--border); border-radius: 16px;
-    background: linear-gradient(180deg, rgba(35,247,221,0.05), rgba(0,0,0,0) 22%), linear-gradient(180deg, var(--surface), #0a0d13);
-    overflow: hidden; touch-action: manipulation; user-select: none; }
-  .miss-line { position: absolute; left: 0; right: 0; bottom: 40px; height: 0; border-top: 1px dashed rgba(35,247,221,0.4); }
-  .miss-label { position: absolute; right: 8px; bottom: 44px; font-size: 10.5px; color: var(--text-faint); letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.8; }
-  .floorzone { position: absolute; left: 0; right: 0; bottom: 0; height: 40px; background: linear-gradient(180deg, rgba(35,247,221,0) 0%, rgba(35,247,221,0.07) 100%); pointer-events: none; }
+  /* ============================ THE LANE-RUNNER ARENA ============================ */
+  .arena { position: relative; height: 380px; border-radius: 12px; overflow: hidden;
+    background: radial-gradient(120% 70% at 50% 12%, rgba(35,247,221,0.07), transparent 46%), linear-gradient(180deg, #05070d 0%, #070a12 46%, #0a0e17 74%, #0c1119 100%);
+    touch-action: manipulation; user-select: none; -webkit-user-select: none; cursor: pointer; }
 
-  .card { position: absolute; width: 30%; margin: 0; will-change: transform; cursor: pointer;
-    border-radius: 11px; padding: 7px 8px 8px; border: 1px solid var(--border);
-    background: linear-gradient(180deg, #1b2433, #141c28); box-shadow: 0 6px 16px -8px rgba(0,0,0,0.6); }
-  .card:active { transform: scale(0.95); }
-  .card .ty { font-size: 9.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; opacity: 0.92; }
-  .card .amt { font-family: var(--mono); font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums; margin-top: 1px; }
-  .card .amt .m { font-size: 10px; opacity: 0.7; font-weight: 700; }
-  .card .bar { height: 4px; border-radius: 3px; background: rgba(255,255,255,0.12); margin-top: 6px; overflow: hidden; }
-  .card .bar > i { display: block; height: 100%; width: 100%; transform-origin: left; background: var(--mint); }
-  /* GOOD items (mint — tap them); one class covers every good label */
-  .card.good { border-color: rgba(35,247,221,0.5); background: linear-gradient(160deg, rgba(35,247,221,0.12), rgba(14,17,23,0.7)); }
-  .card.good .ty { color: var(--mint); }
-  .card.good .amt { color: var(--mint); }
-  .card.good .bar > i { background: var(--mint); }
-  /* BAD items (coral — leave them) */
-  .card.bad { border-color: rgba(255,107,157,0.5); }
-  .card.bad .ty { color: var(--coral); }
-  .card.bad .amt { color: var(--text-dim); }
-  .card.bad .amt::before { content: "☠ "; font-size: 12px; }
-  .card.bad .bar > i { background: var(--coral); }
-  /* big GOOD items — the jackpots (lavender), chase these */
-  .card.big.good { box-shadow: 0 0 0 1px var(--lavender), 0 8px 22px -8px rgba(167,139,250,0.55); animation: bigpulse 1s ease-in-out infinite; }
-  .card.big.good .ty { color: var(--lavender); }
-  .card.big.good .amt { color: var(--lavender); }
-  .card.big.good .bar > i { background: var(--lavender); }
-  @keyframes bigpulse { 0%,100%{box-shadow:0 0 0 1px rgba(167,139,250,0.7),0 8px 22px -10px rgba(167,139,250,0.45)} 50%{box-shadow:0 0 0 2px rgba(167,139,250,1),0 10px 26px -8px rgba(167,139,250,0.7)} }
-  /* big BAD items — the nukes (brighter coral edge), really avoid */
-  .card.big.bad { box-shadow: 0 0 0 1px rgba(255,107,157,0.8), 0 8px 22px -8px rgba(255,107,157,0.5); }
-  .card.collected { animation: flyup 0.4s ease-out forwards; pointer-events: none; }
-  @keyframes flyup { to { transform: translateY(-46px) scale(1.08); opacity: 0; } }
-  .card.zapped { animation: die 0.34s ease-out forwards; pointer-events: none; }
-  @keyframes die { 0%{ filter: brightness(1.8) saturate(1.6); } 100%{ transform: scale(0.86); opacity: 0; } }
-  .card.gone { animation: fade 0.4s ease-out forwards; pointer-events: none; }
-  @keyframes fade { to { transform: translateY(8px) scale(0.94); opacity: 0; } }
+  /* the perspective track (lines + ground) drawn into this SVG by JS */
+  .tracksvg { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; }
+  .horizonglow { position: absolute; left: 0; right: 0; top: 0; height: 46%; z-index: 1; pointer-events: none;
+    background: radial-gradient(60% 80% at 50% 18%, color-mix(in srgb, var(--c) 14%, transparent), transparent 70%); }
+  /* track rungs (sleepers) rushing toward the camera — positioned by JS */
+  .rungs { position: absolute; inset: 0; z-index: 3; pointer-events: none; }
+  .rung { position: absolute; left: 0; top: 0; height: 2px; transform-origin: left center; will-change: transform, opacity;
+    background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--c) 70%, transparent) 14% 86%, transparent); border-radius: 2px; }
+  /* speed streaks (stars rushing past) */
+  .streak { position: absolute; width: 2px; border-radius: 2px; background: linear-gradient(180deg, transparent, rgba(180,205,255,0.7)); z-index: 3; pointer-events: none; }
 
-  .float { position: absolute; pointer-events: none; font-family: var(--mono); font-weight: 800; font-size: 16px; z-index: 5;
-    animation: rise 0.7s ease-out forwards; font-variant-numeric: tabular-nums; }
+  /* active-lane glow pad under the astronaut (moves with you; left/top set by JS) */
+  .lanepad { position: absolute; left: 50%; top: 0; width: 92px; height: 28px; z-index: 3; pointer-events: none; transform: translate(-50%, -50%);
+    background: radial-gradient(closest-side, color-mix(in srgb, var(--c) 36%, transparent), transparent 78%); opacity: 0.8; }
+
+  /* ---- the astronaut (back view, running away from camera) ---- */
+  .runner { position: absolute; left: 50%; bottom: 14px; width: 60px; height: 78px; margin-left: -30px; z-index: 20; will-change: transform; }
+  .runnerInner { width: 100%; height: 100%; animation: bob 0.4s ease-in-out infinite; }
+  .runner svg { width: 100%; height: 100%; display: block; overflow: visible; filter: drop-shadow(0 7px 7px rgba(0,0,0,0.55)); }
+  .runner .legL { transform-origin: 24px 46px; animation: legA 0.4s linear infinite; }
+  .runner .legR { transform-origin: 36px 46px; animation: legB 0.4s linear infinite; }
+  .runner .armL { transform-origin: 19px 32px; animation: legB 0.4s linear infinite; }
+  .runner .armR { transform-origin: 41px 32px; animation: legA 0.4s linear infinite; }
+  @keyframes bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+  @keyframes legA { 0% { transform: rotate(13deg); } 50% { transform: rotate(-13deg); } 100% { transform: rotate(13deg); } }
+  @keyframes legB { 0% { transform: rotate(-13deg); } 50% { transform: rotate(13deg); } 100% { transform: rotate(-13deg); } }
+  .runner .rim { stroke: color-mix(in srgb, var(--mint) 70%, transparent); }
+  .runnerInner.grab { animation: hop 0.34s ease; }
+  .runnerInner.grab .armR, .runnerInner.grab .armL { animation: reach 0.34s ease; }
+  @keyframes hop { 0% { transform: translateY(0); } 42% { transform: translateY(-12px); } 100% { transform: translateY(0); } }
+  @keyframes reach { 0% { transform: rotate(0); } 45% { transform: rotate(-120deg); } 100% { transform: rotate(0); } }
+  .runnerInner.hit { animation: stumble 0.4s ease; }
+  .runnerInner.hit svg { filter: drop-shadow(0 0 9px var(--coral)) saturate(0.4) brightness(1.3); }
+  @keyframes stumble { 0% { transform: translateY(0) rotate(0); } 30% { transform: translateY(2px) rotate(-7deg); } 60% { transform: rotate(5deg); } 100% { transform: rotate(0); } }
+
+  /* ---- the rushing items (compact tokens: icon + amount badge) ---- */
+  .item { position: absolute; left: 0; top: 0; width: 54px; height: 54px; will-change: transform; cursor: pointer; }
+  .item .tok { position: relative; width: 54px; height: 54px; border-radius: 15px; display: grid; place-items: center;
+    border: 1.5px solid var(--border); background: linear-gradient(165deg, #1b2433, #10151d); box-shadow: 0 6px 14px -8px rgba(0,0,0,0.7); }
+  .item .gi { width: 30px; height: 30px; }
+  .item .gi svg { width: 100%; height: 100%; display: block; }
+  .item .amt { position: absolute; bottom: -7px; right: -8px; font-family: var(--mono); font-size: 11px; font-weight: 800; line-height: 1;
+    padding: 2px 5px; border-radius: 8px; background: #090c12; border: 1px solid var(--border); font-variant-numeric: tabular-nums; color: var(--text-dim); }
+  .item:active .tok { filter: brightness(1.15); }
+  .item.good { color: var(--mint); }
+  .item.good .tok { border-color: rgba(35,247,221,0.55); background: linear-gradient(165deg, rgba(35,247,221,0.18), rgba(13,17,23,0.9)); }
+  .item.good .amt { color: var(--mint); border-color: rgba(35,247,221,0.4); }
+  .item.good .amt::before { content: "+"; }
+  .item.bad { color: var(--coral); }
+  .item.bad .tok { border-color: rgba(255,107,157,0.55); background: linear-gradient(165deg, rgba(255,107,157,0.13), rgba(13,17,23,0.9)); }
+  .item.bad .amt { color: var(--coral); border-color: rgba(255,107,157,0.4); }
+  .item.bad .amt::before { content: "−"; }
+  .item.big.good { color: var(--lavender); }
+  .item.big.good .tok { border-color: var(--lavender); box-shadow: 0 0 0 1px rgba(167,139,250,0.6), 0 8px 20px -8px rgba(167,139,250,0.6); animation: bigpulse 1s ease-in-out infinite; }
+  .item.big.good .amt { color: var(--lavender); border-color: rgba(167,139,250,0.5); }
+  @keyframes bigpulse { 0%,100% { box-shadow: 0 0 0 1px rgba(167,139,250,0.55), 0 8px 18px -10px rgba(167,139,250,0.4); } 50% { box-shadow: 0 0 0 2px rgba(167,139,250,0.95), 0 10px 24px -8px rgba(167,139,250,0.75); } }
+  .item.big.bad .tok { box-shadow: 0 0 0 1px rgba(255,107,157,0.8), 0 8px 20px -8px rgba(255,107,157,0.5); }
+  .item.urgent .tok { border-color: var(--amber); box-shadow: 0 0 0 1px rgba(245,181,68,0.75), 0 0 16px -2px rgba(245,181,68,0.6); }
+  /* grabbed / zapped / passed are driven by an inline transition + JS target transform */
+  .item.fx { pointer-events: none; }
+
+  .float { position: absolute; pointer-events: none; font-family: var(--mono); font-weight: 800; font-size: 18px; z-index: 55;
+    animation: rise 0.75s ease-out forwards; font-variant-numeric: tabular-nums; }
   .float.gain { color: var(--mint); } .float.loss { color: var(--coral); }
-  @keyframes rise { from { opacity: 1; transform: translateY(0) scale(1); } to { opacity: 0; transform: translateY(-34px) scale(1.2); } }
+  @keyframes rise { from { opacity: 1; transform: translateY(0) scale(1); } to { opacity: 0; transform: translateY(-38px) scale(1.25); } }
 
-  .arena .center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 22px; gap: 12px; }
-  .arena .center.hide { display: none; }
-  .arena .center p { color: var(--text-dim); font-size: 13px; margin: 0; max-width: 330px; line-height: 1.5; }
-  .arena .center .legend { display: flex; gap: 16px; font-size: 12px; }
-  .arena .center .legend b { font-weight: 700; }
-  .arena .center .legend .g { color: var(--mint); } .arena .center .legend .r { color: var(--coral); }
-  .arena .center .final { font-size: 13px; color: var(--text-dim); }
-  .arena .center .final b { font-family: var(--mono); font-size: 40px; color: var(--mint); display: block; font-variant-numeric: tabular-nums; font-weight: 800; text-shadow: 0 0 16px rgba(35,247,221,0.4); }
-  /* end-of-round breakdown: what you grabbed vs what you let go vs oops-taps */
+  .center { position: absolute; inset: 0; z-index: 60; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; padding: 22px; gap: 12px; background: radial-gradient(120% 100% at 50% 40%, rgba(6,7,10,0.5), rgba(6,7,10,0.88)); backdrop-filter: blur(2px); }
+  .center.hide { display: none; }
+  .center p { color: var(--text-dim); font-size: 13px; margin: 0; max-width: 340px; line-height: 1.5; }
+  .center .legend { display: flex; gap: 18px; font-size: 12px; }
+  .center .legend b { font-weight: 700; } .center .legend .g { color: var(--mint); } .center .legend .r { color: var(--coral); }
+  .center .final { font-size: 13px; color: var(--text-dim); }
+  .center .final b { font-family: var(--mono); font-size: 40px; color: var(--mint); display: block; font-variant-numeric: tabular-nums; font-weight: 800; text-shadow: 0 0 16px rgba(35,247,221,0.4); }
   .tally { width: 100%; max-width: 300px; display: flex; flex-direction: column; gap: 8px; margin: 2px 0; }
   .tally .tr { display: grid; grid-template-columns: 16px 1fr auto; align-items: baseline; gap: 9px; font-size: 13.5px; color: var(--text-dim); text-align: left; }
   .tally .tr .ico { font-size: 13px; line-height: 1; }
@@ -134,60 +160,72 @@
   .tally .tr.got b { color: var(--mint); } .tally .tr.got .ico { color: var(--mint); }
   .tally .tr.missed b { color: var(--text-dim); } .tally .tr.missed .ico { color: var(--text-faint); }
   .tally .tr.oops b { color: var(--coral); } .tally .tr.oops .ico { color: var(--coral); }
-  .tally .rule { height: 1px; background: var(--border); margin: 1px 0; }
   .spin { width: 26px; height: 26px; border-radius: 50%; border: 3px solid rgba(255,255,255,0.15); border-top-color: var(--mint); animation: spin 0.8s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
 
-  /* shell mint pill (glow + 3px lip) comes from /arcade-shell.css; keep auto width for the side-by-side rows */
-  .btn { width: auto; }
-  .btn.gold { background: var(--amber); color: #2a1c02; box-shadow: 0 0 0 1px rgba(245,181,68,0.4), 0 8px 24px rgba(245,181,68,0.24); border-bottom: 3px solid #b9842a; }
-
-  .claim { display: none; gap: 8px; margin-top: 4px; }
+  .row { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+  .row .btn { width: auto; flex: 1 1 auto; min-width: 130px; }
+  .btn.gold { color: #2a1c02; background: var(--amber); box-shadow: 0 0 0 1px rgba(245,181,68,0.4), 0 8px 24px rgba(245,181,68,0.24); border-bottom-color: #b9842a; }
+  .claim { display: none; gap: 10px; margin: 12px 0 0; }
   .claim.show { display: flex; }
-  .claim input { flex: 1; background: #06070A; border: 1px solid var(--border); border-radius: 10px; color: var(--text); padding: 11px 12px; font-size: 15px; outline: none; }
-  .claim input:focus { border-color: #79e6d8; }
-  .row { display: flex; gap: 8px; justify-content: center; }
-  /* plain centered status line (override the shell status box) */
-  .status { border: none; background: none; padding: 0; min-height: 17px; display: block; font-size: 12.5px; text-align: center; }
-  .status.ok { color: var(--mint); } .status.err { color: var(--coral); }
-  .status a { color: var(--mint); }
 
-  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 14px; margin: 0; }
-  .panel h2 { margin: 0 0 9px; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-dim); font-weight: 600; display: flex; align-items: center; }
   .global { text-align: center; }
-  .global .num { font-family: var(--mono); font-size: 32px; font-weight: 800; font-variant-numeric: tabular-nums; }
-  .global .num .g { color: var(--mint); text-shadow: 0 0 16px rgba(35,247,221,0.4); }
-  .global .lbl { color: var(--text-faint); font-size: 12px; margin-top: 2px; }
-  .lb-row { display: grid; grid-template-columns: 26px 1fr auto; align-items: center; gap: 10px; padding: 8px 4px; font-size: 14px; }
-  .lb-row + .lb-row { border-top: 1px solid var(--border-soft); }
-  .lb-row .rank { color: var(--text-faint); font-family: var(--mono); font-variant-numeric: tabular-nums; }
-  .lb-row .handle { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-dim); }
-  .lb-row .score { font-family: var(--mono); font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text-dim); }
-  .lb-row.you { background: rgba(35,247,221,0.08); border-radius: 8px; }
-  .lb-row.you .handle { color: var(--mint); }
-  .lb-row.you .score { color: var(--mint); }
-  .lb-row.you .handle::after { content: " you"; color: var(--mint); font-size: 11px; }
-  .lb-empty { color: var(--text-faint); font-size: 13px; text-align: center; padding: 10px 0; }
-
+  .global .num.big { color: var(--mint); }
+  .global .lbl { color: var(--text-faint); font-size: 12px; margin-top: 4px; }
   .how { font-size: 12.5px; color: var(--text-dim); line-height: 1.55; }
-  .how b { color: var(--text); } .how .g { color: var(--mint); font-weight: 700; } .how .r { color: var(--coral); font-weight: 700; }
-  .tick { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--mint); box-shadow: 0 0 7px var(--mint); margin-right: 6px; vertical-align: middle; animation: pulse 2s ease-in-out infinite; }
-  @keyframes pulse { 0%,100% { opacity: 0.35; } 50% { opacity: 1; } }
+  .how .g { color: var(--mint); font-weight: 700; } .how .r { color: var(--coral); font-weight: 700; } .how b { color: var(--text); }
+  .legendbar { display: flex; flex-wrap: wrap; gap: 7px 12px; margin: 10px 0 2px; font-size: 11.5px; color: var(--text-dim); }
+  .legendbar span { display: inline-flex; align-items: center; gap: 6px; }
+  .legendbar .gi { width: 18px; height: 18px; }
+  .legendbar .gi svg { width: 100%; height: 100%; }
+  .legendbar .g { color: var(--mint); } .legendbar .r { color: var(--coral); }
 
-  .screen .play { width: 100%; display: flex; flex-direction: column; gap: 12px; align-items: stretch; }
-
-  @media (prefers-reduced-motion: reduce) {
-    .card.big.good { animation: none; }
-    .tick { animation: none; opacity: 0.8; }
-    .bal.shake { animation: none; }
-  }
+  @media (prefers-reduced-motion: reduce) { .item.big.good .tok { animation: none; } }
+  @media (max-width: 430px) { .arena { height: 360px; } }
 </style>
-    <!-- Vercel Web Analytics -->
-    <script defer src="/_vercel/insights/script.js"></script>
+<!-- Vercel Web Analytics -->
+<script defer src="/_vercel/insights/script.js"></script>
 </head>
 <body style="--c:#FFD23F" data-shard="shard 0">
 <div class="scan"></div><div class="vignette"></div><div class="floor"></div>
 <div class="brk tl"></div><div class="brk tr"></div><div class="brk bl"></div><div class="brk br"></div>
+
+<!-- ===== inline SVG icon set (the item art). currentColor = item color ===== -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="ic-egld" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="8.4"/><path d="M8.2 8.2l7.6 7.6M15.8 8.2l-7.6 7.6"/></symbol>
+    <symbol id="ic-yield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M5 19L19 6"/><circle cx="7.5" cy="8" r="2.4"/><circle cx="16" cy="16.5" r="2.4"/><path d="M15.5 4.5l4 0 0 4"/></symbol>
+    <symbol id="ic-gem" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round">
+      <path d="M6 4h12l3.2 5L12 20.5 2.8 9z"/><path d="M2.8 9h18.4M9 4 6 9l6 11.5L18 9l-3-5"/></symbol>
+    <symbol id="ic-candle-up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 3v3"/><rect x="9" y="6" width="6" height="7" rx="1" fill="currentColor" fill-opacity="0.18"/><path d="M12 13v8"/></symbol>
+    <symbol id="ic-airdrop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3.5 11a8.5 8.5 0 0 1 17 0"/><path d="M3.5 11c2 0 3 1.2 3 3M20.5 11c-2 0-3 1.2-3 3M12 11v3"/><rect x="9.8" y="14" width="4.4" height="4.4" rx="0.8"/></symbol>
+    <symbol id="ic-rocket" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 2.5c2.8 2.2 4.4 5.6 4.4 9.4L14 14.6h-4L7.6 11.9C7.6 8.1 9.2 4.7 12 2.5z"/><circle cx="12" cy="9.5" r="1.5"/><path d="M9.5 16.5 7.5 21M14.5 16.5 16.5 21M12 16.5V21"/></symbol>
+    <symbol id="ic-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 3l7 2.6v5.2c0 4.8-3.3 7.8-7 9.4-3.7-1.6-7-4.6-7-9.4V5.6z"/><path d="M9 12l2.2 2.2L15.5 10"/></symbol>
+    <symbol id="ic-bridge" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3 15c4 0 4-6 9-6s5 6 9 6"/><path d="M3 15v4M21 15v4M9 12.2V19M15 12.2V19"/></symbol>
+    <symbol id="ic-rug" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M6 3v18"/><path d="M6 4.2h11l-2.6 3.6L17 11.4H6z" fill="currentColor" fill-opacity="0.16"/></symbol>
+    <symbol id="ic-skull" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M5 11a7 7 0 0 1 14 0v3l-1.6 1.6V18H6.6v-2.4L5 14z"/><circle cx="9" cy="11.5" r="1.5" fill="currentColor"/><circle cx="15" cy="11.5" r="1.5" fill="currentColor"/><path d="M10 18v2M14 18v2M12 14l-.8 1.6h1.6z" fill="currentColor"/></symbol>
+    <symbol id="ic-gas" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M5 20V6a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v14"/><path d="M4 20h10"/><path d="M5 10h8"/><path d="M13 8l3 2v7a1.8 1.8 0 0 0 3.6 0V11l-2-2"/><path d="M8 16l1.6-3 1.6 3"/></symbol>
+    <symbol id="ic-sandwich" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3 8c0-1.9 4-3.2 9-3.2S21 6.1 21 8s-4 3.2-9 3.2S3 9.9 3 8z"/><path d="M4.5 12.4c1.6 1 4.4 1.6 7.5 1.6s5.9-.6 7.5-1.6"/><path d="M4.5 15.8c1.6 1 4.4 1.6 7.5 1.6s5.9-.6 7.5-1.6"/></symbol>
+    <symbol id="ic-candle-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 3v8"/><rect x="9" y="11" width="6" height="7" rx="1" fill="currentColor" fill-opacity="0.16"/><path d="M12 18v3"/></symbol>
+    <symbol id="ic-hook" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M13.5 4.2 14.8 3"/><path d="M13.5 4.2V13a4.5 4.5 0 1 1-4.5-4.5"/><circle cx="13.5" cy="3.6" r="0.4" fill="currentColor"/></symbol>
+    <symbol id="ic-door" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M4 4h7v16H4z"/><path d="M8.6 12h.01"/><path d="M13 12h7M17 9l3 3-3 3"/></symbol>
+  </defs>
+</svg>
+
 <div class="wrap">
   <header class="abar">
     <a class="back" href="/arcade"><span aria-hidden="true">&larr;</span> Arcade</a>
@@ -195,69 +233,96 @@
   </header>
 
   <h1>DEGEN <span class="x">DASH</span></h1>
-  <p class="sub">Tap to collect the wins. Dodge the rugs. Every collect is a <b>real onchain transaction</b>.</p>
-  <span class="mode" id="modeBadge">connecting…</span>
+  <p class="sub">Swipe between lanes. Line up the wins, dodge the rugs. Every grab is a <b>real onchain transaction</b>.</p>
+  <div class="modewrap"><span class="mode" id="modeBadge">connecting…</span></div>
 
   <div class="onetap"><span class="ic"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M13 2 3 14h7l-1 8 10-12h-7z" stroke="#FFD23F" stroke-width="1.6" stroke-linejoin="round"/></svg></span><span class="t"><b>No wallet, just play.</b> A key is created in your browser and we cover the gas.</span></div>
 
   <div class="cabinet">
-    <div class="cab-marquee">Degen Dash · collect the wins, dodge the rugs</div>
+    <div class="cab-marquee">Degen Dash · grab the wins, dodge the rugs</div>
     <div class="screen">
-      <div class="play">
+      <div style="width:100%;display:flex;flex-direction:column;gap:12px;align-items:stretch;">
         <section class="hero">
           <div class="cap">Score</div>
           <div class="bal" id="bal">0<span class="unit">NOVA</span></div>
           <div class="stack"><i id="stackFill"></i></div>
           <div class="meta">
-            <span class="got">collected <b id="gotStat">0</b></span>
+            <span class="got">grabbed <b id="gotStat">0</b></span>
             <span>time <b id="timeStat">60.0s</b></span>
             <span class="oops">oops <b id="oopsStat">0</b></span>
           </div>
-          <div class="rtimer" style="margin-top:8px"><i id="rtimerFill"></i></div>
+          <div class="rtimer"><i id="rtimerFill"></i></div>
         </section>
 
         <section class="arena" id="arena">
-          <div class="miss-line"></div>
-          <div class="miss-label">miss line</div>
-          <div class="floorzone"></div>
+          <div class="horizonglow"></div>
+          <svg class="tracksvg" id="tracksvg" preserveAspectRatio="none"></svg>
+          <div class="rungs" id="rungs"></div>
+          <div class="lanepad" id="lanepad"></div>
+          <div class="runner" id="runner">
+            <div class="runnerInner" id="runnerInner">
+              <svg viewBox="0 0 60 78" aria-hidden="true">
+                <ellipse cx="30" cy="74" rx="17" ry="3.4" fill="#000" opacity="0.34"/>
+                <!-- arms (back view, at the sides) -->
+                <g class="armL"><path d="M19 32 L13 49" stroke="#9aa6c2" stroke-width="5" stroke-linecap="round"/></g>
+                <g class="armR"><path d="M41 32 L47 49" stroke="#9aa6c2" stroke-width="5" stroke-linecap="round"/></g>
+                <!-- legs (back view) -->
+                <g class="legL"><path d="M25 45 L21 67" stroke="#7a87a4" stroke-width="6" stroke-linecap="round"/><path d="M21 67 L18 69" stroke="#5d6b86" stroke-width="6" stroke-linecap="round"/></g>
+                <g class="legR"><path d="M35 45 L39 67" stroke="#8b97b4" stroke-width="6" stroke-linecap="round"/><path d="M39 67 L42 69" stroke="#6c799a" stroke-width="6" stroke-linecap="round"/></g>
+                <!-- backpack / torso (the PLSS we see from behind) -->
+                <rect x="18" y="25" width="24" height="24" rx="7" fill="#aeb9d0"/>
+                <rect x="20.5" y="27" width="19" height="20" rx="5" fill="#2b3650"/>
+                <rect x="24" y="30" width="3.5" height="13" rx="1.7" fill="#23F7DD" opacity="0.5"/>
+                <rect x="32.5" y="30" width="3.5" height="13" rx="1.7" fill="#23F7DD" opacity="0.5"/>
+                <rect x="18" y="25" width="24" height="24" rx="7" fill="none" class="rim" stroke-width="1.3"/>
+                <!-- helmet (top of head from behind) -->
+                <ellipse cx="30" cy="16" rx="11" ry="10" fill="#ccd5e8"/>
+                <path d="M21 17a9 9 0 0 1 18 0" fill="none" class="rim" stroke-width="1.4"/>
+                <!-- antenna -->
+                <path d="M30 6 L28 1.6" stroke="#8b97b4" stroke-width="1.4" stroke-linecap="round"/>
+                <circle cx="28" cy="1.6" r="1.6" fill="#23F7DD"/>
+              </svg>
+            </div>
+          </div>
+
           <div class="center" id="center">
-            <p id="centerText">Crypto events will stream in. Grab the good, dodge the bad, stack the most in <b>60 seconds</b>.</p>
-            <div class="legend"><span><b class="g">mint</b> = tap to collect</span><span><b class="r">red</b> = rug, leave it</span></div>
-            <button class="btn" id="startBtn">Start the dash</button>
+            <p id="centerText">Swipe to switch lanes. Line up the mint wins, dodge the red rugs, stack the most in <b>60 seconds</b>.</p>
+            <div class="legend"><span><b class="g">mint</b> = line it up</span><span><b class="r">red</b> = dodge it</span></div>
+            <button class="btn" id="startBtn" style="width:auto;min-width:170px">Start the dash</button>
           </div>
         </section>
       </div>
     </div>
   </div>
 
-  <div class="row">
-    <div class="claim" id="claim">
-      <input id="handle" maxlength="32" placeholder="Pick a handle for the board" autocomplete="off" />
-      <button class="btn" id="claimBtn">Claim spot</button>
-    </div>
+  <div class="claim" id="claim">
+    <input class="name-input" id="handle" maxlength="32" placeholder="Pick a handle for the board" autocomplete="off" />
+    <button class="btn" id="claimBtn" style="width:auto">Claim spot</button>
   </div>
-  <div class="status" id="status"></div>
+  <div class="status" id="status" style="margin-bottom:14px"><span class="dot"></span><span id="statusText">Booting the cabinet…</span></div>
 
-  <section class="panel global">
-    <h2><span class="tick"></span>Global onchain actions</h2>
-    <div class="num"><span class="g" id="globalNum">···</span></div>
-    <div class="lbl">collect transactions fired across everyone, read from the chain</div>
+  <section class="card global">
+    <div class="card-title"><span class="gd"></span>Global onchain actions</div>
+    <div class="num big" id="globalNum">···</div>
+    <div class="lbl">grab transactions fired across everyone, read from the chain</div>
   </section>
 
-  <section class="panel">
-    <h2><span class="tick"></span>Top runs · most collected</h2>
-    <div id="lbRows"><div class="lb-empty">Reading the chain…</div></div>
+  <section class="card">
+    <div class="card-title"><span class="gd"></span>Top runs · most stacked</div>
+    <ul class="lb" id="lbRows"><li class="empty">Reading the chain…</li></ul>
   </section>
 
-  <section class="panel how">
-    <h2>How it works</h2>
-    <span class="g">Mint</span> cards are wins. Tap one to fire a <b>real gasless transaction</b> that collects it before it
-    drops past the miss line, +score. <span class="r">Red</span> cards are rugs and scams; leave them. Tap a red one and the
-    contract docks you a penalty. The round seed and your final score are computed <b>onchain</b>, so the score can't be
-    faked, and every run is unique. It speeds up as it goes.
+  <section class="card how">
+    <div class="card-title"><span class="gd"></span>How it works</div>
+    You run the track and the feed rushes at you in three lanes. Swipe (or use the arrow keys) to switch lanes. Line a
+    <span class="g">mint</span> win up with your lane and you grab it automatically, firing a <b>real gasless transaction</b>,
+    +score. <span class="r">Red</span> items are rugs, hacks and scams; steer out of their lane before they reach you. Eat one
+    and the contract docks you. The round seed and your final score are computed <b>onchain</b>, so the score can't be faked
+    and every run is unique. It speeds up as it goes.
+    <div class="legendbar" id="legendbar"></div>
   </section>
 
-  <footer class="afoot"><span class="sn">Supernova · live on testnet</span> · 600ms rounds on MultiversX · gasless, no wallet · every collect lands onchain</footer>
+  <footer class="afoot"><span class="sn">Supernova · live on testnet</span> · 600ms rounds on MultiversX · gasless, no wallet · every grab lands onchain</footer>
 </div>
 
 <script type="module">
@@ -268,58 +333,143 @@ import { mountGalaxy } from "/arcade-galaxy.js";
 
 const $ = (id) => document.getElementById(id);
 const arcade = createArcade(ARCADE_CONFIG);
-const galaxy = mountGalaxy({ intensity: 0.5, focusShard: 0 });
+const galaxy = mountGalaxy({ intensity: 0.4, focusShard: 0 });
 
 // config defaults mirror the contract; onchain mode overrides from getScheduleParams.
-// rampPermil 500 = sparse/slow open, dense/fast finish; lateWindowShrinkPermil 0 = off.
-const DEFAULTS = { roundLengthMs: 60_000, catchWindowMs: 8_000, items: 440, goodPermil: 720, rampPermil: 500, lateWindowShrinkPermil: 0 };
+// items 110 over 60s ≈ 1.8/sec (ramped: forgiving open, frantic finish) — a clean,
+// readable lane stream. The client always MIRRORS the deployed getScheduleParams, so
+// this is just the practice/fallback default; deploy the contract with a matching
+// `items` (see HANDOFF) for onchain parity.
+const DEFAULTS = { roundLengthMs: 60_000, catchWindowMs: 8_000, items: 110, goodPermil: 720, rampPermil: 500, lateWindowShrinkPermil: 0 };
 
-// GOOD events — wins you TAP to collect. Funny, crypto-native, MvX-neutral. By id.
+// item types, mapped by id. name + icon symbol. Topical, MvX-neutral, a little funny.
 const GOOD_TYPES = [
-  "Blue chip",
-  "Clean 100x",
-  "Airdrop hit",
-  "Found loot",
-  "Bought the dip",
-  "Sold the top",
-  "Bridged safely",
-  "Diamond hands",
-  "Green candle",
-  "Funding flip",
-  "Treasure",
-  "Mint flipped",
+  { n: "EGLD",          i: "egld" },
+  { n: "Staking yield", i: "yield" },
+  { n: "Fresh NFT",     i: "gem" },
+  { n: "Green candle",  i: "candle-up" },
+  { n: "Airdrop hit",   i: "airdrop" },
+  { n: "Clean 100x",    i: "rocket" },
+  { n: "Blue chip",     i: "shield" },
+  { n: "Bridged safe",  i: "bridge" },
+  { n: "Bought the dip", i: "candle-up" },
+  { n: "Diamond hands", i: "gem" },
 ];
-// BAD events — hazards you LEAVE. Tap one = oops/penalty. Funny crypto losses.
 const BAD_TYPES = [
-  "Obvious rug",
-  "Ugly JPG",
-  "Scam mint",
-  "Presale nuked",
-  "Fake airdrop",
-  "Drained wallet",
-  "Honeypot",
-  "Down bad",
-  "Exit liquidity",
-  "Phishing link",
-  "Leverage rekt",
-  "Dead chain",
+  { n: "Rug pull",      i: "rug" },
+  { n: "Got hacked",    i: "skull" },
+  { n: "Gas spike",     i: "gas" },
+  { n: "MEV sandwich",  i: "sandwich" },
+  { n: "Red candle",    i: "candle-down" },
+  { n: "Honeypot",      i: "hook" },
+  { n: "Scam mint",     i: "skull" },
+  { n: "Phishing link", i: "hook" },
+  { n: "Down bad",      i: "candle-down" },
+  { n: "Exit liquidity", i: "door" },
 ];
-const COLS = 3;
+const LANES = 3;
+const HALF = 27; // half the 54px token, so transforms center the token
+const GRAB_T = 0.9; // depth at which an item reaches you: in your lane here = auto-grab
 
 let cfg = { ...DEFAULTS };
 let onchain = false;
 
 const G = {
   phase: "idle", seed: 0n, startMs: 0, roundId: 0,
-  schedule: [], visibleFall: 2800, missLineY: 280, arenaH: 384,
+  schedule: [], travelMs: 2300,
+  arenaW: 480, arenaH: 380,
+  vx: 240, vy: 53, nearY: 312, laneNearX: [110, 240, 370],   // perspective anchors (set by measure)
+  astroLane: 1, astroX: 240, astroTargetX: 240,
+  rungs: [], streaks: [],
   nextIdx: 0, gotCount: 0, oopsCount: 0, collectedAmt: 0, penaltyAmt: 0, missedCount: 0, spawnSeq: 0,
-  totalGood: 0,
-  cards: new Map(), score: 0, dispScore: 0, raf: null,
+  totalGood: 0, items: new Map(), score: 0, dispScore: 0, raf: null,
 };
 
+// ---------- perspective: project a lane + depth t (0 far .. 1 near) to screen ----------
+function project(lane, t) {
+  const p = t * t;                               // ease: slow + small far, rushing + big near
+  return {
+    x: G.vx + (G.laneNearX[lane] - G.vx) * p,
+    y: G.vy + (G.nearY - G.vy) * p,
+    s: 0.30 + 1.02 * p,
+  };
+}
+
+// ---------- geometry + the static track (recomputed on start + resize) ----------
+function measure() {
+  const arena = $("arena");
+  G.arenaW = arena.clientWidth || 480;
+  G.arenaH = arena.clientHeight || 380;
+  G.vx = G.arenaW / 2;
+  G.vy = Math.round(G.arenaH * 0.14);
+  G.nearY = Math.round(G.arenaH * 0.82);
+  const spread = G.arenaW * 0.30;
+  G.laneNearX = [G.vx - spread, G.vx, G.vx + spread];
+  if (G.phase !== "playing") { G.astroLane = 1; G.astroX = G.laneNearX[1]; G.astroTargetX = G.laneNearX[1]; }
+  buildTrack();
+}
+
+function buildTrack() {
+  const lane = G.laneNearX, gap = lane[1] - lane[0];
+  const railL = lane[0] - gap / 2, railR = lane[2] + gap / 2;
+  const d1 = (lane[0] + lane[1]) / 2, d2 = (lane[1] + lane[2]) / 2;
+  const ny = G.nearY + 30, vx = G.vx, vy = G.vy; // extend the floor a touch past nearY
+  const line = (x1, y1, x2, y2, w, o) =>
+    `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="var(--c)" stroke-width="${w}" stroke-opacity="${o}" stroke-linecap="round"/>`;
+  $("tracksvg").innerHTML =
+    `<defs><linearGradient id="floorg" x1="0" y1="0" x2="0" y2="1">
+       <stop offset="0" stop-color="var(--c)" stop-opacity="0.02"/>
+       <stop offset="1" stop-color="var(--c)" stop-opacity="0.12"/></linearGradient></defs>` +
+    `<path d="M${vx} ${vy} L${railR} ${ny} L${railL} ${ny} Z" fill="url(#floorg)"/>` +
+    line(vx, vy, railL, ny, 2, 0.55) + line(vx, vy, railR, ny, 2, 0.55) +
+    line(vx, vy, d1, ny, 1.3, 0.28) + line(vx, vy, d2, ny, 1.3, 0.28);
+}
+
+// ---------- track rungs (sleepers) + speed streaks ----------
+function buildEffects() {
+  const rungBox = $("rungs");
+  rungBox.innerHTML = "";
+  G.rungs = [];
+  for (let i = 0; i < 9; i++) {
+    const el = document.createElement("div");
+    el.className = "rung";
+    rungBox.appendChild(el);
+    G.rungs.push({ el, phase: i / 9 });
+  }
+  G.streaks = [];
+  for (let i = 0; i < 7; i++) {
+    const el = document.createElement("div");
+    el.className = "streak";
+    rungBox.appendChild(el);
+    G.streaks.push({ el, phase: i / 7, side: i % 2 ? 1 : -1, off: 0.12 + (i % 4) * 0.13 });
+  }
+}
+function renderEffects(elapsed) {
+  const lane = G.laneNearX, gap = lane[1] - lane[0];
+  const railLnear = lane[0] - gap / 2, railRnear = lane[2] + gap / 2;
+  for (const r of G.rungs) {
+    const t = ((elapsed / 760) + r.phase) % 1;
+    const p = t * t;
+    const lx = G.vx + (railLnear - G.vx) * p, rx = G.vx + (railRnear - G.vx) * p;
+    const y = G.vy + (G.nearY + 30 - G.vy) * p;
+    r.el.style.transform = `translate(${lx.toFixed(1)}px, ${y.toFixed(1)}px) scaleX(${(rx - lx).toFixed(1)})`;
+    r.el.style.opacity = (0.06 + 0.34 * p).toFixed(3);
+  }
+  for (const s of G.streaks) {
+    const t = ((elapsed / 520) + s.phase) % 1;
+    const p = t * t;
+    const baseX = G.vx + s.side * (G.arenaW * s.off);
+    const x = G.vx + (baseX - G.vx) * p;
+    const y = G.vy + (G.nearY - G.vy) * p;
+    s.el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
+    s.el.style.height = (3 + 16 * p).toFixed(1) + "px";
+    s.el.style.opacity = (0.05 + 0.3 * p).toFixed(3);
+  }
+}
+
+function buildMotes() {} // (replaced by streaks)
+
 // ---------- mode detection ----------
-// The "undeployed" sentinel is the all-zero system SC address, which bech32-encodes
-// as all `q`s (zero -> q). Match it exactly, and also catch any all-zero hex remnant.
 const UNDEPLOYED_PLACEHOLDER = "erd1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq6gq4hu";
 function isPlaceholder(addr) {
   return !addr || addr === UNDEPLOYED_PLACEHOLDER || /^erd1q{50,}/.test(addr) || /^erd1?0{20,}/.test(addr);
@@ -339,7 +489,8 @@ function setMode(on, label) {
   const b = $("modeBadge");
   b.textContent = label;
   b.className = "mode " + (on ? "onchain" : "practice");
-  $("centerText").innerHTML = `Crypto events will stream in. Grab the good, dodge the bad, stack the most in <b>${Math.round(cfg.roundLengthMs / 1000)} seconds</b>.`;
+  $("centerText").innerHTML = `Swipe to switch lanes. Line up the mint wins, dodge the red rugs, stack the most in <b>${Math.round(cfg.roundLengthMs / 1000)} seconds</b>.`;
+  setStatus("", on ? "Onchain. Every grab is a real gasless transaction." : "Practice mode. Scores and NOVA go onchain once the cabinet is live.");
 }
 
 // ---------- start ----------
@@ -348,7 +499,6 @@ async function onStart() {
   if (G.phase === "starting" || G.phase === "playing") return;
   initAudio();
   $("claim").classList.remove("show");
-  setStatus("", "");
   if (onchain) return startOnchain();
   return startLocal();
 }
@@ -357,7 +507,7 @@ function startLocal() {
 }
 async function startOnchain() {
   setPhase("starting");
-  showCenter(`<div class="spin"></div><p>Locking your run on Supernova…<br/>the stream is being seeded onchain.</p>`);
+  showCenter(`<div class="spin"></div><p>Locking your run on Supernova…<br/>the feed is being seeded onchain.</p>`);
   const prevRound = G.roundId;
   try {
     await arcade.startRound();
@@ -376,7 +526,7 @@ async function startOnchain() {
 }
 function fallbackToPractice(msg) {
   onchain = false;
-  cfg = { ...DEFAULTS }; // practice previews the intended (ramped) game
+  cfg = { ...DEFAULTS };
   setMode(false, "Practice · fallback");
   setStatus("err", msg);
   startLocal();
@@ -385,12 +535,13 @@ function fallbackToPractice(msg) {
 function beginRound({ seed, startMs, roundId, totalGood }) {
   G.seed = seed; G.startMs = startMs; G.roundId = roundId;
   G.schedule = buildSchedule(seed, cfg);
-  // the perfect-run ceiling: every good collected. Use the onchain value if given,
-  // else compute from the schedule (identical math).
   G.totalGood = totalGood || G.schedule.reduce((s, o) => s + (o.good ? o.amount : 0), 0);
-  G.visibleFall = Math.max(1500, Math.min(2000, cfg.catchWindowMs - 2500));
-  G.arenaH = $("arena").clientHeight || 384;
-  G.missLineY = G.arenaH - 40 - 58;
+  // grab opportunity stays well inside the contract's catch window (block ts = tap +
+  // relay/inclusion latency < start+window). travelMs = far->near time on screen.
+  G.travelMs = Math.max(1900, Math.min(2400, cfg.catchWindowMs - 2300));
+  measure();
+  buildEffects();
+  G.astroLane = 1; G.astroX = G.laneNearX[1]; G.astroTargetX = G.laneNearX[1];
   G.nextIdx = 0; G.gotCount = 0; G.oopsCount = 0; G.collectedAmt = 0; G.penaltyAmt = 0; G.missedCount = 0; G.spawnSeq = 0;
   G.score = 0; G.dispScore = 0;
   $("gotStat").textContent = "0";
@@ -399,10 +550,9 @@ function beginRound({ seed, startMs, roundId, totalGood }) {
   $("bal").firstChild.textContent = "0";
   $("stackFill").style.transform = "scaleX(0)";
   $("rtimerFill").style.transform = "scaleX(1)";
-  clearCards();
+  clearItems();
   hideCenter();
   setPhase("playing");
-  // catch up anything that streamed during the onchain round-lock
   const elapsed0 = now() - G.startMs;
   while (G.nextIdx < G.schedule.length && G.schedule[G.nextIdx].spawnMs <= elapsed0) {
     activate(G.schedule[G.nextIdx], elapsed0); G.nextIdx++;
@@ -418,15 +568,22 @@ function tick() {
   while (G.nextIdx < G.schedule.length && G.schedule[G.nextIdx].spawnMs <= elapsed) {
     activate(G.schedule[G.nextIdx], elapsed); G.nextIdx++;
   }
-  for (const [, c] of G.cards) {
-    if (c.state !== "falling") continue;
-    const age = elapsed - c.o.spawnMs;
-    if (age >= G.visibleFall) { dropCard(c); continue; }
-    const p = age / G.visibleFall;
-    c.el.style.transform = `translateY(${(p * G.missLineY).toFixed(1)}px)`;
-    c.barFill.style.transform = `scaleX(${(1 - p).toFixed(3)})`;
-    if (c.o.good && p > 0.66) c.barFill.style.background = "var(--amber)"; // urgency: grab it!
+  renderEffects(elapsed);
+  for (const [, it] of G.items) {
+    if (it.state !== "live") continue;
+    const t = (elapsed - it.o.spawnMs) / G.travelMs;
+    if (t >= 1) { passItem(it); continue; }      // reached you but not in your lane
+    place(it, t);
+    if (it.o.good && !it.urgent && t > 0.8) { it.urgent = true; it.el.classList.add("urgent"); }
+    // it has reached the front IN your lane -> auto-grab (one real onchain tx)
+    if (t >= GRAB_T && it.lane === G.astroLane) resolveGrab(it);
   }
+  // astronaut holds whichever lane you have steered to
+  G.astroTargetX = G.laneNearX[G.astroLane];
+  G.astroX += (G.astroTargetX - G.astroX) * 0.22;
+  $("runner").style.transform = `translateX(${(G.astroX - G.vx).toFixed(1)}px)`;
+  const pad = $("lanepad");
+  if (pad) { pad.style.left = G.astroX.toFixed(1) + "px"; pad.style.top = (G.nearY + 16).toFixed(1) + "px"; }
   renderScore();
   const left = Math.max(0, cfg.roundLengthMs - elapsed);
   $("timeStat").textContent = (left / 1000).toFixed(1) + "s";
@@ -434,84 +591,89 @@ function tick() {
   G.raf = requestAnimationFrame(tick);
 }
 
-// an item appears and starts falling. Nothing happens to the score until you act
-// (a good collected = +, a bad tapped = penalty). Letting it drop = no effect.
+function place(it, t) {
+  const pr = project(it.lane, t);
+  it.px = pr.x; it.py = pr.y; it.ps = pr.s;
+  it.el.style.transform = `translate(${(pr.x - HALF).toFixed(1)}px, ${(pr.y - HALF).toFixed(1)}px) scale(${pr.s.toFixed(3)})`;
+  it.el.style.zIndex = 5 + Math.round(t * 40); // nearer items render in front
+}
+
 function activate(o, elapsed) {
-  const age = elapsed - o.spawnMs;
-  if (age >= G.visibleFall) {
-    // already past its window before we could render it (round-lock catch-up)
-    if (o.good) { G.missedCount++; }
-    return;
-  }
-  spawnCard(o, age);
+  const t = (elapsed - o.spawnMs) / G.travelMs;
+  if (t >= 1) { if (o.good) G.missedCount++; return; } // already past before render
+  spawnItem(o, t);
 }
 
-function spawnCard(o, age) {
+function spawnItem(o, t) {
   const el = document.createElement("div");
-  let label, sign, cls;
-  if (o.good) {
-    label = GOOD_TYPES[Number(BigInt(o.id) % BigInt(GOOD_TYPES.length))];
-    sign = "+"; cls = "good" + (o.amount >= 9 ? " big" : "");
-  } else {
-    label = BAD_TYPES[Number(BigInt(o.id) % BigInt(BAD_TYPES.length))];
-    sign = "−"; cls = "bad" + (o.amount >= 9 ? " big" : "");
-  }
-  el.className = "card " + cls;
-  const col = G.spawnSeq++ % COLS;
-  const colW = 100 / COLS;
-  el.style.left = (col * colW + (colW - 30) / 2) + "%";
-  el.innerHTML = `<div class="ty">${label}</div><div class="amt">${sign}${o.amount}<span class="m"> NOVA</span></div><div class="bar"><i></i></div>`;
-  const c = { o, el, state: "falling", barFill: el.querySelector(".bar > i") };
-  el.addEventListener("pointerdown", () => tapCard(c), { passive: true });
+  const type = o.good ? GOOD_TYPES[Number(BigInt(o.id) % BigInt(GOOD_TYPES.length))]
+                      : BAD_TYPES[Number(BigInt(o.id) % BigInt(BAD_TYPES.length))];
+  const big = o.amount >= 9;
+  el.className = "item " + (o.good ? "good" : "bad") + (big ? " big" : "");
+  el.title = type.n;
+  el.innerHTML =
+    `<div class="tok"><span class="gi"><svg viewBox="0 0 24 24"><use href="#ic-${type.i}"/></svg></span></div>` +
+    `<span class="amt">${o.amount}</span>`;
+  const lane = G.spawnSeq++ % LANES;
+  const it = { o, el, state: "live", lane, urgent: false, px: G.vx, py: G.vy, ps: 0.3 };
   $("arena").appendChild(el);
-  G.cards.set(o.id, c);
-  const p = Math.max(0, age) / G.visibleFall;
-  el.style.transform = `translateY(${(p * G.missLineY).toFixed(1)}px)`;
+  G.items.set(o.id, it);
+  place(it, Math.max(0, t));
 }
 
-function tapCard(c) {
-  if (c.state !== "falling") return;
+// an item reached the front in the astronaut's lane: auto-grab it. ALWAYS one real
+// onchain tx; the contract referees good (+) vs bad (penalty) by block timestamp.
+function resolveGrab(it) {
+  if (it.state !== "live") return;
+  it.state = "acted";
   galaxy.pulse(0);
-  c.state = "acted";
-  // fire the REAL collect transaction either way; the contract decides the effect.
-  if (onchain) arcade.collect(G.roundId, c.o.id).catch(() => {});
-  if (c.o.good) {
-    // grabbed a win → +score
-    G.gotCount++;
-    G.collectedAmt += c.o.amount;
-    G.score += c.o.amount;
+  if (onchain) arcade.collect(G.roundId, it.o.id).catch(() => {});
+  const inner = $("runnerInner");
+  const el = it.el;
+  el.classList.add("fx");
+  el.style.transition = "transform 0.3s ease-out, opacity 0.3s ease-out, filter 0.1s";
+  if (it.o.good) {
+    G.gotCount++; G.collectedAmt += it.o.amount; G.score += it.o.amount;
     $("gotStat").textContent = G.gotCount;
     flashScore("up");
-    floatText(c.el, "+" + c.o.amount, "gain");
-    blip(660, 0.07, "triangle"); vibrate(8);
-    c.el.classList.add("collected");
+    floatText(it.px, it.py, "+" + it.o.amount, "gain");
+    blip(660, 0.07, "triangle"); if (it.o.amount >= 9) blip(990, 0.09, "triangle");
+    vibrate(8);
+    // pull the win to the astronaut
+    el.style.opacity = "0";
+    el.style.transform = `translate(${(G.laneNearX[it.lane] - HALF).toFixed(1)}px, ${(G.nearY - HALF).toFixed(1)}px) scale(0.42)`;
+    inner.classList.remove("grab"); void inner.offsetWidth; inner.classList.add("grab");
   } else {
-    // tapped a rug → penalty
-    G.oopsCount++;
-    G.penaltyAmt += c.o.amount;
-    G.score = Math.max(0, G.score - c.o.amount);
+    G.oopsCount++; G.penaltyAmt += it.o.amount; G.score = Math.max(0, G.score - it.o.amount);
     $("oopsStat").textContent = G.oopsCount;
     flashScore("down");
-    floatText(c.el, "−" + c.o.amount, "loss");
+    floatText(it.px, it.py, "−" + it.o.amount, "loss");
     blip(150, 0.12, "sawtooth"); vibrate(22);
-    c.el.classList.add("zapped");
+    el.style.opacity = "0";
+    el.style.filter = "brightness(1.7) saturate(1.5)";
+    el.style.transform = `translate(${(it.px - HALF).toFixed(1)}px, ${(it.py - HALF).toFixed(1)}px) scale(${(it.ps * 0.7).toFixed(2)}) rotate(10deg)`;
+    inner.classList.remove("hit"); void inner.offsetWidth; inner.classList.add("hit");
   }
-  setTimeout(() => removeCard(c.o.id), 380);
+  setTimeout(() => removeItem(it.o.id), 340);
 }
 
-function dropCard(c) {
-  c.state = "dropped";
-  if (c.o.good) {
-    G.missedCount++; // a win slipped past
-  }
-  c.el.classList.add("gone");
-  setTimeout(() => removeCard(c.o.id), 380);
+// an item reached the front but NOT in your lane: it blows past. A good one is a
+// missed win (no penalty); a bad one is safely dodged. Either way, no tx.
+function passItem(it) {
+  it.state = "passed";
+  if (it.o.good) G.missedCount++;
+  const el = it.el;
+  el.classList.add("fx");
+  el.style.transition = "transform 0.34s ease-in, opacity 0.34s ease-in";
+  el.style.opacity = "0";
+  el.style.transform = `translate(${(it.px - HALF).toFixed(1)}px, ${(G.arenaH + 30).toFixed(1)}px) scale(${(it.ps * 1.5).toFixed(2)})`;
+  setTimeout(() => removeItem(it.o.id), 360);
 }
 
-function removeCard(id) { const c = G.cards.get(id); if (c) { c.el.remove(); G.cards.delete(id); } }
-function clearCards() { for (const [, c] of G.cards) c.el.remove(); G.cards.clear(); }
+function removeItem(id) { const it = G.items.get(id); if (it) { it.el.remove(); G.items.delete(id); } }
+function clearItems() { for (const [, it] of G.items) it.el.remove(); G.items.clear(); }
 
-// ---------- score (tweened up) ----------
+// ---------- score (tweened) ----------
 function renderScore() {
   const target = Math.max(0, G.score);
   G.dispScore += (target - G.dispScore) * 0.25;
@@ -528,17 +690,16 @@ function flashScore(dir) {
   el.classList.add(dir === "up" ? "flash-up" : "flash-down");
   if (dir === "down") el.classList.add("shake");
   clearTimeout(flashTimer);
-  flashTimer = setTimeout(() => el.classList.remove("flash-up", "flash-down", "shake"), 200);
+  flashTimer = setTimeout(() => el.classList.remove("flash-up", "flash-down", "shake"), 220);
 }
-function floatText(cardEl, text, cls) {
+function floatText(x, y, text, cls) {
   const f = document.createElement("span");
   f.className = "float " + cls;
   f.textContent = text;
-  const arena = $("arena"), ar = arena.getBoundingClientRect(), cr = cardEl.getBoundingClientRect();
-  f.style.left = (cr.left - ar.left + cr.width / 2 - 12) + "px";
-  f.style.top = (cr.top - ar.top) + "px";
-  arena.appendChild(f);
-  setTimeout(() => f.remove(), 700);
+  f.style.left = (x - 12) + "px";
+  f.style.top = (y - 22) + "px";
+  $("arena").appendChild(f);
+  setTimeout(() => f.remove(), 760);
 }
 
 // ---------- end of round ----------
@@ -546,18 +707,13 @@ async function endRoundFlow() {
   if (G.phase !== "playing") return;
   setPhase("ending");
   cancelAnimationFrame(G.raf);
-  clearCards();
+  clearItems();
   $("timeStat").textContent = "0.0s";
   $("rtimerFill").style.transform = "scaleX(0)";
 
-  // the live projection tracked every grab, so it IS the final
   if (!onchain) return reveal(localFinal(), 0, true);
 
   showCenter(`<div class="spin"></div><p>Run over. Tallying your score onchain…</p>`);
-  // endRound must actually EXECUTE (not just relay) to record the score and put you
-  // on the board. It only succeeds once the BLOCK timestamp passes start+length —
-  // Supernova blocks trail wall-clock slightly, so the first send can revert as
-  // "round not over yet". Resend until getRound reports ended (not until relay-ack).
   let ended = false;
   for (let i = 0; i < 12 && !ended; i++) {
     try { await arcade.endRound(G.roundId); } catch (err) { /* relay hiccup — retry */ }
@@ -565,7 +721,6 @@ async function endRoundFlow() {
     const r = await arcade.getRound().catch(() => null);
     if (r && r.ended) ended = true;
   }
-  // authoritative reads once the contract has tallied
   let final = ended ? await arcade.getFinal().catch(() => null) : null;
   if (final == null) final = localFinal();
   const claimable = (await arcade.getClaimable().catch(() => 0)) || 0;
@@ -573,7 +728,6 @@ async function endRoundFlow() {
   refreshBoard();
 }
 
-// the live projection converges to the contract's final; use it as the local score
 function localFinal() { return Math.max(0, Math.round(G.score)); }
 
 function reveal(final, claimable, practice, ended = true) {
@@ -588,21 +742,20 @@ function reveal(final, claimable, practice, ended = true) {
   let html =
     `<div class="final">Final score${tag}<b>${fmt(final)} NOVA</b></div>` +
     `<div class="tally">` +
-      `<div class="tr got"><span class="ico">▲</span><span class="lab">Collected<em>${G.gotCount} win${G.gotCount === 1 ? "" : "s"} grabbed</em></span><b>+${fmt(G.collectedAmt)}</b></div>` +
-      `<div class="tr missed"><span class="ico">·</span><span class="lab">Let slip<em>${missed} win${missed === 1 ? "" : "s"} past the line</em></span><b>${fmt(missed)}</b></div>` +
-      `<div class="tr oops"><span class="ico">☠</span><span class="lab">Oops taps${G.oopsCount ? `<em>${G.oopsCount} rug${G.oopsCount === 1 ? "" : "s"} grabbed</em>` : ""}</span><b>−${fmt(G.penaltyAmt)}</b></div>` +
+      `<div class="tr got"><span class="ico">▲</span><span class="lab">Grabbed<em>${G.gotCount} win${G.gotCount === 1 ? "" : "s"} collected</em></span><b>+${fmt(G.collectedAmt)}</b></div>` +
+      `<div class="tr missed"><span class="ico">·</span><span class="lab">Let slip<em>${missed} win${missed === 1 ? "" : "s"} blew past you</em></span><b>${fmt(missed)}</b></div>` +
+      `<div class="tr oops"><span class="ico">☠</span><span class="lab">Oops grabs${G.oopsCount ? `<em>${G.oopsCount} rug${G.oopsCount === 1 ? "" : "s"} grabbed</em>` : ""}</span><b>−${fmt(G.penaltyAmt)}</b></div>` +
     `</div>` +
-    `<div class="row" style="margin-top:2px"><button class="btn" id="againBtn">Run again</button>`;
+    `<div class="row"><button class="btn" id="againBtn">Run again</button>`;
   if (onchain && claimable > 0) html += `<button class="btn gold" id="claimNovaBtn">Claim ${fmt(claimable)} NOVA</button>`;
   html += `</div>`;
   showCenter(html);
   $("againBtn").addEventListener("click", onStart);
   if (onchain && claimable > 0) $("claimNovaBtn").addEventListener("click", () => claimNova(claimable));
 
-  // a board spot only opens when the score is actually recorded onchain (round ended)
   if (onchain && ended && final > 0) { $("claim").classList.add("show"); $("handle").focus({ preventScroll: true }); }
-  else if (onchain && ended && final === 0) setStatus("", "Score 0 this run. Collect a win to land on the board.");
-  else if (onchain && !ended) setStatus("err", "Couldn't finalize onchain in time. Your score shows, but it didn't record. Run again to land on the board.");
+  else if (onchain && ended && final === 0) setStatus("", "Score 0 this run. Grab a win to land on the board.");
+  else if (onchain && !ended) setStatus("err", "Couldn't finalize onchain in time. Your score shows but didn't record. Run again to land on the board.");
   else if (!onchain) setStatus("", "Practice run. Scores and NOVA go onchain once the cabinet is live.");
 }
 
@@ -633,7 +786,6 @@ async function claimHandle() {
     const r = await arcade.setHandle(handle);
     setStatus("ok", `On the board. <a href="${r.explorerUrl}" target="_blank" rel="noopener">View tx ↗</a>`);
     $("claimBtn").textContent = "On the board ✓";
-    // the handle takes a moment to index; keep refreshing so your row fills in
     for (let i = 0; i < 6; i++) { await wait(1500); await refreshBoard(); }
   } catch (err) {
     $("claimBtn").disabled = false;
@@ -652,13 +804,13 @@ setInterval(refreshBoard, 2000);
 
 function renderLeaderboard(entries) {
   const box = $("lbRows");
-  if (!onchain) { box.innerHTML = '<div class="lb-empty">Live once the cabinet is deployed.</div>'; return; }
-  if (!entries || entries.length === 0) { box.innerHTML = '<div class="lb-empty">No runs yet. Be the first to stack a score.</div>'; return; }
+  if (!onchain) { box.innerHTML = '<li class="empty">Live once the cabinet is deployed.</li>'; return; }
+  if (!entries || entries.length === 0) { box.innerHTML = '<li class="empty">No runs yet. Be the first to stack a score.</li>'; return; }
   const me = arcade.address;
   box.innerHTML = entries.map((e, i) => {
     const mine = me && e.address === me ? " you" : "";
     const name = e.handle ? escapeHtml(e.handle) : shortAddr(e.address);
-    return `<div class="lb-row${mine}"><span class="rank">${i + 1}</span><span class="handle">${name}</span><span class="score">${fmt(e.score)}</span></div>`;
+    return `<li><span class="rank">${i + 1}</span><span class="who${mine}">${name}</span><span class="sc">${fmt(e.score)}</span></li>`;
   }).join("");
 }
 
@@ -666,7 +818,7 @@ function renderLeaderboard(entries) {
 function setPhase(p) { G.phase = p; }
 function showCenter(html) { const c = $("center"); c.innerHTML = html; c.classList.remove("hide"); }
 function hideCenter() { $("center").classList.add("hide"); }
-function setStatus(kind, html) { const el = $("status"); el.className = "status " + kind; el.innerHTML = html; }
+function setStatus(kind, html) { const el = $("status"); el.className = "status " + kind; $("statusText").innerHTML = html; }
 function now() { return Date.now(); }
 function wait(ms) { return new Promise((r) => setTimeout(r, ms)); }
 function fmt(n) { return Number(n).toLocaleString("en-US"); }
@@ -695,8 +847,55 @@ function blip(freq, dur, type) {
 }
 function vibrate(ms) { try { navigator.vibrate && navigator.vibrate(ms); } catch {} }
 
+// ---------- legend (icons in the "how it works" panel) ----------
+function buildLegend() {
+  const items = [
+    { c: "g", i: "egld", n: "EGLD" }, { c: "g", i: "candle-up", n: "Green candle" },
+    { c: "g", i: "airdrop", n: "Airdrop" }, { c: "g", i: "gem", n: "NFT" }, { c: "g", i: "yield", n: "Yield" },
+    { c: "r", i: "rug", n: "Rug" }, { c: "r", i: "skull", n: "Hack" },
+    { c: "r", i: "gas", n: "Gas spike" }, { c: "r", i: "sandwich", n: "MEV" }, { c: "r", i: "candle-down", n: "Red candle" },
+  ];
+  $("legendbar").innerHTML = items.map((x) =>
+    `<span class="${x.c}"><span class="gi"><svg viewBox="0 0 24 24"><use href="#ic-${x.i}"/></svg></span>${x.n}</span>`
+  ).join("");
+}
+
+// ---------- controls: swipe / tap-a-side / arrow keys to switch lanes ----------
+function moveLane(d) {
+  if (G.phase !== "playing") return;
+  G.astroLane = Math.max(0, Math.min(LANES - 1, G.astroLane + d));
+}
+function setupControls() {
+  const arena = $("arena");
+  let downX = null;
+  arena.addEventListener("pointerdown", (e) => { downX = e.clientX; }, { passive: true });
+  arena.addEventListener("pointerup", (e) => {
+    if (downX == null) return;
+    const dx = e.clientX - downX; downX = null;
+    if (Math.abs(dx) > 22) return moveLane(dx > 0 ? 1 : -1); // a swipe
+    const r = arena.getBoundingClientRect(), rel = e.clientX - r.left; // a tap on a side
+    if (rel < r.width * 0.42) moveLane(-1);
+    else if (rel > r.width * 0.58) moveLane(1);
+  }, { passive: true });
+  arena.addEventListener("pointercancel", () => { downX = null; }, { passive: true });
+  addEventListener("keydown", (e) => {
+    if (e.key === "ArrowLeft" || e.key === "a") moveLane(-1);
+    else if (e.key === "ArrowRight" || e.key === "d") moveLane(1);
+  });
+}
+
 // ---------- boot ----------
+// offline-verify hook (only with ?dbg in the URL; inert in production). Lets a
+// headless preview, where requestAnimationFrame is paused on a hidden page, render
+// a representative frame deterministically.
+if (location.search.includes("dbg")) {
+  window.__dd = { G, getCfg: () => cfg, beginRound, tick, spawnItem, place, project, moveLane, GOOD_TYPES, BAD_TYPES, randomU64 };
+}
 try { const s = localStorage.getItem("degendash_handle"); if (s) $("handle").value = s; } catch {}
+buildLegend();
+setupControls();
+measure();
+buildEffects();
 $("bal").firstChild.textContent = "0";
 $("stackFill").style.transform = "scaleX(0)";
 detectMode();

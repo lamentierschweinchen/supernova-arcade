@@ -11,7 +11,7 @@ export const ARCADE_CONFIG = {
   // The deployed Degen Dash contract (from contract/scripts/deploy-testnet.sh).
   // Until deployed this is the all-zero "undeployed" placeholder, so the game runs
   // locally in PRACTICE mode and the relayer refuses to relay to it.
-  contract: "erd1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq6gq4hu", // SET AFTER DEPLOY (testnet, shard 0)
+  contract: "erd1qqqqqqqqqqqqqpgqt4560zpw4yhdm0tmzj2thxkh9snerm58ppuqp7kyxt", // testnet, shard 0
 
   // The relayer's PUBLIC address (the gas payer). The client builds every tx with
   // this in the `relayer` field. It is in shard 0 (the shared arcade relayer).
