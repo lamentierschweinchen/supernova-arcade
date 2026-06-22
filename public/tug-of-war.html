@@ -1,0 +1,531 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Tug-of-War · Supernova Arcade</title>
+    <meta name="description" content="Pick a side. Every tap is a real onchain transaction pulling the rope your way. A collective faction battle on MultiversX, gasless and no wallet." />
+    <link rel="stylesheet" href="/arcade-shell.css" />
+    <style>
+      /* Tug-of-War surfaces. Neon-arcade shell (Roobert, galaxy, cabinet/screen)
+         comes from /arcade-shell.css. Faction accents: Nova = mint, Flare = amber. */
+      .screen .play { width: 100%; display: flex; flex-direction: column; gap: 12px; align-items: stretch; }
+      /* ── rope ── */
+      .rope-wrap {
+        position: relative;
+        height: 96px;
+        margin: 4px 0 2px;
+        border-radius: 16px;
+        background: radial-gradient(120% 80% at 50% 0%, rgba(35,247,221,0.05), transparent 60%), var(--surface-2);
+        border: 1px solid var(--border-soft);
+        overflow: hidden;
+      }
+      .rope-line {
+        position: absolute;
+        top: 50%;
+        left: 8%;
+        right: 8%;
+        height: 3px;
+        transform: translateY(-50%);
+        border-radius: 4px;
+        background: linear-gradient(90deg, var(--mint), #5c6f6e 50%, var(--amber));
+        opacity: 0.7;
+      }
+      .zone {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        width: 14%;
+        opacity: 0.16;
+      }
+      .zone.a { left: 0; background: linear-gradient(90deg, var(--mint), transparent); }
+      .zone.b { right: 0; background: linear-gradient(270deg, var(--amber), transparent); }
+      .center-mark {
+        position: absolute;
+        top: 8px;
+        bottom: 8px;
+        left: 50%;
+        width: 1px;
+        transform: translateX(-50%);
+        background: rgba(255,255,255,0.14);
+      }
+      .knot {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 40px;
+        height: 40px;
+        transform: translate(-50%, -50%);
+        transition: left 0.65s cubic-bezier(.34,1.4,.5,1);
+        border-radius: 50%;
+        background: radial-gradient(circle at 50% 40%, rgba(35,247,221,0.25), rgba(14,17,23,0.9));
+        border: 1.5px solid var(--mint);
+        box-shadow: 0 0 12px rgba(35,247,221,0.38);
+        display: grid;
+        place-items: center;
+      }
+      .knot svg { width: 18px; height: 14px; }
+      /* the knot jolts toward the side you pull for */
+      .knot.jolt-a { animation: knot-jolt-a 0.35s ease-out; }
+      .knot.jolt-b { animation: knot-jolt-b 0.35s ease-out; }
+      @keyframes knot-jolt-a { 30% { transform: translate(-50%, -50%) translateX(-7px) scale(1.12); } to { transform: translate(-50%, -50%); } }
+      @keyframes knot-jolt-b { 30% { transform: translate(-50%, -50%) translateX(7px) scale(1.12); } to { transform: translate(-50%, -50%); } }
+      @media (prefers-reduced-motion: reduce) { .knot.jolt-a, .knot.jolt-b { animation: none; } }
+      .side-tally {
+        position: absolute;
+        top: 8px;
+        font-family: var(--mono);
+        font-variant-numeric: tabular-nums;
+        font-weight: 800;
+        font-size: 19px;
+      }
+      .side-tally.a { left: 12px; color: var(--mint); }
+      .side-tally.b { right: 12px; color: var(--amber); }
+      .side-name {
+        position: absolute;
+        bottom: 8px;
+        font-size: 11px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        font-weight: 600;
+      }
+      .side-name.a { left: 12px; color: #79e6d8; }
+      .side-name.b { right: 12px; color: #c79a44; }
+
+      /* ── side picker ── */
+      .sides { display: flex; gap: 10px; margin: 12px 0; }
+      .side-btn {
+        flex: 1;
+        cursor: pointer;
+        border-radius: 14px;
+        padding: 14px 10px;
+        text-align: center;
+        border: 1.5px solid var(--border);
+        background: var(--surface-2);
+        transition: border-color 0.15s, background 0.15s, transform 0.06s;
+        user-select: none;
+      }
+      .side-btn:active { transform: scale(0.98); }
+      .side-btn .tag { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-faint); }
+      .side-btn .nm { font-size: 18px; font-weight: 700; margin-top: 2px; }
+      .side-btn.a .nm { color: var(--mint); }
+      .side-btn.b .nm { color: var(--amber); }
+      .side-btn.sel.a { border-color: var(--mint); background: rgba(35,247,221,0.1); box-shadow: 0 0 18px rgba(35,247,221,0.18); }
+      .side-btn.sel.b { border-color: var(--amber); background: rgba(245,181,68,0.1); box-shadow: 0 0 18px rgba(245,181,68,0.18); }
+
+      .timer { font-family: var(--mono); font-variant-numeric: tabular-nums; font-weight: 700; font-size: 16px; color: var(--text); }
+      .pull-btn.a { background: var(--mint); color: #04221F; box-shadow: 0 0 0 1px rgba(35,247,221,0.22), 0 6px 16px rgba(0,0,0,0.35); border-bottom: 3px solid #0e9c8c; }
+      .pull-btn.b { background: var(--amber); color: #2a1c02; box-shadow: 0 0 0 1px rgba(245,181,68,0.22), 0 6px 16px rgba(0,0,0,0.35); border-bottom: 3px solid #b9842a; }
+      .result {
+        text-align: center;
+        font-weight: 600;
+        font-size: 13.5px;
+        padding: 9px;
+        border-radius: 10px;
+        background: rgba(35,247,221,0.04);
+        border: 1px solid var(--border-soft);
+        margin-top: 10px;
+        color: var(--text-dim);
+      }
+      .result .a { color: var(--mint); }
+      .result .b { color: var(--amber); }
+
+      @media (prefers-reduced-motion: reduce) { .knot { transition: none; } }
+    </style>
+      <!-- Vercel Web Analytics -->
+    <script defer src="/_vercel/insights/script.js"></script>
+</head>
+  <body style="--c:#23F7DD" data-shard="shard 1">
+    <div class="scan"></div><div class="vignette"></div><div class="floor"></div>
+    <div class="brk tl"></div><div class="brk tr"></div><div class="brk bl"></div><div class="brk br"></div>
+    <div class="wrap">
+      <header class="abar">
+        <a class="back" href="/arcade"><span aria-hidden="true">&larr;</span> Arcade</a>
+        <span class="lockup"><img src="/mvx-wordmark.svg" alt="MultiversX" /><span class="shard">shard 1</span></span>
+      </header>
+
+      <h1>Tug-of-War</h1>
+      <p class="sub">Pick a side. Every tap is a <b>real onchain transaction</b> pulling the rope your way. The tally is shared and onchain; it settles in about two seconds.</p>
+      <div class="onetap"><span class="ic"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M13 2 3 14h7l-1 8 10-12h-7z" stroke="#23F7DD" stroke-width="1.6" stroke-linejoin="round"/></svg></span><span class="t"><b>No wallet, just play.</b> A key is created in your browser and we cover the gas.</span></div>
+
+      <div class="cabinet">
+        <div class="cab-marquee">Tug-of-War · pick a side, pull the rope</div>
+        <div class="screen">
+          <div class="play">
+            <div class="row" style="justify-content: space-between; width: 100%">
+              <span class="readout">Round <span id="roundId">1</span></span>
+              <span class="timer" id="timer">2:00</span>
+            </div>
+            <div class="rope-wrap">
+              <div class="zone a"></div>
+              <div class="zone b"></div>
+              <div class="rope-line"></div>
+              <div class="center-mark"></div>
+              <div class="side-tally a" id="tallyA">0</div>
+              <div class="side-tally b" id="tallyB">0</div>
+              <div class="side-name a">Nova</div>
+              <div class="side-name b">Flare</div>
+              <div class="knot" id="knot"><svg class="xmark" viewBox="0 0 192 148" aria-hidden="true"><path d="M106.4,74L192,28L177.6,0.2L99.2,32.1c-2,0.8-4.3,0.8-6.3,0L14.5,0.2L0.1,28l85.6,46l-85.6,46l14.4,27.8l78.4-31.9c2-0.8,4.3-0.8,6.3,0l78.4,31.9l14.4-27.8L106.4,74z"/></svg></div>
+            </div>
+            <div class="sides">
+              <div class="side-btn a" id="sideA" role="button" tabindex="0">
+                <div class="tag">Team</div>
+                <div class="nm">Nova</div>
+              </div>
+              <div class="side-btn b" id="sideB" role="button" tabindex="0">
+                <div class="tag">Team</div>
+                <div class="nm">Flare</div>
+              </div>
+            </div>
+            <button class="btn pull-btn a" id="pullBtn" disabled>Pick a side to pull</button>
+            <div class="result hidden" id="result"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="stats">
+        <div class="stat"><div class="num" id="yourPulls">0</div><div class="lbl">Your pulls</div></div>
+        <div class="stat"><div class="num on" id="globalActions">0</div><div class="lbl">Onchain pulls</div></div>
+        <div class="stat"><div class="num" id="players">0</div><div class="lbl">Pullers</div></div>
+      </div>
+
+      <div class="status" id="status"><span class="dot"></span><span id="statusText">Warming up…</span></div>
+
+      <div class="card">
+        <p class="card-title"><span class="gd"></span>Top pullers</p>
+        <ul class="lb" id="leaderboard">
+          <li><span class="empty">No pulls yet. Be the first.</span></li>
+        </ul>
+        <div class="row hidden" id="nameRow" style="margin-top: 12px">
+          <input class="name-input" id="nameInput" maxlength="32" placeholder="Add a name for the board" />
+          <button class="btn ghost" id="nameBtn" style="width:auto; padding:12px 16px">Save</button>
+        </div>
+      </div>
+
+      <div class="card hidden" id="feedCard">
+        <p class="card-title"><span class="gd"></span>Recent transactions</p>
+        <ul class="feed" id="feed"></ul>
+      </div>
+
+      <footer class="afoot"><span class="sn">Supernova · live on testnet</span> · 600ms rounds on MultiversX · gasless, no wallet · the shared tally is read straight from the chain</footer>
+    </div>
+
+    <script type="module">
+      import { createArcadeClient } from "/arcade-core.js";
+      import { mountGalaxy } from "/arcade-galaxy.js";
+
+      const client = createArcadeClient("tugofwar");
+      // dimmed galaxy backdrop; a pull fires a photon in its team's shard color
+      const galaxy = mountGalaxy({ intensity: 0.5, focusShard: 1 });
+      const $ = (id) => document.getElementById(id);
+      const fmt = (n) => (n == null ? "···" : Number(n).toLocaleString("en-US"));
+      const ROUND_MS = 120000; // mirrors ROUND_DURATION_MS
+      const COLORS = ["Nova", "Flare"];
+
+      // unified view state
+      const S = {
+        side: null, // 0 = Nova(A), 1 = Flare(B)
+        onchain: { roundId: 1, a: 0, b: 0, start: Date.now(), global: 0, players: 0 },
+        opt: { a: 0, b: 0 }, // optimistic deltas since last poll (deployed mode)
+        local: { roundId: 1, a: 0, b: 0, start: Date.now(), lastResult: null }, // not-deployed preview
+        yourPulls: 0,
+        lastResult: null, // { roundId, winner, a, b }
+        feed: [],
+        named: false,
+      };
+
+      // ---------- rendering ----------
+      function view() {
+        if (client.deployed) {
+          return {
+            roundId: S.onchain.roundId,
+            a: S.onchain.a + S.opt.a,
+            b: S.onchain.b + S.opt.b,
+            start: S.onchain.start,
+            global: S.onchain.global + S.opt.a + S.opt.b,
+            players: S.onchain.players,
+            lastResult: S.lastResult,
+          };
+        }
+        return {
+          roundId: S.local.roundId,
+          a: S.local.a,
+          b: S.local.b,
+          start: S.local.start,
+          global: S.local.a + S.local.b,
+          players: S.local.a + S.local.b > 0 ? 2 : 0,
+          lastResult: S.local.lastResult,
+        };
+      }
+
+      function render() {
+        const v = view();
+        $("roundId").textContent = v.roundId;
+        $("tallyA").textContent = fmt(v.a);
+        $("tallyB").textContent = fmt(v.b);
+        $("globalActions").textContent = fmt(v.global);
+        $("players").textContent = fmt(v.players);
+        $("yourPulls").textContent = fmt(S.yourPulls);
+
+        const total = v.a + v.b;
+        const pct = total === 0 ? 50 : (v.b / total) * 100;
+        $("knot").style.left = Math.max(9, Math.min(91, pct)) + "%";
+
+        // timer
+        const remaining = Math.max(0, v.start + ROUND_MS - Date.now());
+        const mm = Math.floor(remaining / 60000);
+        const ss = Math.floor((remaining % 60000) / 1000);
+        $("timer").textContent = mm + ":" + String(ss).padStart(2, "0");
+
+        // last result banner
+        const r = v.lastResult;
+        const rEl = $("result");
+        if (r && r.roundId > 0) {
+          const w = r.winner;
+          const label =
+            w === 2
+              ? `Round ${r.roundId}: a draw (${fmt(r.a)} – ${fmt(r.b)})`
+              : `Round ${r.roundId}: <span class="${w === 0 ? "a" : "b"}">${COLORS[w]}</span> won ${fmt(Math.max(r.a, r.b))} – ${fmt(Math.min(r.a, r.b))}`;
+          rEl.innerHTML = label;
+          rEl.classList.remove("hidden");
+        } else {
+          rEl.classList.add("hidden");
+        }
+      }
+
+      function setStatus(kind, html) {
+        const el = $("status");
+        el.className = "status " + (kind || "");
+        $("statusText").innerHTML = html;
+      }
+
+      function renderFeed() {
+        if (!S.feed.length) return;
+        $("feedCard").classList.remove("hidden");
+        $("feed").innerHTML = S.feed
+          .map(
+            (e) =>
+              `<li><span class="tag ${e.state}">${e.state}</span>` +
+              (e.hash
+                ? `<a href="${client.explorer}/transactions/${e.hash}" target="_blank" rel="noopener">${e.hash.slice(0, 10)}…</a>`
+                : `<span>${e.note || ""}</span>`) +
+              `</li>`,
+          )
+          .join("");
+      }
+
+      function renderLeaderboard(entries) {
+        const ul = $("leaderboard");
+        if (!entries || !entries.length) {
+          ul.innerHTML = `<li><span class="empty">No pulls yet. Be the first.</span></li>`;
+          return;
+        }
+        const me = client.address;
+        ul.innerHTML = entries
+          .slice(0, 8)
+          .map((e, i) => {
+            const you = e.address === me;
+            const name = e.handle && e.handle.length ? e.handle : e.address.slice(0, 6) + "…" + e.address.slice(-4);
+            return `<li><span class="rank">${i + 1}</span><span class="who ${you ? "you" : ""}">${escapeHtml(name)}${you ? " (you)" : ""}</span><span class="sc">${fmt(e.score)}</span></li>`;
+          })
+          .join("");
+      }
+
+      function escapeHtml(s) {
+        return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+      }
+
+      // ---------- pulling ----------
+      function pickSide(side) {
+        S.side = side;
+        $("sideA").classList.toggle("sel", side === 0);
+        $("sideB").classList.toggle("sel", side === 1);
+        const btn = $("pullBtn");
+        btn.disabled = false;
+        btn.className = "btn pull-btn " + (side === 0 ? "a" : "b");
+        btn.textContent = "PULL FOR " + COLORS[side].toUpperCase();
+      }
+
+      async function pull() {
+        if (S.side == null) return;
+        const side = S.side;
+        S.yourPulls++;
+        galaxy.pulse(side === 0 ? 1 : 0); // Nova→mint shard, Flare→amber shard
+
+        // knot jolts toward your side
+        const knot = $("knot");
+        if (knot) {
+          const jc = side === 0 ? "jolt-a" : "jolt-b";
+          knot.classList.remove("jolt-a", "jolt-b");
+          void knot.offsetWidth;
+          knot.classList.add(jc);
+          setTimeout(() => knot.classList.remove(jc), 360);
+        }
+
+        if (client.deployed) {
+          if (side === 0) S.opt.a++;
+          else S.opt.b++;
+          render();
+          try {
+            const { txHash } = await client.sendAction("pull", [client.u8ToHex(side)]);
+            const entry = { hash: txHash, state: "pending" };
+            S.feed.unshift(entry);
+            if (S.feed.length > 8) S.feed.length = 8;
+            renderFeed();
+            pollTx(entry);
+            maybeShowNameRow();
+          } catch (err) {
+            handleSendError(err);
+          }
+        } else {
+          // local preview: your taps move your side; the practice bot answers
+          if (side === 0) S.local.a++;
+          else S.local.b++;
+          render();
+          maybeShowNameRow();
+        }
+      }
+
+      async function pollTx(entry) {
+        for (let i = 0; i < 26; i++) {
+          await new Promise((r) => setTimeout(r, 600));
+          const st = await client.txStatus(entry.hash);
+          if (st === "success") {
+            entry.state = "final";
+            renderFeed();
+            return;
+          }
+          if (st === "fail" || st === "invalid") {
+            entry.state = "failed";
+            renderFeed();
+            return;
+          }
+        }
+      }
+
+      function handleSendError(err) {
+        const code = err && err.code;
+        if (code === "rate_limited") {
+          setStatus("warn", "Going fast. You hit the relayer's per-minute limit. Your pulls still register here; onchain resumes in a moment.");
+        } else if (code === "relayer_unavailable" || code === "not_deployed") {
+          setStatus("warn", "The onchain layer is <b>warming up</b>. Your pulls register here for now and go onchain shortly.");
+        } else if (code === "network") {
+          setStatus("err", "Network hiccup reaching the relayer. Your pulls still count here.");
+        } else {
+          setStatus("warn", "Onchain submission is unavailable this moment. Your pulls still register here.");
+        }
+      }
+
+      // ---------- polling onchain (deployed mode) ----------
+      async function poll() {
+        if (!client.deployed) {
+          tickLocalRound();
+          render();
+          return;
+        }
+        const round = await client.query("getRound", []);
+        if (round && round.length >= 5) {
+          S.onchain.roundId = client.decodeU64(round[0]);
+          S.onchain.a = client.decodeU64(round[1]);
+          S.onchain.b = client.decodeU64(round[2]);
+          S.onchain.start = client.decodeU64(round[3]) || S.onchain.start;
+          S.opt.a = 0;
+          S.opt.b = 0; // onchain caught up
+        }
+        const g = await client.query("getGlobalActions", []);
+        if (g && g.length) S.onchain.global = client.decodeU64(g[0]);
+        const last = await client.query("getLastResult", []);
+        if (last && last.length) S.lastResult = decodeRoundResult(last[0]);
+        const top = await client.query("getTopPullers", ["08"]); // top 8
+        if (top) renderLeaderboard(client.decodeLeaderboard(top));
+        const me = client.addressHex();
+        if (me) {
+          const entry = await client.query("getPlayerEntry", [me]);
+          if (entry && entry.length) {
+            S.onchain.players = S.onchain.players; // players via count below
+          }
+        }
+        const pc = await client.query("getPlayerCount", []);
+        if (pc && pc.length) S.onchain.players = client.decodeU64(pc[0]);
+        render();
+      }
+
+      function decodeRoundResult(b64) {
+        const bytes = client.b64ToBytes(b64);
+        if (bytes.length < 33) return null;
+        const u64 = (o) => {
+          let v = 0;
+          for (let i = 0; i < 8; i++) v = v * 256 + bytes[o + i];
+          return v;
+        };
+        return { roundId: u64(0), winner: bytes[8], a: u64(9), b: u64(17) };
+      }
+
+      // local-preview round: a practice bot answers on the opposing side and the
+      // round rolls on the same 2-min timer the contract uses.
+      function tickLocalRound() {
+        if (client.deployed) return;
+        const now = Date.now();
+        // practice bot: mild pulls on the side you did NOT pick (or Flare by default)
+        const botSide = S.side === 1 ? 0 : 1;
+        const botPulls = 1 + Math.floor(Math.random() * 3);
+        if (botSide === 0) S.local.a += botPulls;
+        else S.local.b += botPulls;
+        if (now >= S.local.start + ROUND_MS) {
+          const a = S.local.a,
+            b = S.local.b;
+          S.local.lastResult = { roundId: S.local.roundId, winner: a > b ? 0 : b > a ? 1 : 2, a, b };
+          S.local.roundId++;
+          S.local.start = now;
+          S.local.a = 0;
+          S.local.b = 0;
+        }
+      }
+
+      // ---------- name / handle ----------
+      function maybeShowNameRow() {
+        if (S.yourPulls > 0 && !S.named) $("nameRow").classList.remove("hidden");
+      }
+      async function saveName() {
+        const name = $("nameInput").value.trim();
+        if (!name) return;
+        if (!client.deployed) {
+          S.named = true;
+          $("nameRow").classList.add("hidden");
+          setStatus("ok", "Name saved here. It goes onchain with the board once the cabinet is live.");
+          return;
+        }
+        try {
+          await client.sendAction("setHandle", [client.strToHex(name)]);
+          S.named = true;
+          $("nameRow").classList.add("hidden");
+          setStatus("ok", "Name sent onchain. It will show on the board shortly.");
+        } catch (err) {
+          handleSendError(err);
+        }
+      }
+
+      // ---------- wire up ----------
+      $("sideA").addEventListener("click", () => pickSide(0));
+      $("sideB").addEventListener("click", () => pickSide(1));
+      $("pullBtn").addEventListener("click", pull);
+      $("nameBtn").addEventListener("click", saveName);
+
+      // boot
+      (async function () {
+        if (!client.deployed) {
+          setStatus("warn", "Local preview. Pick a side and pull; a practice bot answers. Pulls go onchain once the cabinet is live.");
+        } else {
+          setStatus("ok", "One tap, no wallet. Each pull is a real transaction, gasless.");
+          client.ensureKey().then((ok) => {
+            if (!ok) setStatus("warn", "Onchain layer unavailable right now. Your pulls still register here.");
+          });
+        }
+        render();
+        poll();
+        setInterval(poll, 2000);
+        setInterval(render, 250); // smooth timer + knot
+      })();
+    </script>
+  </body>
+</html>

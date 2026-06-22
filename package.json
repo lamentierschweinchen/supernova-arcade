@@ -1,0 +1,27 @@
+{
+  "name": "supernova-arcade",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "@multiversx/sdk-core": "15.4.1",
+    "bignumber.js": "9.3.1",
+    "next": "16.2.9",
+    "protobufjs": "7.6.4",
+    "react": "19.2.3",
+    "react-dom": "19.2.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.9",
+    "typescript": "^5"
+  }
+}

@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Score Studio · Supernova Arcade</title>
+<meta name="robots" content="noindex" />
+<link rel="icon" href="/favicon.svg" />
+<!--
+  ============================================================================
+  SCORE STUDIO — the tuning desk for the arcade live score.
+  A Strata-style mixer/arranger over arcade-score.js: per-voice strips, the
+  energy arranger, key + modulation, a built-in activity driver (sweep "how busy
+  is the arcade" and hear it escalate), and Export mix -> paste into DEFAULT_MIX.
+  Dev tool, noindex. Loads the SAME score module the hub ships.
+  ============================================================================
+-->
+<style>
+  @font-face{font-family:'JetBrains Mono';src:url('/fonts/JetBrainsMono.woff2') format('woff2');font-weight:100 800;font-display:swap;}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html,body{background:#040506;color:#F4F6FA;font-family:'Roobert PRO',system-ui,sans-serif;min-height:100vh;}
+  .head{max-width:1200px;margin:0 auto;padding:18px 16px 4px;display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;}
+  .head h1{font-size:16px;font-weight:700;letter-spacing:.01em;}
+  .head .x{color:#23F7DD;} .head a{color:#6B7385;font-size:12px;text-decoration:none;} .head a:hover{color:#23F7DD;}
+  .head .note{font-size:12px;color:#6B7385;}
+  .ov{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;
+    background:#040506;z-index:50;cursor:pointer;text-align:center;}
+  .ov .k{font-size:11px;letter-spacing:3px;color:#6B7385;} .ov .t{font-size:24px;font-weight:700;}
+  .ov .s{font-size:13px;color:#9BA3B4;max-width:440px;line-height:1.6;}
+  .ov .go{margin-top:10px;padding:12px 28px;border:1px solid #23F7DD;border-radius:999px;color:#23F7DD;letter-spacing:2px;font-size:13px;}
+</style>
+</head>
+<body>
+  <div class="head">
+    <h1>Score Studio <span class="x">·</span> Supernova Arcade</h1>
+    <a href="/arcade.html">← back to the hub</a>
+    <span class="note">Tune by ear, then "Export mix" and paste into DEFAULT_MIX (arcade-score.js).</span>
+  </div>
+
+  <div class="ov" id="ov">
+    <div class="k">SUPERNOVA ARCADE</div>
+    <div class="t">Score Studio</div>
+    <div class="s">Tune the live generative score. Use the Activity slider to simulate play and hear the arrangement escalate from the idle space drone into a full chiptune banger.</div>
+    <div class="go">▶ TAP TO BEGIN</div>
+  </div>
+
+<script type="module">
+"use strict";
+import { createArcadeScore } from "/arcade-score.js";
+import { mountStudio } from "/arcade-studio.js";
+
+const score = createArcadeScore({ debug: false });
+window.arcadeScore = score; // console access too
+
+const ov = document.getElementById("ov");
+let mounted = null;
+ov.addEventListener("click", async () => {
+  const ok = await score.setOn(true); // the user gesture that boots Tone.js
+  if (!ok) { ov.querySelector(".s").textContent = "Could not start audio — see console."; return; }
+  ov.remove();
+  mounted = mountStudio(score, {});
+  // reflect the started state on the transport button
+  const big = document.querySelector(".asd .big");
+  if (big) { big.textContent = "◼ STOP"; big.classList.add("live"); }
+});
+window.addEventListener("beforeunload", () => { try { score.dispose(); } catch (e) {} });
+</script>
+</body>
+</html>

@@ -1,0 +1,706 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Degen Dash · Supernova Arcade</title>
+<meta name="description" content="A crypto-event run game. Tap to collect the wins, dodge the rugs. Every collect is a real onchain transaction on MultiversX, gasless and no wallet. A fun game on a valueless token." />
+<link rel="icon" href="/favicon.svg" />
+<link rel="stylesheet" href="/arcade-shell.css" />
+<!--
+  DEGEN DASH — a Supernova Arcade game (model A: the contract is the referee).
+
+  A stream of crypto events flies in. GOOD ones (a blue chip, a clean 100x, an
+  airdrop, a staking reward) are wins: TAP to collect them, +score. BAD ones (a
+  rug, an ugly JPG, a scam mint, a presale that nukes) are hazards: LEAVE them.
+  Tap a bad one and you take a penalty (the oops). Stack the most over a 60s round.
+  Velocity ramps: forgiving open, frantic finish.
+
+  Each collect tap is a REAL gasless onchain transaction. The contract decides, by
+  the real block timestamp, whether the grab landed inside the item's catch window,
+  and whether it was good (+) or bad (penalty). The score is contract-computed, the
+  seed comes from the chain (every run unique), so the score can't be faked. Bots
+  are welcome — a bot just sends more real collect transactions.
+
+  FUN ONLY: NOVA is a valueless in-game token. Nothing here is yield, a reward, or
+  a financial promise of any kind.
+
+  Two modes: ONCHAIN (deployed contract + relayer — real gasless txs + real NOVA)
+  and PRACTICE (no contract configured — fully playable locally, nothing onchain).
+-->
+<style>
+  /* Degen Dash inherits the canon (Roobert, #06070A cosmos, mint, surfaces, buttons,
+     leaderboard, reset) from /arcade-shell.css. Per-game accents: GOOD/collect = --mint
+     with a playful --lavender highlight on big wins; BAD/hazard = --coral. Bright,
+     energetic, distinct from Clawback's coral-led tension. */
+  .wrap { max-width: 460px; display: flex; flex-direction: column; gap: 13px; }
+  header { text-align: center; }
+  h1 { margin: 0; font-size: 30px; letter-spacing: -0.01em; font-weight: 800; color: var(--text); }
+  h1 .x { color: var(--mint); }
+  .sub { color: var(--text-dim); font-size: 13px; margin-top: 4px; line-height: 1.5; }
+  .mode { display: inline-flex; align-items: center; gap: 6px; margin-top: 8px; font-size: 11px; font-weight: 600;
+    letter-spacing: 0.05em; text-transform: uppercase; padding: 4px 11px; border-radius: 999px;
+    border: 1px solid var(--border); color: var(--text-dim); }
+  .mode.onchain { color: var(--mint); border-color: rgba(35,247,221,0.4); background: rgba(35,247,221,0.05); }
+  .mode.practice { color: var(--amber); border-color: rgba(245,181,68,0.4); }
+
+  /* score hero */
+  .hero { background: radial-gradient(120% 80% at 80% -10%, rgba(35,247,221,0.12), transparent 55%), var(--surface);
+    border: 1px solid var(--border); border-radius: 18px; padding: 16px 18px 14px; text-align: center;
+    position: relative; overflow: hidden; }
+  .hero .cap { color: var(--text-faint); font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em; font-weight: 600; }
+  .bal { font-family: var(--mono); font-size: 48px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1.05;
+    letter-spacing: -0.02em; margin: 4px 0 0; transition: color 0.18s ease; color: var(--text); }
+  .bal .unit { font-family: 'Roobert PRO', system-ui, sans-serif; font-size: 16px; color: var(--text-dim); font-weight: 600; margin-left: 6px; letter-spacing: 0; }
+  .bal.flash-up { color: var(--mint); }
+  .bal.flash-down { color: var(--coral); }
+  .bal.shake { animation: shake 0.32s ease; }
+  @keyframes shake { 0%,100%{transform:translateX(0)} 20%{transform:translateX(-6px)} 40%{transform:translateX(5px)} 60%{transform:translateX(-3px)} 80%{transform:translateX(2px)} }
+  /* progress bar toward the perfect-run ceiling (all good collected) */
+  .stack { height: 7px; border-radius: 5px; background: #0c1119; margin: 11px 0 4px; overflow: hidden; border: 1px solid var(--border); }
+  .stack > i { display: block; height: 100%; width: 100%; border-radius: 5px;
+    background: linear-gradient(90deg, var(--mint) 0%, var(--lavender) 100%);
+    transform-origin: left; transform: scaleX(0); transition: transform 0.18s ease; box-shadow: 0 0 12px rgba(35,247,221,0.25); }
+  .meta { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--text-faint); font-variant-numeric: tabular-nums; margin-top: 9px; }
+  .meta b { font-family: var(--mono); color: var(--text); }
+  .meta .got b { color: var(--mint); }
+  .meta .oops b { color: var(--coral); }
+  .rtimer { height: 4px; border-radius: 4px; background: #0c1119; overflow: hidden; border: 1px solid var(--border); margin-top: 9px; }
+  .rtimer > i { display: block; height: 100%; width: 100%; background: linear-gradient(90deg, var(--mint), var(--lavender)); transform-origin: left; }
+
+  /* arena */
+  .arena { position: relative; height: 384px; border: 1px solid var(--border); border-radius: 16px;
+    background: linear-gradient(180deg, rgba(35,247,221,0.05), rgba(0,0,0,0) 22%), linear-gradient(180deg, var(--surface), #0a0d13);
+    overflow: hidden; touch-action: manipulation; user-select: none; }
+  .miss-line { position: absolute; left: 0; right: 0; bottom: 40px; height: 0; border-top: 1px dashed rgba(35,247,221,0.4); }
+  .miss-label { position: absolute; right: 8px; bottom: 44px; font-size: 10.5px; color: var(--text-faint); letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.8; }
+  .floorzone { position: absolute; left: 0; right: 0; bottom: 0; height: 40px; background: linear-gradient(180deg, rgba(35,247,221,0) 0%, rgba(35,247,221,0.07) 100%); pointer-events: none; }
+
+  .card { position: absolute; width: 30%; margin: 0; will-change: transform; cursor: pointer;
+    border-radius: 11px; padding: 7px 8px 8px; border: 1px solid var(--border);
+    background: linear-gradient(180deg, #1b2433, #141c28); box-shadow: 0 6px 16px -8px rgba(0,0,0,0.6); }
+  .card:active { transform: scale(0.95); }
+  .card .ty { font-size: 9.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; opacity: 0.92; }
+  .card .amt { font-family: var(--mono); font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums; margin-top: 1px; }
+  .card .amt .m { font-size: 10px; opacity: 0.7; font-weight: 700; }
+  .card .bar { height: 4px; border-radius: 3px; background: rgba(255,255,255,0.12); margin-top: 6px; overflow: hidden; }
+  .card .bar > i { display: block; height: 100%; width: 100%; transform-origin: left; background: var(--mint); }
+  /* GOOD items (mint — tap them); one class covers every good label */
+  .card.good { border-color: rgba(35,247,221,0.5); background: linear-gradient(160deg, rgba(35,247,221,0.12), rgba(14,17,23,0.7)); }
+  .card.good .ty { color: var(--mint); }
+  .card.good .amt { color: var(--mint); }
+  .card.good .bar > i { background: var(--mint); }
+  /* BAD items (coral — leave them) */
+  .card.bad { border-color: rgba(255,107,157,0.5); }
+  .card.bad .ty { color: var(--coral); }
+  .card.bad .amt { color: var(--text-dim); }
+  .card.bad .amt::before { content: "☠ "; font-size: 12px; }
+  .card.bad .bar > i { background: var(--coral); }
+  /* big GOOD items — the jackpots (lavender), chase these */
+  .card.big.good { box-shadow: 0 0 0 1px var(--lavender), 0 8px 22px -8px rgba(167,139,250,0.55); animation: bigpulse 1s ease-in-out infinite; }
+  .card.big.good .ty { color: var(--lavender); }
+  .card.big.good .amt { color: var(--lavender); }
+  .card.big.good .bar > i { background: var(--lavender); }
+  @keyframes bigpulse { 0%,100%{box-shadow:0 0 0 1px rgba(167,139,250,0.7),0 8px 22px -10px rgba(167,139,250,0.45)} 50%{box-shadow:0 0 0 2px rgba(167,139,250,1),0 10px 26px -8px rgba(167,139,250,0.7)} }
+  /* big BAD items — the nukes (brighter coral edge), really avoid */
+  .card.big.bad { box-shadow: 0 0 0 1px rgba(255,107,157,0.8), 0 8px 22px -8px rgba(255,107,157,0.5); }
+  .card.collected { animation: flyup 0.4s ease-out forwards; pointer-events: none; }
+  @keyframes flyup { to { transform: translateY(-46px) scale(1.08); opacity: 0; } }
+  .card.zapped { animation: die 0.34s ease-out forwards; pointer-events: none; }
+  @keyframes die { 0%{ filter: brightness(1.8) saturate(1.6); } 100%{ transform: scale(0.86); opacity: 0; } }
+  .card.gone { animation: fade 0.4s ease-out forwards; pointer-events: none; }
+  @keyframes fade { to { transform: translateY(8px) scale(0.94); opacity: 0; } }
+
+  .float { position: absolute; pointer-events: none; font-family: var(--mono); font-weight: 800; font-size: 16px; z-index: 5;
+    animation: rise 0.7s ease-out forwards; font-variant-numeric: tabular-nums; }
+  .float.gain { color: var(--mint); } .float.loss { color: var(--coral); }
+  @keyframes rise { from { opacity: 1; transform: translateY(0) scale(1); } to { opacity: 0; transform: translateY(-34px) scale(1.2); } }
+
+  .arena .center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 22px; gap: 12px; }
+  .arena .center.hide { display: none; }
+  .arena .center p { color: var(--text-dim); font-size: 13px; margin: 0; max-width: 330px; line-height: 1.5; }
+  .arena .center .legend { display: flex; gap: 16px; font-size: 12px; }
+  .arena .center .legend b { font-weight: 700; }
+  .arena .center .legend .g { color: var(--mint); } .arena .center .legend .r { color: var(--coral); }
+  .arena .center .final { font-size: 13px; color: var(--text-dim); }
+  .arena .center .final b { font-family: var(--mono); font-size: 40px; color: var(--mint); display: block; font-variant-numeric: tabular-nums; font-weight: 800; text-shadow: 0 0 16px rgba(35,247,221,0.4); }
+  /* end-of-round breakdown: what you grabbed vs what you let go vs oops-taps */
+  .tally { width: 100%; max-width: 300px; display: flex; flex-direction: column; gap: 8px; margin: 2px 0; }
+  .tally .tr { display: grid; grid-template-columns: 16px 1fr auto; align-items: baseline; gap: 9px; font-size: 13.5px; color: var(--text-dim); text-align: left; }
+  .tally .tr .ico { font-size: 13px; line-height: 1; }
+  .tally .tr .lab { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+  .tally .tr .lab em { font-style: normal; font-size: 10.5px; color: var(--text-faint); }
+  .tally .tr b { font-family: var(--mono); font-weight: 800; font-variant-numeric: tabular-nums; font-size: 15px; }
+  .tally .tr.got b { color: var(--mint); } .tally .tr.got .ico { color: var(--mint); }
+  .tally .tr.missed b { color: var(--text-dim); } .tally .tr.missed .ico { color: var(--text-faint); }
+  .tally .tr.oops b { color: var(--coral); } .tally .tr.oops .ico { color: var(--coral); }
+  .tally .rule { height: 1px; background: var(--border); margin: 1px 0; }
+  .spin { width: 26px; height: 26px; border-radius: 50%; border: 3px solid rgba(255,255,255,0.15); border-top-color: var(--mint); animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* shell mint pill (glow + 3px lip) comes from /arcade-shell.css; keep auto width for the side-by-side rows */
+  .btn { width: auto; }
+  .btn.gold { background: var(--amber); color: #2a1c02; box-shadow: 0 0 0 1px rgba(245,181,68,0.4), 0 8px 24px rgba(245,181,68,0.24); border-bottom: 3px solid #b9842a; }
+
+  .claim { display: none; gap: 8px; margin-top: 4px; }
+  .claim.show { display: flex; }
+  .claim input { flex: 1; background: #06070A; border: 1px solid var(--border); border-radius: 10px; color: var(--text); padding: 11px 12px; font-size: 15px; outline: none; }
+  .claim input:focus { border-color: #79e6d8; }
+  .row { display: flex; gap: 8px; justify-content: center; }
+  /* plain centered status line (override the shell status box) */
+  .status { border: none; background: none; padding: 0; min-height: 17px; display: block; font-size: 12.5px; text-align: center; }
+  .status.ok { color: var(--mint); } .status.err { color: var(--coral); }
+  .status a { color: var(--mint); }
+
+  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 14px; margin: 0; }
+  .panel h2 { margin: 0 0 9px; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-dim); font-weight: 600; display: flex; align-items: center; }
+  .global { text-align: center; }
+  .global .num { font-family: var(--mono); font-size: 32px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .global .num .g { color: var(--mint); text-shadow: 0 0 16px rgba(35,247,221,0.4); }
+  .global .lbl { color: var(--text-faint); font-size: 12px; margin-top: 2px; }
+  .lb-row { display: grid; grid-template-columns: 26px 1fr auto; align-items: center; gap: 10px; padding: 8px 4px; font-size: 14px; }
+  .lb-row + .lb-row { border-top: 1px solid var(--border-soft); }
+  .lb-row .rank { color: var(--text-faint); font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  .lb-row .handle { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-dim); }
+  .lb-row .score { font-family: var(--mono); font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text-dim); }
+  .lb-row.you { background: rgba(35,247,221,0.08); border-radius: 8px; }
+  .lb-row.you .handle { color: var(--mint); }
+  .lb-row.you .score { color: var(--mint); }
+  .lb-row.you .handle::after { content: " you"; color: var(--mint); font-size: 11px; }
+  .lb-empty { color: var(--text-faint); font-size: 13px; text-align: center; padding: 10px 0; }
+
+  .how { font-size: 12.5px; color: var(--text-dim); line-height: 1.55; }
+  .how b { color: var(--text); } .how .g { color: var(--mint); font-weight: 700; } .how .r { color: var(--coral); font-weight: 700; }
+  .tick { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--mint); box-shadow: 0 0 7px var(--mint); margin-right: 6px; vertical-align: middle; animation: pulse 2s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { opacity: 0.35; } 50% { opacity: 1; } }
+
+  .screen .play { width: 100%; display: flex; flex-direction: column; gap: 12px; align-items: stretch; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .card.big.good { animation: none; }
+    .tick { animation: none; opacity: 0.8; }
+    .bal.shake { animation: none; }
+  }
+</style>
+    <!-- Vercel Web Analytics -->
+    <script defer src="/_vercel/insights/script.js"></script>
+</head>
+<body style="--c:#FFD23F" data-shard="shard 0">
+<div class="scan"></div><div class="vignette"></div><div class="floor"></div>
+<div class="brk tl"></div><div class="brk tr"></div><div class="brk bl"></div><div class="brk br"></div>
+<div class="wrap">
+  <header class="abar">
+    <a class="back" href="/arcade"><span aria-hidden="true">&larr;</span> Arcade</a>
+    <span class="lockup"><img src="/mvx-wordmark.svg" alt="MultiversX" /><span class="shard">shard 0</span></span>
+  </header>
+
+  <h1>DEGEN <span class="x">DASH</span></h1>
+  <p class="sub">Tap to collect the wins. Dodge the rugs. Every collect is a <b>real onchain transaction</b>.</p>
+  <span class="mode" id="modeBadge">connecting…</span>
+
+  <div class="onetap"><span class="ic"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M13 2 3 14h7l-1 8 10-12h-7z" stroke="#FFD23F" stroke-width="1.6" stroke-linejoin="round"/></svg></span><span class="t"><b>No wallet, just play.</b> A key is created in your browser and we cover the gas.</span></div>
+
+  <div class="cabinet">
+    <div class="cab-marquee">Degen Dash · collect the wins, dodge the rugs</div>
+    <div class="screen">
+      <div class="play">
+        <section class="hero">
+          <div class="cap">Score</div>
+          <div class="bal" id="bal">0<span class="unit">NOVA</span></div>
+          <div class="stack"><i id="stackFill"></i></div>
+          <div class="meta">
+            <span class="got">collected <b id="gotStat">0</b></span>
+            <span>time <b id="timeStat">60.0s</b></span>
+            <span class="oops">oops <b id="oopsStat">0</b></span>
+          </div>
+          <div class="rtimer" style="margin-top:8px"><i id="rtimerFill"></i></div>
+        </section>
+
+        <section class="arena" id="arena">
+          <div class="miss-line"></div>
+          <div class="miss-label">miss line</div>
+          <div class="floorzone"></div>
+          <div class="center" id="center">
+            <p id="centerText">Crypto events will stream in. Grab the good, dodge the bad, stack the most in <b>60 seconds</b>.</p>
+            <div class="legend"><span><b class="g">mint</b> = tap to collect</span><span><b class="r">red</b> = rug, leave it</span></div>
+            <button class="btn" id="startBtn">Start the dash</button>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="claim" id="claim">
+      <input id="handle" maxlength="32" placeholder="Pick a handle for the board" autocomplete="off" />
+      <button class="btn" id="claimBtn">Claim spot</button>
+    </div>
+  </div>
+  <div class="status" id="status"></div>
+
+  <section class="panel global">
+    <h2><span class="tick"></span>Global onchain actions</h2>
+    <div class="num"><span class="g" id="globalNum">···</span></div>
+    <div class="lbl">collect transactions fired across everyone, read from the chain</div>
+  </section>
+
+  <section class="panel">
+    <h2><span class="tick"></span>Top runs · most collected</h2>
+    <div id="lbRows"><div class="lb-empty">Reading the chain…</div></div>
+  </section>
+
+  <section class="panel how">
+    <h2>How it works</h2>
+    <span class="g">Mint</span> cards are wins. Tap one to fire a <b>real gasless transaction</b> that collects it before it
+    drops past the miss line, +score. <span class="r">Red</span> cards are rugs and scams; leave them. Tap a red one and the
+    contract docks you a penalty. The round seed and your final score are computed <b>onchain</b>, so the score can't be
+    faked, and every run is unique. It speeds up as it goes.
+  </section>
+
+  <footer class="afoot"><span class="sn">Supernova · live on testnet</span> · 600ms rounds on MultiversX · gasless, no wallet · every collect lands onchain</footer>
+</div>
+
+<script type="module">
+import { createArcade } from "/degen-dash/arcade.js";
+import { ARCADE_CONFIG } from "/degen-dash/arcade.config.js";
+import { buildSchedule } from "/degen-dash/schedule.js";
+import { mountGalaxy } from "/arcade-galaxy.js";
+
+const $ = (id) => document.getElementById(id);
+const arcade = createArcade(ARCADE_CONFIG);
+const galaxy = mountGalaxy({ intensity: 0.5, focusShard: 0 });
+
+// config defaults mirror the contract; onchain mode overrides from getScheduleParams.
+// rampPermil 500 = sparse/slow open, dense/fast finish; lateWindowShrinkPermil 0 = off.
+const DEFAULTS = { roundLengthMs: 60_000, catchWindowMs: 8_000, items: 440, goodPermil: 720, rampPermil: 500, lateWindowShrinkPermil: 0 };
+
+// GOOD events — wins you TAP to collect. Funny, crypto-native, MvX-neutral. By id.
+const GOOD_TYPES = [
+  "Blue chip",
+  "Clean 100x",
+  "Airdrop hit",
+  "Found loot",
+  "Bought the dip",
+  "Sold the top",
+  "Bridged safely",
+  "Diamond hands",
+  "Green candle",
+  "Funding flip",
+  "Treasure",
+  "Mint flipped",
+];
+// BAD events — hazards you LEAVE. Tap one = oops/penalty. Funny crypto losses.
+const BAD_TYPES = [
+  "Obvious rug",
+  "Ugly JPG",
+  "Scam mint",
+  "Presale nuked",
+  "Fake airdrop",
+  "Drained wallet",
+  "Honeypot",
+  "Down bad",
+  "Exit liquidity",
+  "Phishing link",
+  "Leverage rekt",
+  "Dead chain",
+];
+const COLS = 3;
+
+let cfg = { ...DEFAULTS };
+let onchain = false;
+
+const G = {
+  phase: "idle", seed: 0n, startMs: 0, roundId: 0,
+  schedule: [], visibleFall: 2800, missLineY: 280, arenaH: 384,
+  nextIdx: 0, gotCount: 0, oopsCount: 0, collectedAmt: 0, penaltyAmt: 0, missedCount: 0, spawnSeq: 0,
+  totalGood: 0,
+  cards: new Map(), score: 0, dispScore: 0, raf: null,
+};
+
+// ---------- mode detection ----------
+// The "undeployed" sentinel is the all-zero system SC address, which bech32-encodes
+// as all `q`s (zero -> q). Match it exactly, and also catch any all-zero hex remnant.
+const UNDEPLOYED_PLACEHOLDER = "erd1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq6gq4hu";
+function isPlaceholder(addr) {
+  return !addr || addr === UNDEPLOYED_PLACEHOLDER || /^erd1q{50,}/.test(addr) || /^erd1?0{20,}/.test(addr);
+}
+async function detectMode() {
+  const configured = !isPlaceholder(ARCADE_CONFIG.contract) && !isPlaceholder(ARCADE_CONFIG.relayer);
+  if (!configured) { setMode(false, "Practice · not yet deployed"); return; }
+  const ok = await arcade.ready().catch(() => false);
+  if (!ok) { setMode(false, "Practice · relayer offline"); return; }
+  const params = await arcade.getScheduleParams().catch(() => null);
+  if (params && params.items > 0) cfg = params;
+  setMode(true, "Onchain · Supernova");
+  refreshBoard();
+}
+function setMode(on, label) {
+  onchain = on;
+  const b = $("modeBadge");
+  b.textContent = label;
+  b.className = "mode " + (on ? "onchain" : "practice");
+  $("centerText").innerHTML = `Crypto events will stream in. Grab the good, dodge the bad, stack the most in <b>${Math.round(cfg.roundLengthMs / 1000)} seconds</b>.`;
+}
+
+// ---------- start ----------
+$("startBtn").addEventListener("click", onStart);
+async function onStart() {
+  if (G.phase === "starting" || G.phase === "playing") return;
+  initAudio();
+  $("claim").classList.remove("show");
+  setStatus("", "");
+  if (onchain) return startOnchain();
+  return startLocal();
+}
+function startLocal() {
+  beginRound({ seed: randomU64(), startMs: Date.now(), roundId: G.roundId });
+}
+async function startOnchain() {
+  setPhase("starting");
+  showCenter(`<div class="spin"></div><p>Locking your run on Supernova…<br/>the stream is being seeded onchain.</p>`);
+  const prevRound = G.roundId;
+  try {
+    await arcade.startRound();
+  } catch (err) {
+    return fallbackToPractice("Couldn't reach the relayer. Playing in practice mode.");
+  }
+  for (let i = 0; i < 10; i++) {
+    await wait(1200);
+    const r = await arcade.getRound().catch(() => null);
+    if (r && r.roundId > prevRound && r.seed !== "0") {
+      G.roundId = r.roundId;
+      return beginRound({ seed: BigInt(r.seed), startMs: r.startMs, roundId: r.roundId, totalGood: r.totalGood });
+    }
+  }
+  fallbackToPractice("The run didn't confirm in time. Playing in practice mode.");
+}
+function fallbackToPractice(msg) {
+  onchain = false;
+  cfg = { ...DEFAULTS }; // practice previews the intended (ramped) game
+  setMode(false, "Practice · fallback");
+  setStatus("err", msg);
+  startLocal();
+}
+
+function beginRound({ seed, startMs, roundId, totalGood }) {
+  G.seed = seed; G.startMs = startMs; G.roundId = roundId;
+  G.schedule = buildSchedule(seed, cfg);
+  // the perfect-run ceiling: every good collected. Use the onchain value if given,
+  // else compute from the schedule (identical math).
+  G.totalGood = totalGood || G.schedule.reduce((s, o) => s + (o.good ? o.amount : 0), 0);
+  G.visibleFall = Math.max(1500, Math.min(2000, cfg.catchWindowMs - 2500));
+  G.arenaH = $("arena").clientHeight || 384;
+  G.missLineY = G.arenaH - 40 - 58;
+  G.nextIdx = 0; G.gotCount = 0; G.oopsCount = 0; G.collectedAmt = 0; G.penaltyAmt = 0; G.missedCount = 0; G.spawnSeq = 0;
+  G.score = 0; G.dispScore = 0;
+  $("gotStat").textContent = "0";
+  $("oopsStat").textContent = "0";
+  $("timeStat").textContent = (cfg.roundLengthMs / 1000).toFixed(1) + "s";
+  $("bal").firstChild.textContent = "0";
+  $("stackFill").style.transform = "scaleX(0)";
+  $("rtimerFill").style.transform = "scaleX(1)";
+  clearCards();
+  hideCenter();
+  setPhase("playing");
+  // catch up anything that streamed during the onchain round-lock
+  const elapsed0 = now() - G.startMs;
+  while (G.nextIdx < G.schedule.length && G.schedule[G.nextIdx].spawnMs <= elapsed0) {
+    activate(G.schedule[G.nextIdx], elapsed0); G.nextIdx++;
+  }
+  G.raf = requestAnimationFrame(tick);
+}
+
+// ---------- the loop ----------
+function tick() {
+  const elapsed = now() - G.startMs;
+  if (elapsed >= cfg.roundLengthMs) return endRoundFlow();
+
+  while (G.nextIdx < G.schedule.length && G.schedule[G.nextIdx].spawnMs <= elapsed) {
+    activate(G.schedule[G.nextIdx], elapsed); G.nextIdx++;
+  }
+  for (const [, c] of G.cards) {
+    if (c.state !== "falling") continue;
+    const age = elapsed - c.o.spawnMs;
+    if (age >= G.visibleFall) { dropCard(c); continue; }
+    const p = age / G.visibleFall;
+    c.el.style.transform = `translateY(${(p * G.missLineY).toFixed(1)}px)`;
+    c.barFill.style.transform = `scaleX(${(1 - p).toFixed(3)})`;
+    if (c.o.good && p > 0.66) c.barFill.style.background = "var(--amber)"; // urgency: grab it!
+  }
+  renderScore();
+  const left = Math.max(0, cfg.roundLengthMs - elapsed);
+  $("timeStat").textContent = (left / 1000).toFixed(1) + "s";
+  $("rtimerFill").style.transform = `scaleX(${(left / cfg.roundLengthMs).toFixed(3)})`;
+  G.raf = requestAnimationFrame(tick);
+}
+
+// an item appears and starts falling. Nothing happens to the score until you act
+// (a good collected = +, a bad tapped = penalty). Letting it drop = no effect.
+function activate(o, elapsed) {
+  const age = elapsed - o.spawnMs;
+  if (age >= G.visibleFall) {
+    // already past its window before we could render it (round-lock catch-up)
+    if (o.good) { G.missedCount++; }
+    return;
+  }
+  spawnCard(o, age);
+}
+
+function spawnCard(o, age) {
+  const el = document.createElement("div");
+  let label, sign, cls;
+  if (o.good) {
+    label = GOOD_TYPES[Number(BigInt(o.id) % BigInt(GOOD_TYPES.length))];
+    sign = "+"; cls = "good" + (o.amount >= 9 ? " big" : "");
+  } else {
+    label = BAD_TYPES[Number(BigInt(o.id) % BigInt(BAD_TYPES.length))];
+    sign = "−"; cls = "bad" + (o.amount >= 9 ? " big" : "");
+  }
+  el.className = "card " + cls;
+  const col = G.spawnSeq++ % COLS;
+  const colW = 100 / COLS;
+  el.style.left = (col * colW + (colW - 30) / 2) + "%";
+  el.innerHTML = `<div class="ty">${label}</div><div class="amt">${sign}${o.amount}<span class="m"> NOVA</span></div><div class="bar"><i></i></div>`;
+  const c = { o, el, state: "falling", barFill: el.querySelector(".bar > i") };
+  el.addEventListener("pointerdown", () => tapCard(c), { passive: true });
+  $("arena").appendChild(el);
+  G.cards.set(o.id, c);
+  const p = Math.max(0, age) / G.visibleFall;
+  el.style.transform = `translateY(${(p * G.missLineY).toFixed(1)}px)`;
+}
+
+function tapCard(c) {
+  if (c.state !== "falling") return;
+  galaxy.pulse(0);
+  c.state = "acted";
+  // fire the REAL collect transaction either way; the contract decides the effect.
+  if (onchain) arcade.collect(G.roundId, c.o.id).catch(() => {});
+  if (c.o.good) {
+    // grabbed a win → +score
+    G.gotCount++;
+    G.collectedAmt += c.o.amount;
+    G.score += c.o.amount;
+    $("gotStat").textContent = G.gotCount;
+    flashScore("up");
+    floatText(c.el, "+" + c.o.amount, "gain");
+    blip(660, 0.07, "triangle"); vibrate(8);
+    c.el.classList.add("collected");
+  } else {
+    // tapped a rug → penalty
+    G.oopsCount++;
+    G.penaltyAmt += c.o.amount;
+    G.score = Math.max(0, G.score - c.o.amount);
+    $("oopsStat").textContent = G.oopsCount;
+    flashScore("down");
+    floatText(c.el, "−" + c.o.amount, "loss");
+    blip(150, 0.12, "sawtooth"); vibrate(22);
+    c.el.classList.add("zapped");
+  }
+  setTimeout(() => removeCard(c.o.id), 380);
+}
+
+function dropCard(c) {
+  c.state = "dropped";
+  if (c.o.good) {
+    G.missedCount++; // a win slipped past
+  }
+  c.el.classList.add("gone");
+  setTimeout(() => removeCard(c.o.id), 380);
+}
+
+function removeCard(id) { const c = G.cards.get(id); if (c) { c.el.remove(); G.cards.delete(id); } }
+function clearCards() { for (const [, c] of G.cards) c.el.remove(); G.cards.clear(); }
+
+// ---------- score (tweened up) ----------
+function renderScore() {
+  const target = Math.max(0, G.score);
+  G.dispScore += (target - G.dispScore) * 0.25;
+  if (Math.abs(target - G.dispScore) < 0.5) G.dispScore = target;
+  $("bal").firstChild.textContent = fmt(Math.round(G.dispScore));
+  const ceiling = G.totalGood || 1;
+  $("stackFill").style.transform = `scaleX(${Math.max(0, Math.min(1, G.dispScore / ceiling)).toFixed(3)})`;
+}
+let flashTimer = null;
+function flashScore(dir) {
+  const el = $("bal");
+  el.classList.remove("flash-up", "flash-down", "shake");
+  void el.offsetWidth;
+  el.classList.add(dir === "up" ? "flash-up" : "flash-down");
+  if (dir === "down") el.classList.add("shake");
+  clearTimeout(flashTimer);
+  flashTimer = setTimeout(() => el.classList.remove("flash-up", "flash-down", "shake"), 200);
+}
+function floatText(cardEl, text, cls) {
+  const f = document.createElement("span");
+  f.className = "float " + cls;
+  f.textContent = text;
+  const arena = $("arena"), ar = arena.getBoundingClientRect(), cr = cardEl.getBoundingClientRect();
+  f.style.left = (cr.left - ar.left + cr.width / 2 - 12) + "px";
+  f.style.top = (cr.top - ar.top) + "px";
+  arena.appendChild(f);
+  setTimeout(() => f.remove(), 700);
+}
+
+// ---------- end of round ----------
+async function endRoundFlow() {
+  if (G.phase !== "playing") return;
+  setPhase("ending");
+  cancelAnimationFrame(G.raf);
+  clearCards();
+  $("timeStat").textContent = "0.0s";
+  $("rtimerFill").style.transform = "scaleX(0)";
+
+  // the live projection tracked every grab, so it IS the final
+  if (!onchain) return reveal(localFinal(), 0, true);
+
+  showCenter(`<div class="spin"></div><p>Run over. Tallying your score onchain…</p>`);
+  // endRound must actually EXECUTE (not just relay) to record the score and put you
+  // on the board. It only succeeds once the BLOCK timestamp passes start+length —
+  // Supernova blocks trail wall-clock slightly, so the first send can revert as
+  // "round not over yet". Resend until getRound reports ended (not until relay-ack).
+  let ended = false;
+  for (let i = 0; i < 12 && !ended; i++) {
+    try { await arcade.endRound(G.roundId); } catch (err) { /* relay hiccup — retry */ }
+    await wait(1500);
+    const r = await arcade.getRound().catch(() => null);
+    if (r && r.ended) ended = true;
+  }
+  // authoritative reads once the contract has tallied
+  let final = ended ? await arcade.getFinal().catch(() => null) : null;
+  if (final == null) final = localFinal();
+  const claimable = (await arcade.getClaimable().catch(() => 0)) || 0;
+  reveal(final, claimable, false, ended);
+  refreshBoard();
+}
+
+// the live projection converges to the contract's final; use it as the local score
+function localFinal() { return Math.max(0, Math.round(G.score)); }
+
+function reveal(final, claimable, practice, ended = true) {
+  setPhase("done");
+  G.score = final; G.dispScore = final;
+  $("bal").firstChild.textContent = fmt(final);
+  const ceiling = G.totalGood || 1;
+  $("stackFill").style.transform = `scaleX(${Math.max(0, Math.min(1, final / ceiling)).toFixed(3)})`;
+
+  const missed = Math.max(0, G.missedCount);
+  const tag = practice ? " (practice)" : " (onchain)";
+  let html =
+    `<div class="final">Final score${tag}<b>${fmt(final)} NOVA</b></div>` +
+    `<div class="tally">` +
+      `<div class="tr got"><span class="ico">▲</span><span class="lab">Collected<em>${G.gotCount} win${G.gotCount === 1 ? "" : "s"} grabbed</em></span><b>+${fmt(G.collectedAmt)}</b></div>` +
+      `<div class="tr missed"><span class="ico">·</span><span class="lab">Let slip<em>${missed} win${missed === 1 ? "" : "s"} past the line</em></span><b>${fmt(missed)}</b></div>` +
+      `<div class="tr oops"><span class="ico">☠</span><span class="lab">Oops taps${G.oopsCount ? `<em>${G.oopsCount} rug${G.oopsCount === 1 ? "" : "s"} grabbed</em>` : ""}</span><b>−${fmt(G.penaltyAmt)}</b></div>` +
+    `</div>` +
+    `<div class="row" style="margin-top:2px"><button class="btn" id="againBtn">Run again</button>`;
+  if (onchain && claimable > 0) html += `<button class="btn gold" id="claimNovaBtn">Claim ${fmt(claimable)} NOVA</button>`;
+  html += `</div>`;
+  showCenter(html);
+  $("againBtn").addEventListener("click", onStart);
+  if (onchain && claimable > 0) $("claimNovaBtn").addEventListener("click", () => claimNova(claimable));
+
+  // a board spot only opens when the score is actually recorded onchain (round ended)
+  if (onchain && ended && final > 0) { $("claim").classList.add("show"); $("handle").focus({ preventScroll: true }); }
+  else if (onchain && ended && final === 0) setStatus("", "Score 0 this run. Collect a win to land on the board.");
+  else if (onchain && !ended) setStatus("err", "Couldn't finalize onchain in time. Your score shows, but it didn't record. Run again to land on the board.");
+  else if (!onchain) setStatus("", "Practice run. Scores and NOVA go onchain once the cabinet is live.");
+}
+
+async function claimNova(amount) {
+  const btn = $("claimNovaBtn");
+  if (btn) { btn.disabled = true; btn.textContent = "Minting…"; }
+  try {
+    const r = await arcade.claim();
+    setStatus("ok", `Minted ${fmt(amount)} NOVA to your wallet. <a href="${r.explorerUrl}" target="_blank" rel="noopener">View tx ↗</a>`);
+    if (btn) btn.textContent = "Claimed ✓";
+  } catch (err) {
+    if (btn) { btn.disabled = false; btn.textContent = `Claim ${fmt(amount)} NOVA`; }
+    setStatus("err", "Couldn't claim right now. Try again.");
+  }
+}
+
+// ---------- claim a handle ----------
+$("claimBtn").addEventListener("click", claimHandle);
+$("handle").addEventListener("keydown", (e) => { if (e.key === "Enter") claimHandle(); });
+async function claimHandle() {
+  const handle = ($("handle").value || "").trim();
+  if (!handle) return setStatus("err", "Type a handle first.");
+  if (new TextEncoder().encode(handle).length > 32) return setStatus("err", "Keep it under 32 characters.");
+  $("claimBtn").disabled = true;
+  setStatus("", "Putting your handle onchain…");
+  try {
+    localStorage.setItem("degendash_handle", handle);
+    const r = await arcade.setHandle(handle);
+    setStatus("ok", `On the board. <a href="${r.explorerUrl}" target="_blank" rel="noopener">View tx ↗</a>`);
+    $("claimBtn").textContent = "On the board ✓";
+    // the handle takes a moment to index; keep refreshing so your row fills in
+    for (let i = 0; i < 6; i++) { await wait(1500); await refreshBoard(); }
+  } catch (err) {
+    $("claimBtn").disabled = false;
+    setStatus("err", friendlyError(err));
+  }
+}
+
+// ---------- onchain reads on a ~2s tick ----------
+async function refreshBoard() {
+  if (!onchain) return;
+  const [global, board] = await Promise.all([arcade.getGlobalActions(), arcade.getLeaderboard(10)]);
+  if (global != null) $("globalNum").textContent = fmt(global);
+  renderLeaderboard(board);
+}
+setInterval(refreshBoard, 2000);
+
+function renderLeaderboard(entries) {
+  const box = $("lbRows");
+  if (!onchain) { box.innerHTML = '<div class="lb-empty">Live once the cabinet is deployed.</div>'; return; }
+  if (!entries || entries.length === 0) { box.innerHTML = '<div class="lb-empty">No runs yet. Be the first to stack a score.</div>'; return; }
+  const me = arcade.address;
+  box.innerHTML = entries.map((e, i) => {
+    const mine = me && e.address === me ? " you" : "";
+    const name = e.handle ? escapeHtml(e.handle) : shortAddr(e.address);
+    return `<div class="lb-row${mine}"><span class="rank">${i + 1}</span><span class="handle">${name}</span><span class="score">${fmt(e.score)}</span></div>`;
+  }).join("");
+}
+
+// ---------- helpers ----------
+function setPhase(p) { G.phase = p; }
+function showCenter(html) { const c = $("center"); c.innerHTML = html; c.classList.remove("hide"); }
+function hideCenter() { $("center").classList.add("hide"); }
+function setStatus(kind, html) { const el = $("status"); el.className = "status " + kind; el.innerHTML = html; }
+function now() { return Date.now(); }
+function wait(ms) { return new Promise((r) => setTimeout(r, ms)); }
+function fmt(n) { return Number(n).toLocaleString("en-US"); }
+function shortAddr(a) { return a ? a.slice(0, 6) + "…" + a.slice(-4) : "anon"; }
+function escapeHtml(s) { return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+function randomU64() { const b = new Uint8Array(8); (self.crypto || window.crypto).getRandomValues(b); let v = 0n; for (const x of b) v = (v << 8n) | BigInt(x); return v; }
+function friendlyError(err) {
+  if (!err) return "Something went wrong.";
+  if (err.code === "relayer_unavailable" || err.code === "unavailable") return "The gasless relayer isn't switched on yet.";
+  if (err.code === "play first") return "Play a run first, then claim a handle.";
+  return "Couldn't set your handle right now.";
+}
+
+// ---------- audio + haptics ----------
+let actx = null;
+function initAudio() { try { if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)(); } catch {} }
+function blip(freq, dur, type) {
+  if (!actx) return;
+  try {
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.type = type || "sine"; o.frequency.value = freq;
+    g.gain.value = 0.05; o.connect(g); g.connect(actx.destination);
+    o.start(); g.gain.exponentialRampToValueAtTime(0.0001, actx.currentTime + dur);
+    o.stop(actx.currentTime + dur + 0.02);
+  } catch {}
+}
+function vibrate(ms) { try { navigator.vibrate && navigator.vibrate(ms); } catch {} }
+
+// ---------- boot ----------
+try { const s = localStorage.getItem("degendash_handle"); if (s) $("handle").value = s; } catch {}
+$("bal").firstChild.textContent = "0";
+$("stackFill").style.transform = "scaleX(0)";
+detectMode();
+refreshBoard();
+</script>
+</body>
+</html>

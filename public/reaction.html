@@ -1,0 +1,366 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Reaction Arcade · Supernova Arcade</title>
+    <meta name="description" content="When the X flashes, tap. Every on-time reaction is a real onchain transaction. How many can you land?" />
+    <link rel="stylesheet" href="/arcade-shell.css" />
+    <style>
+      /* the reaction pad — the one tap target, recolors by state */
+      .pad {
+        position: relative;
+        width: 100%;
+        height: 230px;
+        border-radius: 18px;
+        display: grid;
+        place-items: center;
+        text-align: center;
+        cursor: pointer;
+        user-select: none;
+        -webkit-user-select: none;
+        touch-action: manipulation;
+        border: 1px solid var(--line);
+        transition: background 0.12s, border-color 0.12s, box-shadow 0.12s;
+        overflow: hidden;
+      }
+      .pad .pad-x {
+        width: 46px;
+        height: 36px;
+        margin-bottom: 10px;
+        opacity: 0.9;
+        transition: transform 0.1s;
+      }
+      .pad .pad-x path { transition: fill 0.12s; }
+      .pad-main { font-size: 30px; font-weight: 800; letter-spacing: 0.01em; line-height: 1.05; }
+      .pad-sub { font-size: 13px; margin-top: 8px; color: var(--muted); letter-spacing: 0.02em; }
+
+      /* idle — ready to start */
+      .pad.pad-idle { background: radial-gradient(120% 100% at 50% 0%, rgba(35, 240, 199, 0.08), transparent 60%), var(--panel-2); }
+      .pad.pad-idle .pad-x path { fill: var(--mvx-cyan); }
+      .pad.pad-idle .pad-main { color: var(--core-white); }
+
+      /* waiting — hold, do not tap */
+      .pad.pad-wait { background: linear-gradient(170deg, #0a1830, #0a1226); border-color: rgba(91, 141, 239, 0.25); }
+      .pad.pad-wait .pad-x { opacity: 0.35; }
+      .pad.pad-wait .pad-x path { fill: #4b5d80; }
+      .pad.pad-wait .pad-main { color: #7f93b8; }
+
+      /* GO — tap now */
+      .pad.pad-go {
+        background: radial-gradient(120% 120% at 50% 40%, #5affe7, var(--mvx-cyan) 70%);
+        border-color: var(--mvx-cyan);
+        box-shadow: 0 0 0 2px rgba(35, 247, 221, 0.45), 0 0 26px rgba(35, 247, 221, 0.28);
+      }
+      .pad.pad-go .pad-x { transform: scale(1.18); }
+      .pad.pad-go .pad-x path { fill: #04221f; }
+      .pad.pad-go .pad-main { color: #04221f; font-size: 44px; letter-spacing: 0.06em; }
+      .pad.pad-go .pad-sub { color: rgba(4, 34, 31, 0.7); }
+
+      /* hit — success flash with the reaction time */
+      .pad.pad-hit { background: radial-gradient(120% 100% at 50% 0%, rgba(35, 240, 199, 0.16), transparent 60%), var(--panel-2); border-color: rgba(35, 240, 199, 0.5); }
+      .pad.pad-hit .pad-x path { fill: var(--mvx-cyan); }
+      .pad.pad-hit .pad-main { color: var(--mvx-cyan); font-variant-numeric: tabular-nums; }
+
+      /* miss — too soon / too slow */
+      .pad.pad-miss { background: radial-gradient(120% 100% at 50% 0%, rgba(255, 107, 107, 0.12), transparent 60%), var(--panel-2); border-color: rgba(255, 107, 107, 0.4); }
+      .pad.pad-miss .pad-x path { fill: #ff6b6b; }
+      .pad.pad-miss .pad-main { color: #ff8c8c; }
+
+      .padline { display: flex; gap: 10px; margin-top: 12px; }
+      .padline .pl { flex: 1; text-align: center; background: var(--panel-2); border: 1px solid var(--line); border-radius: 12px; padding: 10px; }
+      .padline .pl .v { font-variant-numeric: tabular-nums; font-size: 20px; font-weight: 800; }
+      .padline .pl .k { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted-2); margin-top: 2px; }
+      .padline .pl .v.cyan { color: var(--mvx-cyan); }
+      .screen .play { width: 100%; display: flex; flex-direction: column; gap: 12px; align-items: stretch; }
+    </style>
+      <!-- Vercel Web Analytics -->
+    <script defer src="/_vercel/insights/script.js"></script>
+</head>
+  <body style="--c:#F5B544" data-shard="shard 0">
+    <div class="scan"></div><div class="vignette"></div><div class="floor"></div>
+    <div class="brk tl"></div><div class="brk tr"></div><div class="brk bl"></div><div class="brk br"></div>
+    <div class="wrap">
+      <header class="abar">
+        <a class="back" href="/arcade"><span aria-hidden="true">&larr;</span> Arcade</a>
+        <span class="lockup"><img src="/mvx-wordmark.svg" alt="MultiversX" /><span class="shard">shard 0</span></span>
+      </header>
+
+      <h1>Reaction Arcade</h1>
+      <p class="sub">When the X flashes, tap. Every on-time reaction is a real onchain transaction. Your reaction time is just for you. The board ranks by how many reactions you land. Wait for the flash: tap too soon and the run resets.</p>
+      <div class="onetap"><span class="ic"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M13 2 3 14h7l-1 8 10-12h-7z" stroke="#F5B544" stroke-width="1.6" stroke-linejoin="round"/></svg></span><span class="t"><b>No wallet, just play.</b> A key is created in your browser and we cover the gas.</span></div>
+
+      <div class="cabinet">
+        <div class="cab-marquee">Reaction · tap the instant it flips</div>
+        <div class="screen">
+          <div class="play">
+            <div class="pad pad-idle" id="pad">
+              <div>
+                <svg class="pad-x" viewBox="0 0 192 148" aria-hidden="true"><path d="M106.4,74L192,28L177.6,0.2L99.2,32.1c-2,0.8-4.3,0.8-6.3,0L14.5,0.2L0.1,28l85.6,46l-85.6,46l14.4,27.8l78.4-31.9c-2-0.8,4.3-0.8,6.3,0l78.4,31.9l14.4-27.8L106.4,74z" fill="#23F7DD"/></svg>
+                <div class="pad-main" id="padMain">Tap to start</div>
+                <div class="pad-sub" id="padSub">react when the X lights up</div>
+              </div>
+            </div>
+            <div class="padline">
+              <div class="pl"><div class="v cyan" id="lastMs">···</div><div class="k">Last reaction</div></div>
+              <div class="pl"><div class="v" id="streak">0</div><div class="k">Streak</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="stats">
+        <div class="stat"><div class="num" id="yourReactions">0</div><div class="lbl">Your reactions</div></div>
+        <div class="stat"><div class="num" id="bestMs">···</div><div class="lbl">Best reaction</div></div>
+        <div class="stat"><div class="num on" id="globalActions">0</div><div class="lbl">Total reactions</div></div>
+      </div>
+
+      <div class="status" id="status" style="margin-top: 14px">
+        <span class="dot"></span><span id="statusText">Warming up…</span>
+      </div>
+
+      <div class="card" style="margin-top: 14px">
+        <p class="card-title"><span class="gd"></span>Top reactors · most landed</p>
+        <ul class="lb" id="leaderboard">
+          <li><span class="empty">No reactions yet. Be the first.</span></li>
+        </ul>
+        <div class="row hidden" id="nameRow" style="margin-top: 12px">
+          <input class="name-input" id="nameInput" maxlength="32" placeholder="Add a name for the board" />
+          <button class="btn ghost" id="nameBtn" style="width:auto; padding:12px 16px">Save</button>
+        </div>
+      </div>
+
+      <div class="card hidden" id="feedCard">
+        <p class="card-title"><span class="gd"></span>Recent transactions</p>
+        <ul class="feed" id="feed"></ul>
+      </div>
+
+      <footer class="afoot"><span class="sn">Supernova · live on testnet</span> · 600ms rounds on MultiversX · gasless, no wallet · score = reactions landed onchain</footer>
+    </div>
+
+    <script type="module">
+      import { createArcadeClient } from "/arcade-core.js";
+      import { mountGalaxy } from "/arcade-galaxy.js";
+
+      const client = createArcadeClient("reaction");
+      const galaxy = mountGalaxy({ intensity: 0.5, focusShard: 0 });
+      const $ = (id) => document.getElementById(id);
+      const fmt = (n) => (n == null ? "···" : Number(n).toLocaleString("en-US"));
+
+      const WAIT_MIN = 900; // ms before the flash (randomized)
+      const WAIT_MAX = 2600;
+      const TOO_SLOW_MS = 1500; // miss if you don't tap within this after the flash
+
+      const S = {
+        phase: "idle", // idle | wait | go | flash
+        goAt: 0,
+        waitTimer: 0,
+        slowTimer: 0,
+        flashTimer: 0,
+        lastMs: null,
+        bestMs: null,
+        streak: 0,
+        session: 0, // reactions landed this session (local)
+        onchainScore: 0, // your onchain reactions (deployed)
+        global: 0, // onchain global actions (deployed)
+        localGlobal: 0, // preview stand-in
+        feed: [],
+        named: false,
+        hasPlayed: false,
+      };
+
+      const X_CYAN = "#23F7DD";
+      function padX(color) {
+        const p = $("pad").querySelector(".pad-x path");
+        if (p) p.setAttribute("fill", color);
+      }
+      function setPad(state, main, sub) {
+        $("pad").className = "pad pad-" + state;
+        $("padMain").textContent = main;
+        $("padSub").textContent = sub || "";
+      }
+      function setStatus(kind, html) {
+        $("status").className = "status " + (kind || "");
+        $("statusText").innerHTML = html;
+      }
+      function clearTimers() {
+        clearTimeout(S.waitTimer);
+        clearTimeout(S.slowTimer);
+        clearTimeout(S.flashTimer);
+      }
+
+      // ---------- round flow ----------
+      function startRound() {
+        clearTimers();
+        S.phase = "wait";
+        setPad("wait", "Wait for it…", "tap when the X lights up");
+        const delay = WAIT_MIN + Math.random() * (WAIT_MAX - WAIT_MIN);
+        S.waitTimer = setTimeout(go, delay);
+      }
+      function go() {
+        S.phase = "go";
+        S.goAt = performance.now();
+        setPad("go", "TAP!", "");
+        S.slowTimer = setTimeout(() => endRun("Too slow"), TOO_SLOW_MS);
+      }
+      function endRun(reason) {
+        clearTimers();
+        S.phase = "idle";
+        S.streak = 0;
+        setPad("miss", reason, "tap to start again");
+        render();
+      }
+
+      function onTap() {
+        S.hasPlayed = true;
+        if (S.phase === "idle") {
+          startRound();
+          return;
+        }
+        if (S.phase === "wait") {
+          endRun("Too soon!");
+          return;
+        }
+        if (S.phase === "flash") return; // ignore taps during the success flash
+        if (S.phase === "go") {
+          galaxy.pulse(0);
+          const ms = Math.round(performance.now() - S.goAt);
+          clearTimers();
+          S.phase = "flash";
+          S.lastMs = ms;
+          if (S.bestMs == null || ms < S.bestMs) S.bestMs = ms;
+          S.streak += 1;
+          S.session += 1;
+          setPad("hit", ms + " ms", "+1 landed onchain");
+          landReaction();
+          render();
+          maybeShowNameRow();
+          S.flashTimer = setTimeout(startRound, 480); // auto-continue the run
+        }
+      }
+
+      // ---------- land one reaction (one real tx, or local in preview) ----------
+      function landReaction() {
+        if (client.deployed) {
+          S.onchainScore += 1; // optimistic; poll() reconciles to the chain
+          sendReactionTx();
+        } else {
+          S.localGlobal += 1;
+          S.onchainScore = S.session;
+        }
+      }
+      async function sendReactionTx() {
+        try {
+          const { txHash } = await client.sendAction("react", []);
+          const entry = { hash: txHash, state: "pending" };
+          S.feed.unshift(entry);
+          if (S.feed.length > 8) S.feed.length = 8;
+          renderFeed();
+          pollTx(entry);
+        } catch (err) {
+          handleSendError(err);
+        }
+      }
+      async function pollTx(entry) {
+        for (let i = 0; i < 26; i++) {
+          await new Promise((r) => setTimeout(r, 600));
+          const st = await client.txStatus(entry.hash);
+          if (st === "success") { entry.state = "final"; renderFeed(); return; }
+          if (st === "fail" || st === "invalid") { entry.state = "failed"; renderFeed(); return; }
+        }
+      }
+      function handleSendError(err) {
+        const code = err && err.code;
+        if (code === "rate_limited") setStatus("warn", "Going fast. You hit the relayer's per-minute limit. Your reaction still counts here; onchain resumes in a moment.");
+        else if (code === "relayer_unavailable" || code === "not_deployed") setStatus("warn", "The onchain layer is <b>warming up</b>. Your reactions show here for now and go onchain shortly.");
+        else if (code === "network") setStatus("err", "Network hiccup reaching the relayer. Your reaction still shows here.");
+        else setStatus("warn", "Onchain submission is unavailable this moment. Your reaction still shows here.");
+      }
+
+      // ---------- render ----------
+      function render() {
+        $("lastMs").textContent = S.lastMs == null ? "···" : S.lastMs + " ms";
+        $("streak").textContent = fmt(S.streak);
+        $("yourReactions").textContent = fmt(client.deployed ? S.onchainScore : S.session);
+        $("bestMs").textContent = S.bestMs == null ? "···" : S.bestMs + " ms";
+        $("globalActions").textContent = fmt(client.deployed ? S.global : S.localGlobal);
+      }
+
+      function renderFeed() {
+        if (!S.feed.length) return;
+        $("feedCard").classList.remove("hidden");
+        $("feed").innerHTML = S.feed
+          .map((e) => `<li><span class="tag ${e.state}">${e.state}</span>` +
+            (e.hash ? `<a href="${client.explorer}/transactions/${e.hash}" target="_blank" rel="noopener">${e.hash.slice(0, 10)}…</a>` : `<span>${e.note || ""}</span>`) + `</li>`)
+          .join("");
+      }
+
+      function renderLeaderboard(entries) {
+        const ul = $("leaderboard");
+        if (!entries || !entries.length) {
+          ul.innerHTML = `<li><span class="empty">No reactions yet. Be the first.</span></li>`;
+          return;
+        }
+        const me = client.address;
+        ul.innerHTML = entries.slice(0, 8).map((e, i) => {
+          const you = e.address === me;
+          const name = e.handle && e.handle.length ? e.handle : e.address.slice(0, 6) + "…" + e.address.slice(-4);
+          return `<li><span class="rank">${i + 1}</span><span class="who ${you ? "you" : ""}">${escapeHtml(name)}${you ? " (you)" : ""}</span><span class="sc">${fmt(e.score)}</span></li>`;
+        }).join("");
+      }
+      function escapeHtml(s) { return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+
+      // ---------- poll onchain (~2s) ----------
+      async function poll() {
+        if (!client.deployed) return;
+        const g = await client.query("getGlobalActions", []);
+        if (g && g.length) S.global = client.decodeU64(g[0]);
+        const top = await client.query("getTopReactors", ["08"]);
+        if (top) renderLeaderboard(client.decodeLeaderboard(top));
+        const me = client.addressHex();
+        if (me) {
+          const entry = await client.query("getPlayerEntry", [me]);
+          if (entry && entry.length) {
+            const sc = client.decodeU64(entry[0]);
+            if (sc > S.onchainScore) S.onchainScore = sc;
+          }
+        }
+        render();
+      }
+
+      function maybeShowNameRow() {
+        if (S.hasPlayed && !S.named) $("nameRow").classList.remove("hidden");
+      }
+      async function saveName() {
+        const name = $("nameInput").value.trim();
+        if (!name) return;
+        if (!client.deployed) {
+          S.named = true; $("nameRow").classList.add("hidden");
+          setStatus("ok", "Name saved here. It goes onchain with the board once the cabinet is live.");
+          return;
+        }
+        try {
+          await client.sendAction("setHandle", [client.strToHex(name)]);
+          S.named = true; $("nameRow").classList.add("hidden");
+          setStatus("ok", "Name sent onchain. It will show on the board shortly.");
+        } catch (err) { handleSendError(err); }
+      }
+
+      // pointerdown so the tap registers on the first touch, not after a 300ms delay
+      $("pad").addEventListener("pointerdown", (e) => { e.preventDefault(); onTap(); });
+      $("nameBtn").addEventListener("click", saveName);
+
+      (async function () {
+        if (!client.deployed) {
+          setStatus("warn", "Local preview. Play now; your reactions go onchain once the cabinet is live.");
+        } else {
+          setStatus("ok", "One tap, no wallet. Every on-time reaction is a real transaction.");
+          client.ensureKey().then((ok) => { if (!ok) setStatus("warn", "Onchain layer unavailable right now. Your reactions still show here."); });
+        }
+        render();
+        poll();
+        setInterval(poll, 2000);
+      })();
+    </script>
+  </body>
+</html>

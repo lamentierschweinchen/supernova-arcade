@@ -1,0 +1,355 @@
+/* ============================================================================
+   arcade.css — shared theme for Supernova Arcade cabinets (the CANON system).
+   Matches the hub + Sprint: Roobert PRO, #06070A cosmos, a single mint #23F7DD
+   accent, solid surfaces, mono tabular numbers, the filled MvX X mark.
+   Mobile-first. US English. Standalone pages (no Next layout), self-contained.
+   Two-sided games layer ONE extra accent each on top (amber / coral / green)
+   in their own page <style> blocks.
+
+   Legacy var names (--mvx-cyan, --supernova-orange, --panel, --muted, …) are
+   kept as aliases that map onto the canon below, so any page rule still on an
+   old name renders on-system (fail-soft). New work should use the canon names.
+   ============================================================================ */
+
+/* ---------- Roobert PRO (the same faces the hub + Sprint load) ---------- */
+@font-face{font-family:'Roobert PRO';src:url('/fonts/RoobertPRO-Light.otf') format('opentype');font-weight:300;font-style:normal;font-display:swap;}
+@font-face{font-family:'Roobert PRO';src:url('/fonts/RoobertPRO-Regular.otf') format('opentype');font-weight:400;font-style:normal;font-display:swap;}
+@font-face{font-family:'Roobert PRO';src:url('/fonts/RoobertPRO-Medium.otf') format('opentype');font-weight:500;font-style:normal;font-display:swap;}
+@font-face{font-family:'Roobert PRO';src:url('/fonts/RoobertPRO-SemiBold.otf') format('opentype');font-weight:600;font-style:normal;font-display:swap;}
+@font-face{font-family:'Roobert PRO';src:url('/fonts/RoobertPRO-Bold.otf') format('opentype');font-weight:700;font-style:normal;font-display:swap;}
+@font-face{font-family:'Roobert PRO';src:url('/fonts/RoobertPRO-Heavy.otf') format('opentype');font-weight:900;font-style:normal;font-display:swap;}
+/* JetBrains Mono (variable) — the official MultiversX mono, for all numbers/telemetry */
+@font-face{font-family:'JetBrains Mono';src:url('/fonts/JetBrainsMono.woff2') format('woff2');font-weight:100 800;font-style:normal;font-display:swap;}
+
+:root {
+  /* ---- canon palette ---- */
+  --bg:#06070A;
+  --surface:#0E1117;
+  --surface-2:#141821;
+  --surface-3:#1a1f2b;
+  --border:#1E2330;
+  --border-soft:#161B25;
+  --mint:#23F7DD;
+  --mint-dim:#1ec8b4;
+  --text:#F4F6FA;
+  --text-dim:#9BA3B4;
+  --text-faint:#6B7385;
+  --blue:#5B8DEF;
+  --amber:#F5B544;
+  --coral:#FF6B9D;
+  --green:#4ADE80;
+  --lavender:#A78BFA;
+  --mono:'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace;
+  --ease-out:cubic-bezier(.16,1,.3,1);
+
+  /* cosmos glow tints — kept faint (atmosphere, not blobs); a page can re-tint one */
+  --glow-1:rgba(35,247,221,.10);   /* mint  */
+  --glow-2:rgba(91,141,239,.07);   /* blue  */
+  --glow-3:rgba(167,139,250,.06);  /* lavender */
+
+  /* ---- compatibility aliases (legacy → canon, fail-soft) ---- */
+  --space-deep:var(--bg);
+  --space-mid:var(--bg);
+  --ink:#04221F;
+  --panel:var(--surface);
+  --panel-2:var(--surface-2);
+  --line:var(--border);
+  --supernova-orange:var(--amber);
+  --flare-orange:var(--amber);
+  --mvx-cyan:var(--mint);
+  --mvx-blue:var(--blue);
+  --core-white:var(--text);
+  --muted:var(--text-dim);
+  --muted-2:var(--text-faint);
+  --good:var(--mint);
+  --warn:var(--amber);
+  --bad:var(--coral);
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+html,
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+}
+html { background: #040506; -webkit-text-size-adjust: 100%; }
+body {
+  font-family: 'Roobert PRO', system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  line-height: 1.5;
+  text-wrap: pretty;
+  position: relative;
+  overflow-x: hidden;
+}
+
+/* cosmic backdrop — two FIXED layers (no background-attachment → no iOS jank) */
+body::before { /* starfield */
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.55;
+  background-repeat: no-repeat;
+  background-image:
+    radial-gradient(1.4px 1.4px at 12% 18%, rgba(244,246,250,0.7), transparent),
+    radial-gradient(1px 1px at 28% 64%, rgba(244,246,250,0.5), transparent),
+    radial-gradient(1.3px 1.3px at 41% 30%, rgba(244,246,250,0.6), transparent),
+    radial-gradient(1px 1px at 58% 76%, rgba(244,246,250,0.5), transparent),
+    radial-gradient(1.2px 1.2px at 73% 22%, rgba(244,246,250,0.55), transparent),
+    radial-gradient(1px 1px at 86% 58%, rgba(244,246,250,0.5), transparent),
+    radial-gradient(1.3px 1.3px at 92% 84%, rgba(244,246,250,0.45), transparent),
+    radial-gradient(1px 1px at 6% 86%, rgba(244,246,250,0.5), transparent);
+}
+body::after { /* 3 soft glows (mint / blue / lavender); a page re-tints via --glow-* */
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(460px 460px at -8% -10%, var(--glow-1), transparent 72%),
+    radial-gradient(520px 520px at 110% 112%, var(--glow-2), transparent 72%),
+    radial-gradient(360px 360px at 56% 44%, var(--glow-3), transparent 72%);
+}
+
+.wrap {
+  position: relative;
+  z-index: 1;
+  max-width: 540px;
+  margin: 0 auto;
+  padding: 18px 16px calc(64px + env(safe-area-inset-bottom));
+}
+
+/* ---------- shared atoms ---------- */
+.xmark path { fill: var(--mint); }
+
+/* ---- top bar: back pill + filled X-mark lockup ---- */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-dim);
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  padding: 7px 12px;
+  white-space: nowrap;
+  background: rgba(14, 17, 23, 0.7);
+  transition: color 0.15s, border-color 0.15s;
+}
+.back:hover { color: var(--mint); border-color: rgba(35, 247, 221, 0.4); }
+.lockup { display: inline-flex; align-items: center; gap: 8px; }
+.lockup .lk-x { width: 20px; height: 16px; flex: 0 0 auto; }
+.lockup .lk-wordmark { height: 16px; width: auto; display: block; flex: 0 0 auto; } /* official /mvx-wordmark.svg */
+.lockup .lk-name { font-size: 15px; font-weight: 600; letter-spacing: 0.01em; color: var(--text); }
+.lockup .lk-name .x-letter { color: var(--mint); }
+/* legacy text brand (if any page still uses it) renders on-system */
+.brand { font-size: 12px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-dim); }
+.brand b { color: var(--mint); }
+
+h1 {
+  font-size: 30px;
+  line-height: 1.08;
+  margin: 0 0 6px;
+  letter-spacing: -0.02em;
+  font-weight: 800;
+  color: var(--text);
+}
+.subtitle { color: var(--text-dim); font-size: 14px; margin: 0 0 16px; line-height: 1.5; }
+.subtitle b { color: var(--text); font-weight: 600; }
+
+/* one-tap onboarding chip — consistent on every cabinet */
+.onetap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 16px;
+  border: 1px solid rgba(35, 247, 221, 0.22);
+  border-radius: 13px;
+  background: linear-gradient(150deg, rgba(35, 247, 221, 0.06), var(--surface) 70%);
+  padding: 10px 13px;
+}
+.onetap .ic {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(35, 247, 221, 0.3);
+  background: rgba(35, 247, 221, 0.06);
+}
+.onetap .ic svg { width: 15px; height: 15px; display: block; }
+.onetap .ot-t { font-size: 12.5px; line-height: 1.4; color: var(--text-dim); }
+.onetap .ot-t b { color: var(--text); font-weight: 600; }
+
+/* ---------- cards (solid surfaces, no glass) ---------- */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 16px;
+  margin-bottom: 14px;
+}
+.card-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  margin: 0 0 10px;
+}
+
+/* ---------- stats row ---------- */
+.stats { display: flex; gap: 10px; }
+.stat {
+  flex: 1;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  padding: 12px 8px;
+  text-align: center;
+}
+.stat .num {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  line-height: 1.05;
+}
+.stat .num.mint { color: var(--mint); }
+.stat .lbl { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-faint); margin-top: 5px; }
+
+/* ---------- buttons: canon mint pill (glow + 3px lip), ghost, amber ---------- */
+.btn {
+  appearance: none;
+  border: none;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+  font-size: 15px;
+  border-radius: 13px;
+  padding: 14px 18px;
+  width: 100%;
+  text-align: center;
+  color: #04221F;
+  background: var(--mint);
+  box-shadow: 0 0 0 1px rgba(35, 247, 221, 0.22), 0 6px 16px rgba(0, 0, 0, 0.35);
+  border-bottom: 3px solid #0e9c8c;
+  transition: transform 0.07s ease, filter 0.15s, opacity 0.15s, border-bottom-width 0.07s ease;
+  touch-action: manipulation;
+  user-select: none;
+}
+.btn:hover { filter: brightness(1.05); }
+/* keycap press — the button physically depresses (lip compresses) */
+.btn:active { transform: translateY(2px) scale(0.995); border-bottom-width: 1px; filter: brightness(1.06); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn.ghost {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-bottom: 3px solid #11151d;
+  box-shadow: none;
+}
+.btn.amber,
+.btn.orange { /* .orange kept as alias for any legacy markup */
+  background: var(--amber);
+  color: #2a1c02;
+  box-shadow: 0 0 0 1px rgba(245, 181, 68, 0.22), 0 6px 16px rgba(0, 0, 0, 0.35);
+  border-bottom: 3px solid #b9842a;
+}
+
+/* ---------- status line ---------- */
+.status {
+  font-size: 13px;
+  border-radius: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-dim);
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  line-height: 1.45;
+}
+.status .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--text-faint); }
+.status.ok .dot { background: var(--mint); box-shadow: 0 0 8px var(--mint); }
+.status.warn { color: #f4e3bf; }
+.status.warn .dot { background: var(--amber); box-shadow: 0 0 8px var(--amber); }
+.status.err { color: #ffc8d6; }
+.status.err .dot { background: var(--coral); box-shadow: 0 0 8px var(--coral); }
+.status b { color: var(--text); }
+
+/* ---------- leaderboard ---------- */
+.lb { list-style: none; margin: 0; padding: 0; }
+.lb li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border-soft);
+  font-size: 14px;
+}
+.lb li:last-child { border-bottom: none; }
+.lb .rank { width: 22px; color: var(--text-faint); font-family: var(--mono); font-variant-numeric: tabular-nums; font-weight: 600; text-align: center; flex: 0 0 auto; }
+.lb .who { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-dim); min-width: 0; }
+.lb .who.you { color: var(--mint); font-weight: 600; }
+.lb .sc { font-family: var(--mono); font-variant-numeric: tabular-nums; font-weight: 700; color: var(--text-dim); }
+/* tint the "you" row mint (graceful no-op where :has() is unsupported) */
+.lb li:has(.who.you) { background: rgba(35, 247, 221, 0.06); border-radius: 8px; margin: 0 -6px; padding-left: 6px; padding-right: 6px; }
+.lb li:has(.who.you) .sc,
+.lb li:has(.who.you) .rank { color: var(--mint); }
+.empty { color: var(--text-faint); font-size: 13px; padding: 6px 0; }
+
+/* ---------- tx feed ---------- */
+.feed { list-style: none; margin: 0; padding: 0; font-size: 12.5px; }
+.feed li { display: flex; align-items: center; gap: 8px; padding: 5px 0; color: var(--text-dim); }
+.feed a { color: var(--blue); text-decoration: none; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.feed a:hover { text-decoration: underline; }
+.feed .tag { font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--border); }
+.feed .tag.pending { color: var(--amber); border-color: rgba(245, 181, 68, 0.35); }
+.feed .tag.final { color: var(--mint); border-color: rgba(35, 247, 221, 0.35); }
+.feed .tag.failed { color: var(--coral); border-color: rgba(255, 107, 157, 0.35); }
+
+/* ---------- footer ---------- */
+.foot { color: var(--text-faint); font-size: 11.5px; text-align: center; margin-top: 22px; line-height: 1.6; }
+.foot a { color: var(--text-dim); }
+.foot .sn { color: var(--mint); font-weight: 600; }
+
+.row { display: flex; gap: 10px; align-items: center; }
+.name-input {
+  flex: 1;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+  color: var(--text);
+  font: inherit;
+}
+.name-input::placeholder { color: var(--text-faint); }
+.hidden { display: none !important; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; }
+}

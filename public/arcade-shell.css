@@ -1,0 +1,159 @@
+/* ============================================================================
+   arcade-shell.css — the neon-arcade design system for Supernova Arcade GAME
+   pages (the in-cabinet "play register"). Pairs with /arcade-galaxy.js (the
+   living backdrop) to make every game feel like a machine inside the network.
+
+   Philosophy: the hub is a loud wall of neon cabinets (for CHOOSING); a game
+   page is calmer (for PLAYING) — the galaxy is dimmed, the chrome is restrained,
+   and the GAME is the lit CRT screen. Each game sets its shard color once:
+       <body style="--c:#5B8DEF" data-shard="shard 2">
+   and every accent (glow, buttons, numbers, trim) themes to it.
+
+   Supersedes arcade.css for migrated games. On-canon tokens (Roobert PRO,
+   JetBrains Mono). Reduced-motion aware.
+   ============================================================================ */
+@font-face{font-family:'Roobert PRO';src:url('/fonts/RoobertPRO-Regular.otf') format('opentype');font-weight:400;font-display:swap;}
+@font-face{font-family:'Roobert PRO';src:url('/fonts/RoobertPRO-Medium.otf') format('opentype');font-weight:500;font-display:swap;}
+@font-face{font-family:'Roobert PRO';src:url('/fonts/RoobertPRO-SemiBold.otf') format('opentype');font-weight:600;font-display:swap;}
+@font-face{font-family:'Roobert PRO';src:url('/fonts/RoobertPRO-Bold.otf') format('opentype');font-weight:700;font-display:swap;}
+@font-face{font-family:'Roobert PRO';src:url('/fonts/RoobertPRO-Heavy.otf') format('opentype');font-weight:900;font-display:swap;}
+@font-face{font-family:'JetBrains Mono';src:url('/fonts/JetBrainsMono.woff2') format('woff2');font-weight:100 800;font-display:swap;}
+
+:root{
+  --bg:#06070A;--surface:#0E1117;--surface-2:#141821;--border:#1E2330;--border-soft:#161B25;
+  --mint:#23F7DD;--amber:#F5B544;--coral:#FF6B9D;--blue:#5B8DEF;--lavender:#A78BFA;--green:#4ADE80;--yellow:#FFD23F;
+  --text:#F4F6FA;--text-dim:#9BA3B4;--text-faint:#6B7385;
+  --mono:'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace;
+  --c:#23F7DD;                 /* active shard/accent — a game overrides this */
+  --ease:cubic-bezier(.16,1,.3,1);
+  /* legacy aliases so a migrating game's old per-page styles still render on-system */
+  --panel:var(--surface);--panel-2:var(--surface-2);--line:var(--border);
+  --mvx-cyan:var(--c);--mvx-blue:var(--blue);--supernova-orange:var(--amber);--flare-orange:var(--amber);
+  --core-white:var(--text);--muted:var(--text-dim);--muted-2:var(--text-faint);--ink:#04221F;
+  --good:var(--mint);--warn:var(--amber);--bad:var(--coral);
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+html{background:#040506;-webkit-text-size-adjust:100%;}
+body{font-family:'Roobert PRO',system-ui,-apple-system,sans-serif;color:var(--text);background:transparent;
+  -webkit-font-smoothing:antialiased;line-height:1.5;text-wrap:pretty;overflow-x:hidden;min-height:100vh;position:relative;}
+a{color:inherit;text-decoration:none;}
+
+/* the galaxy canvas (created by arcade-galaxy.js) sits behind everything */
+#galaxy{position:fixed;inset:0;z-index:0;}
+
+/* ---- ambient chrome (restrained for play) ---- */
+.scan{position:fixed;inset:0;z-index:1;pointer-events:none;opacity:.4;background:repeating-linear-gradient(0deg,rgba(0,0,0,0) 0 2px,rgba(0,0,0,.12) 2px 3px);}
+.vignette{position:fixed;inset:0;z-index:1;pointer-events:none;background:radial-gradient(140% 100% at 50% 38%,transparent 50%,rgba(2,3,4,.6) 100%);}
+.floor{position:fixed;left:0;right:0;bottom:0;height:24vh;z-index:1;pointer-events:none;
+  background:linear-gradient(to bottom,color-mix(in srgb,var(--c) 5%,transparent),rgba(4,5,6,0) 24%,rgba(4,5,6,.6));}
+.floor::before{content:"";position:absolute;top:0;left:8%;right:8%;height:1px;background:linear-gradient(90deg,transparent,color-mix(in srgb,var(--c) 50%,transparent),transparent);box-shadow:0 0 12px color-mix(in srgb,var(--c) 30%,transparent);}
+.brk{position:fixed;z-index:3;width:22px;height:22px;border:2px solid color-mix(in srgb,var(--c) 45%,transparent);pointer-events:none;}
+.brk.tl{top:14px;left:14px;border-right:none;border-bottom:none;border-radius:12px 0 0 0;}
+.brk.tr{top:14px;right:14px;border-left:none;border-bottom:none;border-radius:0 12px 0 0;}
+.brk.bl{bottom:14px;left:14px;border-right:none;border-top:none;border-radius:0 0 0 12px;}
+.brk.br{bottom:14px;right:14px;border-left:none;border-top:none;border-radius:0 0 12px 0;}
+
+.wrap{position:relative;z-index:4;max-width:560px;margin:0 auto;padding:22px 18px calc(56px + env(safe-area-inset-bottom));}
+
+/* ---- header: back-to-arcade + game lockup + shard tag ---- */
+.abar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px;}
+.back{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:500;color:var(--text-dim);
+  border:1px solid var(--border);border-radius:11px;padding:7px 12px;background:rgba(14,17,23,.6);backdrop-filter:blur(5px);transition:color .15s,border-color .15s;}
+.back:hover{color:var(--c);border-color:color-mix(in srgb,var(--c) 45%,transparent);}
+.lockup{display:inline-flex;align-items:center;gap:8px;}
+.lockup img{height:16px;display:block;opacity:.92;}
+.abar .shard{font-family:var(--mono);font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--c);background:color-mix(in srgb,var(--c) 13%,transparent);border:1px solid color-mix(in srgb,var(--c) 30%,transparent);padding:4px 9px;border-radius:999px;}
+
+/* ---- title + onboarding ---- */
+h1{font-size:clamp(26px,6vw,34px);font-weight:900;letter-spacing:-.02em;line-height:1;color:var(--text);margin-bottom:7px;}
+.sub{font-size:13.5px;line-height:1.5;color:var(--text-dim);margin-bottom:15px;}
+.sub b{color:var(--text);font-weight:600;}
+.onetap{display:flex;align-items:center;gap:10px;margin-bottom:16px;border:1px solid color-mix(in srgb,var(--c) 22%,transparent);border-radius:13px;
+  background:linear-gradient(150deg,color-mix(in srgb,var(--c) 6%,transparent),var(--surface) 70%);padding:10px 13px;}
+.onetap .ic{width:30px;height:30px;border-radius:9px;flex:0 0 auto;display:grid;place-items:center;border:1px solid color-mix(in srgb,var(--c) 30%,transparent);background:color-mix(in srgb,var(--c) 6%,transparent);}
+.onetap .ic svg{width:15px;height:15px;display:block;}
+.onetap .t{font-size:12.5px;line-height:1.4;color:var(--text-dim);}.onetap .t b{color:var(--text);font-weight:600;}
+
+/* ---- the CABINET: the game runs as a lit CRT screen ---- */
+.cabinet{position:relative;border-radius:18px;padding:9px;margin-bottom:14px;
+  background:linear-gradient(180deg,#141821,#0b0e14 60%,#080a0f);
+  border:1px solid color-mix(in srgb,var(--c) 38%,#222835);
+  box-shadow:0 0 30px color-mix(in srgb,var(--c) 20%,transparent),0 20px 48px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.05);}
+.cabinet::before,.cabinet::after{content:"";position:absolute;top:18px;bottom:18px;width:3px;border-radius:3px;background:var(--c);box-shadow:0 0 10px var(--c);opacity:.7;}
+.cabinet::before{left:2px;}.cabinet::after{right:2px;}
+.cab-marquee{position:relative;text-align:center;font-family:var(--mono);font-size:10px;letter-spacing:.22em;text-transform:uppercase;color:var(--c);padding:15px 0 9px;text-shadow:0 0 10px color-mix(in srgb,var(--c) 60%,transparent);}
+/* marquee bulb-strip — a row of little lights across the top of every cabinet */
+.cab-marquee::before{content:"";position:absolute;top:6px;left:50%;transform:translateX(-50%);width:min(74%,240px);height:5px;
+  background-image:radial-gradient(circle,var(--c) 1.3px,transparent 1.8px);background-size:15px 5px;background-position:center;background-repeat:repeat-x;
+  filter:drop-shadow(0 0 4px var(--c));opacity:.75;animation:marquee 2.6s ease-in-out infinite;}
+@keyframes marquee{0%,100%{opacity:.75}50%{opacity:.32}}
+.screen{position:relative;border-radius:10px;overflow:hidden;min-height:240px;
+  background:radial-gradient(130% 120% at 50% 0%,color-mix(in srgb,var(--c) 12%,#050608),#040506);
+  border:2px solid #04060a;box-shadow:inset 0 0 30px rgba(0,0,0,.8),0 0 0 1px color-mix(in srgb,var(--c) 28%,transparent);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:22px 16px;animation:crt 8s steps(1) infinite;}
+.screen::after{content:"";position:absolute;inset:0;pointer-events:none;z-index:3;opacity:.45;background:repeating-linear-gradient(0deg,rgba(0,0,0,0) 0 2px,rgba(0,0,0,.26) 2px 3px);}
+/* CRT glass sheen + a faint, rare flicker for life */
+.screen::before{content:"";position:absolute;inset:0;pointer-events:none;z-index:2;
+  background:linear-gradient(133deg,rgba(255,255,255,.06),transparent 38%),radial-gradient(120% 70% at 50% -12%,color-mix(in srgb,var(--c) 9%,transparent),transparent 62%);}
+@keyframes crt{0%,100%{filter:brightness(1)}96.5%{filter:brightness(1)}97.5%{filter:brightness(1.05)}98.5%{filter:brightness(.97)}99.5%{filter:brightness(1.02)}}
+.screen>*{position:relative;z-index:1;}
+
+/* ---- neon numbers / readouts ---- */
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums;font-weight:800;color:var(--text);}
+.num.big{font-size:clamp(40px,12vw,56px);color:var(--c);text-shadow:0 0 22px color-mix(in srgb,var(--c) 50%,transparent);line-height:1;}
+.readout{font-family:var(--mono);font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--text-faint);}
+
+/* ---- buttons: neon keycap, shard-themed ---- */
+.btn{appearance:none;border:none;cursor:pointer;font:inherit;font-weight:600;font-size:15px;border-radius:13px;padding:14px 18px;width:100%;text-align:center;
+  color:#04140f;background:var(--c);box-shadow:0 0 0 1px color-mix(in srgb,var(--c) 30%,transparent),0 0 22px color-mix(in srgb,var(--c) 35%,transparent),0 6px 16px rgba(0,0,0,.4);
+  border-bottom:3px solid color-mix(in srgb,var(--c) 55%,black);transition:transform .07s var(--ease),filter .15s,border-bottom-width .07s;touch-action:manipulation;user-select:none;}
+.btn:hover{filter:brightness(1.06);}
+.btn:active{transform:translateY(2px) scale(.995);border-bottom-width:1px;filter:brightness(1.08);}
+.btn:disabled{opacity:.5;cursor:not-allowed;}
+.btn.ghost{background:var(--surface);color:var(--text);border:1px solid var(--border);border-bottom:3px solid #11151d;box-shadow:none;}
+
+/* ---- stat trio ---- */
+.stats{display:flex;gap:10px;margin-bottom:14px;}
+.stat{flex:1;background:rgba(14,17,23,.6);border:1px solid var(--border);border-radius:13px;padding:12px 8px;text-align:center;backdrop-filter:blur(4px);}
+.stat .num{font-size:21px;line-height:1.05;}
+.stat .num.on{color:var(--c);}
+.stat .lbl{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-faint);margin-top:5px;}
+
+/* ---- panel / leaderboard / status / feed ---- */
+.card{background:rgba(14,17,23,.6);border:1px solid var(--border);border-radius:16px;padding:16px;margin-bottom:14px;backdrop-filter:blur(4px);}
+.card-title{font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--text-faint);margin:0 0 10px;display:flex;align-items:center;gap:8px;}
+.card-title .gd{width:7px;height:7px;border-radius:50%;background:var(--c);box-shadow:0 0 8px var(--c);}
+.lb{list-style:none;margin:0;padding:0;}
+.lb li{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border-soft);font-size:14px;}
+.lb li:last-child{border-bottom:none;}
+.lb .rank{width:22px;text-align:center;flex:0 0 auto;color:var(--text-faint);font-family:var(--mono);font-variant-numeric:tabular-nums;font-weight:600;}
+.lb .who{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-dim);}
+.lb .who.you{color:var(--c);font-weight:600;}
+.lb .sc{font-family:var(--mono);font-variant-numeric:tabular-nums;font-weight:700;color:var(--text-dim);}
+.lb li:has(.who.you){background:color-mix(in srgb,var(--c) 8%,transparent);border-radius:8px;margin:0 -6px;padding-left:6px;padding-right:6px;}
+.lb li:has(.who.you) .sc,.lb li:has(.who.you) .rank{color:var(--c);}
+.empty{color:var(--text-faint);font-size:13px;padding:6px 0;}
+.status{font-size:13px;border-radius:12px;padding:10px 12px;border:1px solid var(--border);background:rgba(14,17,23,.6);color:var(--text-dim);min-height:38px;display:flex;align-items:center;gap:8px;line-height:1.45;backdrop-filter:blur(4px);}
+.status .dot{width:8px;height:8px;border-radius:50%;flex:none;background:var(--text-faint);}
+.status.ok .dot{background:var(--c);box-shadow:0 0 8px var(--c);}
+.status.warn{color:#f4e3bf;}.status.warn .dot{background:var(--amber);box-shadow:0 0 8px var(--amber);}
+.status.err{color:#ffc8d6;}.status.err .dot{background:var(--coral);box-shadow:0 0 8px var(--coral);}
+.status b{color:var(--text);}
+.feed{list-style:none;margin:0;padding:0;font-size:12.5px;}
+.feed li{display:flex;align-items:center;gap:8px;padding:5px 0;color:var(--text-dim);}
+.feed a{color:var(--blue);text-decoration:none;font-family:var(--mono);}
+.feed .tag{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;padding:1px 7px;border-radius:999px;border:1px solid var(--border);}
+.feed .tag.pending{color:var(--amber);border-color:rgba(245,181,68,.35);}
+.feed .tag.final{color:var(--c);border-color:color-mix(in srgb,var(--c) 35%,transparent);}
+.feed .tag.failed{color:var(--coral);border-color:rgba(255,107,157,.35);}
+.row{display:flex;gap:10px;align-items:center;}
+.name-input{flex:1;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px;color:var(--text);font:inherit;}
+.name-input::placeholder{color:var(--text-faint);}
+.hidden{display:none !important;}
+
+/* ---- footer ---- */
+.afoot{margin-top:8px;font-family:var(--mono);font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--text-faint);text-align:center;line-height:1.7;}
+.afoot .sn{color:var(--c);}
+.afoot a{color:var(--text-dim);}
+
+@media (prefers-reduced-motion:reduce){*{animation:none !important;}}

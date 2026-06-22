@@ -1,0 +1,16 @@
+{
+  "rewrites": [
+    { "source": "/", "destination": "/arcade.html" },
+    { "source": "/arcade", "destination": "/arcade.html" },
+    { "source": "/tug-of-war", "destination": "/tug-of-war.html" },
+    { "source": "/canvas", "destination": "/canvas.html" },
+    { "source": "/button", "destination": "/button.html" },
+    { "source": "/reaction", "destination": "/reaction.html" },
+    { "source": "/clawback", "destination": "/clawback/index.html" },
+    { "source": "/degen-dash", "destination": "/degen-dash/index.html" },
+    { "source": "/onchain", "destination": "/onchain.html" }
+  ],
+  "redirects": [
+    { "source": "/supernova-sprint", "destination": "https://supernova-sprint.xyz/supernova-sprint", "permanent": false }
+  ]
+}

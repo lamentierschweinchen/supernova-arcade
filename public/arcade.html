@@ -1,0 +1,722 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Supernova Arcade · MultiversX</title>
+<meta name="description" content="A neon arcade inside the live network. Simple onchain games on MultiversX: one tap, no wallet, every move a real transaction. Play, or build your own." />
+<meta property="og:title" content="Supernova Arcade · MultiversX" />
+<meta property="og:description" content="A neon arcade inside the live network. Simple games, real transactions. One tap, no wallet, no install. The chain holds the score." />
+<meta property="og:image" content="/supernova-sprint-og.png" />
+<meta name="twitter:card" content="summary_large_image" />
+<link rel="icon" href="/favicon.svg" />
+<!--
+  ============================================================================
+  SUPERNOVA ARCADE — hub  (neon-arcade redesign)
+  ----------------------------------------------------------------------------
+  A neon arcade you walk into: a big central Galaxy of Nodes (the live network),
+  neon ceiling tubes + lit sign, and a bank of physical cabinets you pick from.
+  Self-contained standalone page (no Next layout), like the cabinets.
+
+  PRESERVED LOGIC LAYER (do not regress): the grid is CONFIG-DRIVEN (CABINETS
+  below the script); the giant odometer sums every cabinet's real onchain action
+  count on a ~2s tick (Sprint getGlobalTaps + each game getGlobalActions) via the
+  shared /arcade-core.js client; the live ambient SCORE (/arcade-score.js) rides
+  that same feed (muted by default, opt-in via the speaker toggle); and real
+  activity fires photons into the galaxy (galaxy.pulse on each cabinet's delta).
+
+  VISUAL LAYER from the approved concept (arcade-concept.html): the shared
+  galaxy backdrop is /arcade-galaxy.js; cabinets are neon machines (marquee +
+  bezeled CRT screen with a live mini-game + shard tag + control deck), themed
+  per-game via --c. On-canon tokens (Roobert PRO + JetBrains Mono).
+
+  TO ADD A CABINET: append to CABINETS (give it color + shard).
+  COPY GUARDRAILS: positive, confident voice. Supernova is "live on testnet".
+    Do NOT hedge ("scheduled to activate"). No refresh-rate disclaimer on the
+    counters. "onchain" is one word. US English. No em dashes. No TPS claim.
+    A score is the count of real transactions a player sends (uncheatable).
+  ============================================================================
+-->
+<style>
+/* ---------- Roobert PRO + JetBrains Mono ---------- */
+@font-face{font-family:'Roobert PRO';src:url('/fonts/RoobertPRO-Light.otf') format('opentype');font-weight:300;font-display:swap;}
+@font-face{font-family:'Roobert PRO';src:url('/fonts/RoobertPRO-Regular.otf') format('opentype');font-weight:400;font-display:swap;}
+@font-face{font-family:'Roobert PRO';src:url('/fonts/RoobertPRO-Medium.otf') format('opentype');font-weight:500;font-display:swap;}
+@font-face{font-family:'Roobert PRO';src:url('/fonts/RoobertPRO-SemiBold.otf') format('opentype');font-weight:600;font-display:swap;}
+@font-face{font-family:'Roobert PRO';src:url('/fonts/RoobertPRO-Bold.otf') format('opentype');font-weight:700;font-display:swap;}
+@font-face{font-family:'Roobert PRO';src:url('/fonts/RoobertPRO-Heavy.otf') format('opentype');font-weight:900;font-display:swap;}
+@font-face{font-family:'JetBrains Mono';src:url('/fonts/JetBrainsMono.woff2') format('woff2');font-weight:100 800;font-display:swap;}
+
+:root{
+  --bg:#06070A;--surface:#0E1117;--surface-2:#141821;--surface-3:#1a1f2b;
+  --border:#1E2330;--border-soft:#161B25;
+  --mint:#23F7DD;--mint-dim:#1ec8b4;--blue:#5B8DEF;--amber:#F5B544;--coral:#FF6B9D;--green:#4ADE80;--lavender:#A78BFA;--yellow:#FFD23F;
+  --text:#F4F6FA;--text-dim:#9BA3B4;--text-faint:#6B7385;
+  --mono:'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace;
+  --ease-out:cubic-bezier(.16,1,.3,1);
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+html{background:#040506;-webkit-text-size-adjust:100%;}
+body{font-family:'Roobert PRO',system-ui,-apple-system,sans-serif;color:var(--text);background:transparent;
+  -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;line-height:1.5;text-wrap:pretty;overflow-x:hidden;min-height:100vh;position:relative;}
+a{color:inherit;text-decoration:none;}
+h1,h2,h3,p{text-wrap:balance;}
+
+/* the BIG central Galaxy of Nodes (created by /arcade-galaxy.js), behind all */
+#galaxy{position:fixed;inset:0;z-index:0;display:block;}
+/* glossy reflective arcade floor */
+.floor{position:fixed;left:0;right:0;bottom:0;height:30vh;z-index:1;pointer-events:none;
+  background:linear-gradient(to bottom,rgba(35,247,221,.05),rgba(4,5,6,0) 22%,rgba(4,5,6,.7));}
+.floor::before{content:"";position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(35,247,221,.5),rgba(167,139,250,.45),rgba(255,107,157,.45),rgba(245,181,68,.45),transparent);box-shadow:0 0 12px rgba(35,247,221,.3);}
+.floor::after{content:"";position:absolute;inset:0;opacity:.7;filter:blur(14px);
+  background:radial-gradient(50% 130% at 16% 140%,rgba(35,247,221,.18),transparent 60%),radial-gradient(50% 130% at 40% 140%,rgba(245,181,68,.14),transparent 60%),radial-gradient(50% 130% at 60% 140%,rgba(167,139,250,.16),transparent 60%),radial-gradient(50% 130% at 84% 140%,rgba(255,107,157,.16),transparent 60%);}
+.vignette{position:fixed;inset:0;z-index:1;pointer-events:none;background:radial-gradient(145% 110% at 50% 40%,transparent 52%,rgba(2,3,4,.5) 100%);}
+.scanx{position:fixed;inset:0;z-index:1;pointer-events:none;opacity:.4;background:repeating-linear-gradient(0deg,rgba(0,0,0,0) 0 2px,rgba(0,0,0,.11) 2px 3px);}
+
+/* neon ceiling tubes (geometric, like the references) */
+.ceiling{position:fixed;top:0;left:0;right:0;height:120px;z-index:2;pointer-events:none;opacity:.9;}
+.ceiling svg{width:100%;height:100%;}
+.ne{fill:none;stroke-width:3;stroke-linecap:round;stroke-linejoin:round;}
+.fl1{animation:flick 5s infinite;}.fl2{animation:flick 7s .4s infinite;}.fl3{animation:flick 6s .8s infinite;}
+@keyframes flick{0%,100%{opacity:1}93%{opacity:1}94%{opacity:.55}95%{opacity:1}97%{opacity:.8}98%{opacity:1}}
+
+.wrap{position:relative;z-index:4;max-width:1220px;margin:0 auto;padding:26px 22px calc(64px + env(safe-area-inset-bottom));}
+
+/* ---------- top bar ---------- */
+.top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;}
+.lockup{display:flex;align-items:center;gap:10px;}
+.lockup img{height:18px;width:auto;display:block;opacity:.92;}
+.t-right{display:flex;align-items:center;gap:9px;flex-wrap:wrap;justify-content:flex-end;}
+.chip{display:inline-flex;align-items:center;gap:7px;font-size:11.5px;font-weight:500;padding:6px 12px;border-radius:999px;border:1px solid var(--border);background:rgba(14,17,23,.6);color:var(--text-dim);white-space:nowrap;backdrop-filter:blur(4px);}
+.chip .dot{width:7px;height:7px;border-radius:50%;background:var(--mint);box-shadow:0 0 9px var(--mint);flex:0 0 auto;animation:blink 2.1s ease-in-out infinite;}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.34}}
+
+/* ---------- sound toggle (live arcade score; muted by default) ---------- */
+.sound-toggle{display:inline-flex;align-items:center;gap:8px;font-family:inherit;font-size:11.5px;font-weight:500;
+  padding:6px 12px;border-radius:999px;border:1px solid var(--border);background:rgba(14,17,23,.6);color:var(--text-dim);
+  cursor:pointer;white-space:nowrap;backdrop-filter:blur(4px);transition:border-color .2s,color .2s,background .2s,box-shadow .35s;}
+.sound-toggle:hover{border-color:rgba(35,247,221,.4);color:var(--text);}
+.sound-toggle .st-ic{width:14px;height:14px;display:block;flex:0 0 auto;}
+.sound-toggle.on{border-color:rgba(35,247,221,.5);color:var(--mint);background:rgba(35,247,221,.06);box-shadow:0 0 16px rgba(35,247,221,.16);}
+.sound-toggle.on .st-ic{color:var(--mint);}
+.sound-toggle.loading{opacity:.6;cursor:progress;}
+.sound-toggle .eq{display:none;align-items:flex-end;gap:2px;height:11px;}
+.sound-toggle.on .eq{display:inline-flex;}
+.sound-toggle .eq i{width:2px;height:100%;background:var(--mint);border-radius:1px;transform-origin:bottom;animation:eqb .9s ease-in-out infinite;}
+.sound-toggle .eq i:nth-child(1){animation-delay:0s;}
+.sound-toggle .eq i:nth-child(2){animation-delay:.18s;}
+.sound-toggle .eq i:nth-child(3){animation-delay:.34s;}
+@keyframes eqb{0%,100%{transform:scaleY(.32);}50%{transform:scaleY(1);}}
+
+/* ---------- the neon entrance: sign + scoreboard ---------- */
+.entrance{text-align:center;margin:30px 0 6px;}
+.kicker{font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:.26em;text-transform:uppercase;color:var(--mint);}
+.bulbs{display:flex;justify-content:center;gap:13px;margin:14px 0;}
+.bulbs i{width:7px;height:7px;border-radius:50%;background:var(--mint);box-shadow:0 0 9px var(--mint);animation:blink 1.5s ease-in-out infinite;}
+.bulbs i:nth-child(2){animation-delay:.1s;background:var(--amber);box-shadow:0 0 9px var(--amber);}
+.bulbs i:nth-child(3){animation-delay:.2s;background:var(--coral);box-shadow:0 0 9px var(--coral);}
+.bulbs i:nth-child(4){animation-delay:.3s;background:var(--blue);box-shadow:0 0 9px var(--blue);}
+.bulbs i:nth-child(5){animation-delay:.4s;background:var(--lavender);box-shadow:0 0 9px var(--lavender);}
+.bulbs i:nth-child(6){animation-delay:.5s;background:var(--amber);box-shadow:0 0 9px var(--amber);}
+.bulbs i:nth-child(7){animation-delay:.6s;}
+.sign{font-weight:900;font-size:clamp(42px,9vw,98px);letter-spacing:-.01em;line-height:.9;color:#eafffb;
+  text-shadow:0 0 5px #fff,0 0 18px var(--mint),0 0 40px rgba(35,247,221,.75),0 0 80px rgba(35,247,221,.5);animation:signflick 8s linear infinite;}
+@keyframes signflick{0%,100%{opacity:1}90%{opacity:1}91%{opacity:.72}92%{opacity:1}96%{opacity:.9}97%{opacity:1}}
+.tagline{margin:16px auto 0;max-width:560px;font-size:clamp(14px,2.3vw,16.5px);line-height:1.55;color:var(--text-dim);}
+.tagline b{color:var(--text);font-weight:600;}
+
+/* the giant global counter (scoreboard) — centered like a marquee high-score */
+.scoreboard{margin:22px auto 0;max-width:680px;border:1px solid rgba(35,247,221,.22);border-radius:20px;position:relative;overflow:hidden;
+  background:radial-gradient(120% 120% at 50% -20%,rgba(35,247,221,.10),transparent 55%),rgba(8,11,16,.62);
+  box-shadow:0 18px 60px rgba(0,0,0,.5),0 0 0 1px rgba(35,247,221,.05);backdrop-filter:blur(6px);
+  padding:18px 20px 16px;display:flex;flex-direction:column;align-items:center;transition:box-shadow .5s;}
+.scoreboard.pulse{box-shadow:0 18px 60px rgba(0,0,0,.5),0 0 0 1px rgba(35,247,221,.5),0 0 50px rgba(35,247,221,.35);}
+.scoreboard.beat{box-shadow:0 18px 60px rgba(0,0,0,.5),0 0 0 1px rgba(35,247,221,.22),0 0 28px rgba(35,247,221,.14);}
+.sb-label{font-family:var(--mono);font-size:10.5px;font-weight:600;letter-spacing:.18em;text-transform:uppercase;color:var(--text-faint);}
+.odometer{display:flex;align-items:flex-end;justify-content:center;gap:4px;margin:13px 0 4px;position:relative;z-index:2;flex-wrap:nowrap;}
+.dgt{width:clamp(34px,8.4vw,54px);height:clamp(50px,12vw,78px);border-radius:10px;background:linear-gradient(180deg,#0a0d13,#070a0f);
+  border:1px solid #1b2330;display:grid;place-items:center;position:relative;overflow:hidden;
+  font-family:var(--mono);font-weight:800;font-size:clamp(30px,7.4vw,52px);line-height:1;color:var(--mint);font-variant-numeric:tabular-nums;
+  text-shadow:0 0 12px rgba(35,247,221,.4);box-shadow:inset 0 1px 0 rgba(255,255,255,.04),inset 0 -16px 26px rgba(0,0,0,.5);}
+.dgt::after{content:"";position:absolute;left:0;right:0;top:50%;height:1px;background:rgba(0,0,0,.55);}
+.dgt.flip{animation:flip .5s var(--ease-out);}
+@keyframes flip{0%{transform:translateY(-7px);filter:brightness(1.6);}100%{transform:translateY(0);filter:brightness(1);}}
+.comma{font-family:var(--mono);font-weight:800;font-size:clamp(26px,6.6vw,46px);color:var(--mint);align-self:flex-end;padding:0 1px 7px;opacity:.85;}
+.sb-foot{font-family:var(--mono);font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-faint);margin-top:8px;}
+.sb-foot b{color:var(--mint);}
+
+/* ---------- section label ---------- */
+.seclab{display:flex;align-items:center;gap:10px;margin:32px 0 18px;font-family:var(--mono);font-size:12px;font-weight:600;letter-spacing:.2em;text-transform:uppercase;color:var(--text-dim);justify-content:center;}
+.seclab .ar{color:var(--mint);}
+.seclab .s-n{color:var(--text-faint);letter-spacing:.04em;text-transform:none;font-family:'Roobert PRO',sans-serif;font-size:12.5px;}
+.seclab .s-n b{color:var(--mint);font-weight:600;}
+
+/* ---------- THE CABINETS — physical arcade machines ---------- */
+.bank{display:grid;grid-template-columns:repeat(3,1fr);gap:26px 22px;align-items:end;}
+.cab{position:relative;display:block;color:inherit;transition:transform .25s;}
+.cab.live,.cab.preview,.cab.byo{cursor:pointer;}
+.cab.live:hover,.cab.preview:hover,.cab.byo:hover{transform:translateY(-6px);}
+.cab .body{position:relative;border-radius:18px 18px 10px 10px;padding:9px;
+  background:linear-gradient(180deg,#141821,#0b0e14 60%,#080a0f);
+  border:1px solid color-mix(in srgb,var(--c) 40%,#262b36);
+  box-shadow:0 0 26px color-mix(in srgb,var(--c) 22%,transparent),0 22px 40px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.05);}
+.cab.soon .body{border-color:#222835;box-shadow:0 22px 40px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.04);}
+/* side neon trim */
+.cab .body::before,.cab .body::after{content:"";position:absolute;top:16px;bottom:56px;width:3px;border-radius:3px;background:var(--c);box-shadow:0 0 10px var(--c);opacity:.8;}
+.cab.soon .body::before,.cab.soon .body::after{opacity:.3;}
+.cab .body::before{left:2px;} .cab .body::after{right:2px;}
+.marquee{position:relative;border-radius:11px 11px 4px 4px;padding:9px 12px;text-align:center;margin-bottom:8px;
+  background:linear-gradient(180deg,color-mix(in srgb,var(--c) 26%,#0c0f15),#0a0d12);
+  border:1px solid color-mix(in srgb,var(--c) 45%,transparent);box-shadow:0 0 14px color-mix(in srgb,var(--c) 35%,transparent);}
+.cab.soon .marquee{background:linear-gradient(180deg,#12161e,#0a0d12);border-color:#222835;box-shadow:none;}
+.marquee .nm{font-weight:800;font-size:13.5px;letter-spacing:.02em;color:#fff;text-shadow:0 0 10px var(--c),0 0 20px color-mix(in srgb,var(--c) 60%,transparent);}
+.cab.soon .marquee .nm{text-shadow:none;color:var(--text-dim);}
+.marquee .live{position:absolute;top:50%;right:10px;transform:translateY(-50%);display:inline-flex;align-items:center;gap:4px;font-family:var(--mono);font-size:7.5px;letter-spacing:.1em;color:var(--text-faint);}
+.marquee .live i{width:5px;height:5px;border-radius:50%;background:var(--c);box-shadow:0 0 6px var(--c);animation:blink 1.4s ease-in-out infinite;}
+.cab.soon .marquee .live i{background:var(--text-faint);box-shadow:none;animation:none;}
+/* the CRT screen */
+.screen{position:relative;height:150px;border-radius:8px;overflow:hidden;background:radial-gradient(120% 130% at 50% 0%,color-mix(in srgb,var(--c) 14%,#050608),#040506);
+  border:2px solid #04060a;box-shadow:inset 0 0 26px rgba(0,0,0,.85),inset 0 0 2px color-mix(in srgb,var(--c) 50%,transparent),0 0 0 1px color-mix(in srgb,var(--c) 30%,transparent);}
+.screen::after{content:"";position:absolute;inset:0;pointer-events:none;opacity:.5;background:repeating-linear-gradient(0deg,rgba(0,0,0,0) 0 2px,rgba(0,0,0,.28) 2px 3px);}
+.stage{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:2px;padding-bottom:12px;z-index:2;}
+.count{font-family:var(--mono);font-weight:800;font-size:26px;color:var(--c);font-variant-numeric:tabular-nums;line-height:1;text-shadow:0 0 16px color-mix(in srgb,var(--c) 55%,transparent);}
+.unit{font-family:var(--mono);font-size:8.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--text-faint);}
+.shard{position:absolute;top:7px;left:7px;z-index:3;font-family:var(--mono);font-size:7.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--c);background:color-mix(in srgb,var(--c) 14%,transparent);padding:2px 6px;border-radius:999px;}
+.cab.soon .count{color:var(--text-dim);text-shadow:none;}
+/* control deck */
+.deck{position:relative;margin-top:9px;height:48px;border-radius:6px 6px 9px 9px;
+  background:linear-gradient(180deg,#191e28,#0e131b);border:1px solid #20262f;
+  transform:perspective(220px) rotateX(20deg);transform-origin:top;display:flex;align-items:center;justify-content:space-between;padding:0 13px;}
+.deck .ctrls{display:flex;align-items:center;gap:8px;}
+.deck .joy{position:relative;width:8px;height:8px;border-radius:50%;background:#2a313d;}
+.deck .joy::before{content:"";position:absolute;left:50%;bottom:3px;width:3px;height:12px;background:#3a424f;transform:translateX(-50%);border-radius:2px;}
+.deck .joy::after{content:"";position:absolute;left:50%;top:-9px;width:9px;height:9px;border-radius:50%;background:var(--c);box-shadow:0 0 8px var(--c);transform:translateX(-50%);}
+.deck .b{width:9px;height:9px;border-radius:50%;background:var(--c);box-shadow:0 0 8px color-mix(in srgb,var(--c) 70%,transparent),inset 0 -2px 2px rgba(0,0,0,.4);}
+.deck .b.b2{opacity:.75;}.deck .b.b3{opacity:.5;}
+.deck .play{font-family:var(--mono);font-size:9.5px;font-weight:700;letter-spacing:.08em;color:#04140f;background:var(--c);padding:6px 12px;border-radius:7px;box-shadow:0 0 12px color-mix(in srgb,var(--c) 50%,transparent);white-space:nowrap;}
+.cab.soon .deck .play,.cab.preview .deck .play{color:#0a0d12;}
+.cab.soon .deck .joy::after,.cab.soon .deck .b{background:#3a424f;box-shadow:none;}
+.cab.soon .deck .play{background:#2a313d;color:var(--text-faint);box-shadow:none;}
+/* floor reflection */
+.cab .refl{position:absolute;left:8%;right:8%;top:100%;height:42px;margin-top:6px;border-radius:50%;
+  background:radial-gradient(60% 100% at 50% 0%,color-mix(in srgb,var(--c) 30%,transparent),transparent 70%);filter:blur(7px);opacity:.5;}
+.cab.soon .refl{opacity:.18;}
+
+/* ===== screen mini-games (alive previews) ===== */
+.gx{position:absolute;inset:0;display:grid;place-items:center;z-index:1;}
+.ring{width:42px;height:42px;border-radius:50%;border:2px solid var(--c);box-shadow:0 0 12px color-mix(in srgb,var(--c) 50%,transparent);animation:ringpulse 1.4s ease-in-out infinite;}
+@keyframes ringpulse{0%,100%{transform:scale(.85);opacity:.7}50%{transform:scale(1.05);opacity:1}}
+.txd{position:absolute;bottom:24px;width:4px;height:4px;border-radius:50%;background:var(--c);box-shadow:0 0 6px var(--c);animation:rise 1.8s linear infinite;}
+@keyframes rise{0%{transform:translateY(20px);opacity:0}20%{opacity:1}100%{transform:translateY(-46px);opacity:0}}
+.rope{position:relative;width:74%;height:2px;background:color-mix(in srgb,var(--c) 30%,transparent);border-radius:2px;}
+.rope i{position:absolute;top:50%;width:11px;height:11px;border-radius:50%;background:var(--c);box-shadow:0 0 10px var(--c);transform:translate(-50%,-50%);animation:tug 2.4s ease-in-out infinite;}
+@keyframes tug{0%,100%{left:32%}50%{left:68%}}
+.pix{display:grid;grid-template-columns:repeat(6,8px);grid-auto-rows:8px;gap:3px;}
+.pix i{width:8px;height:8px;border-radius:1px;background:color-mix(in srgb,var(--c) 22%,transparent);animation:tw 2.6s ease-in-out infinite;}
+@keyframes tw{0%,100%{background:color-mix(in srgb,var(--c) 16%,transparent)}50%{background:var(--c);box-shadow:0 0 6px var(--c)}}
+.bbtn{width:34px;height:34px;border-radius:50%;background:radial-gradient(circle at 45% 35%,#fff,var(--c) 65%);box-shadow:0 0 16px color-mix(in srgb,var(--c) 60%,transparent);animation:bpulse 1.2s ease-in-out infinite;}
+@keyframes bpulse{0%,100%{transform:scale(.94)}50%{transform:scale(1.04)}}
+.bbtn-ring{position:absolute;width:50px;height:50px;border-radius:50%;border:2px solid color-mix(in srgb,var(--c) 50%,transparent);animation:bring 1.6s ease-out infinite;}
+@keyframes bring{0%{transform:scale(.6);opacity:.8}100%{transform:scale(1.2);opacity:0}}
+.fall{position:absolute;font-family:var(--mono);font-size:11px;font-weight:700;padding:2px 5px;border-radius:4px;animation:fall 2.6s linear infinite;}
+@keyframes fall{0%{transform:translateY(-30px);opacity:0}15%{opacity:1}85%{opacity:1}100%{transform:translateY(36px);opacity:0}}
+.byo-plus{width:42px;height:42px;border-radius:12px;border:1.5px dashed color-mix(in srgb,var(--c) 60%,transparent);display:grid;place-items:center;color:var(--c);font-size:26px;font-weight:300;}
+
+/* ---------- featured community strip ---------- */
+.feat{margin-top:30px;border:1px solid var(--border);border-radius:14px;background:rgba(14,17,23,.55);padding:14px 16px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;backdrop-filter:blur(4px);}
+.feat .f-lab{font-family:var(--mono);font-size:10.5px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--text-faint);white-space:nowrap;}
+.feat .f-row{display:flex;align-items:center;gap:10px;flex:1 1 auto;flex-wrap:wrap;}
+.f-slot{display:flex;align-items:center;gap:9px;border:1px dashed var(--border);border-radius:11px;padding:8px 13px;background:var(--surface);color:var(--text-faint);}
+.f-slot .fp-ic{width:22px;height:22px;border-radius:7px;display:grid;place-items:center;font-size:12px;flex:0 0 auto;border:1px dashed rgba(167,139,250,.4);color:var(--lavender);}
+.f-slot .fp-t{font-size:12.5px;font-weight:600;color:var(--text-dim);}
+.f-slot .fp-b{font-size:11px;color:var(--text-faint);}
+.f-add{display:flex;align-items:center;gap:7px;border:1px solid rgba(167,139,250,.4);border-radius:11px;padding:8px 14px;background:rgba(167,139,250,.08);color:#C9B6FF;font-weight:600;font-size:12.5px;cursor:pointer;}
+.f-add:hover{filter:brightness(1.1);}
+
+/* ---------- build-your-own ---------- */
+.build{margin-top:22px;border:1px solid rgba(167,139,250,.3);border-radius:18px;overflow:hidden;
+  background:linear-gradient(150deg,rgba(167,139,250,.06),rgba(14,17,23,.6) 60%);padding:24px 22px;scroll-margin-top:18px;backdrop-filter:blur(4px);}
+.build h2{font-size:clamp(20px,5vw,26px);font-weight:800;letter-spacing:-.01em;color:var(--text);}
+.build .b-sub{margin-top:8px;font-size:14.5px;line-height:1.55;color:var(--text-dim);max-width:640px;}
+.build .b-sub b{color:var(--text);font-weight:600;}
+.reqs{margin-top:18px;display:grid;grid-template-columns:1fr;gap:10px;}
+.req{display:flex;gap:11px;align-items:flex-start;border:1px solid var(--border);border-radius:12px;background:rgba(10,13,19,.5);padding:12px 13px;}
+.req .rq-n{font-family:var(--mono);font-size:11px;font-weight:700;color:var(--lavender);flex:0 0 auto;margin-top:2px;}
+.req .rq-t{font-size:13px;line-height:1.45;color:var(--text-dim);}
+.req .rq-t b{color:var(--text);font-weight:600;}
+.b-cta{margin-top:18px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
+.btn-byo{display:inline-flex;align-items:center;gap:7px;font-family:inherit;font-weight:600;font-size:13.5px;border-radius:11px;padding:11px 18px;cursor:pointer;
+  background:rgba(167,139,250,.12);color:#C9B6FF;border:1px solid rgba(167,139,250,.4);border-bottom:3px solid #5b46a0;transition:filter .15s;}
+.btn-byo:hover{filter:brightness(1.08);}
+.b-note{font-size:12px;color:var(--text-faint);line-height:1.5;max-width:560px;}
+
+/* ---------- footer ---------- */
+.foot{margin-top:30px;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;padding-top:22px;border-top:1px solid var(--border-soft);}
+.coin{display:inline-flex;align-items:center;gap:10px;border:1px solid rgba(35,247,221,.22);border-radius:999px;padding:7px 15px 7px 8px;background:rgba(14,17,23,.5);backdrop-filter:blur(4px);}
+.coin .slot{position:relative;width:25px;height:25px;border-radius:8px;border:1px solid rgba(35,247,221,.3);background:rgba(35,247,221,.05);display:grid;place-items:center;}
+.coin .slot::before{content:"";width:12px;height:3px;border-radius:2px;background:rgba(244,246,250,.22);}
+.coin .slot::after{content:"";position:absolute;width:21px;height:2px;background:var(--coral);transform:rotate(-32deg);box-shadow:0 0 6px rgba(255,107,157,.6);border-radius:2px;}
+.coin .ct{font-size:12.5px;color:var(--text-dim);}.coin .ct b{color:var(--mint);font-weight:600;}
+.foot .net{font-family:var(--mono);font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--text-faint);line-height:1.6;max-width:540px;}.foot .net b{color:var(--mint);}
+
+/* ---------- responsive ---------- */
+@media (max-width:860px){.bank{grid-template-columns:repeat(2,1fr);gap:22px 16px;}}
+@media (max-width:520px){
+  .bank{grid-template-columns:1fr 1fr;gap:18px 12px;}
+  .ceiling{height:80px;}
+  .marquee .live{display:none;}
+  .marquee .nm{font-size:11.5px;}
+  .screen{height:128px;}
+  .count{font-size:22px;}
+  .dgt{width:clamp(28px,7.6vw,38px);height:clamp(42px,11vw,54px);font-size:clamp(24px,6.6vw,34px);border-radius:8px;}
+  .comma{font-size:clamp(22px,6vw,30px);padding:0 0 6px;}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none !important;}}
+</style>
+    <!-- Vercel Web Analytics -->
+    <script defer src="/_vercel/insights/script.js"></script>
+</head>
+<body>
+
+<canvas id="galaxy" aria-hidden="true"></canvas>
+<div class="floor" aria-hidden="true"></div>
+<div class="vignette" aria-hidden="true"></div>
+<div class="scanx" aria-hidden="true"></div>
+<div class="ceiling" aria-hidden="true"><svg viewBox="0 0 1200 120" preserveAspectRatio="none">
+  <polyline class="ne fl1" points="40,30 110,30 110,70 180,70 180,30 250,30" stroke="#23F7DD" style="filter:drop-shadow(0 0 6px #23F7DD)"/>
+  <rect class="ne fl2" x="330" y="26" width="46" height="46" rx="6" stroke="#A78BFA" style="filter:drop-shadow(0 0 6px #A78BFA)"/>
+  <circle class="ne fl3" cx="470" cy="48" r="22" stroke="#FF6B9D" style="filter:drop-shadow(0 0 6px #FF6B9D)"/>
+  <polyline class="ne fl1" points="560,70 590,30 620,70 650,30 680,70" stroke="#F5B544" style="filter:drop-shadow(0 0 6px #F5B544)"/>
+  <path class="ne fl2" d="M770,30 L800,60 L770,60 Z M810,60 L840,30 L840,60 Z" stroke="#23F7DD" style="filter:drop-shadow(0 0 6px #23F7DD)"/>
+  <polyline class="ne fl3" points="930,30 1000,30 1000,70 1070,70 1070,30 1140,30" stroke="#5B8DEF" style="filter:drop-shadow(0 0 6px #5B8DEF)"/>
+</svg></div>
+
+<div class="wrap">
+
+  <!-- top bar -->
+  <header class="top">
+    <span class="lockup"><img src="/mvx-wordmark.svg" alt="MultiversX" /></span>
+    <div class="t-right">
+      <span class="chip"><span class="dot"></span>No wallet · gasless</span>
+      <span class="chip"><span class="dot"></span>Supernova · live on testnet</span>
+      <button class="sound-toggle" id="soundToggle" type="button" aria-pressed="false"
+        title="Play the live arcade score — the arcade sonifies its own onchain activity (off by default)">
+        <svg class="st-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M11 5 6 9H3v6h3l5 4V5Z"/>
+          <path class="st-wave" d="M15.5 8.5a5 5 0 0 1 0 7M18 6a8 8 0 0 1 0 12" style="display:none"/>
+          <path class="st-mute" d="M22 9.5l-5 5M17 9.5l5 5"/>
+        </svg>
+        <span class="st-label">Sound</span>
+        <span class="eq" aria-hidden="true"><i></i><i></i><i></i></span>
+      </button>
+    </div>
+  </header>
+
+  <!-- neon entrance: sign + scoreboard -->
+  <section class="entrance">
+    <span class="kicker">The Supernova Arcade</span>
+    <div class="bulbs" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+    <h1 class="sign">SUPERNOVA ARCADE</h1>
+    <p class="tagline">A neon arcade <b>inside the live network</b>. Pick a cabinet and play. Every move is a <b>real transaction onchain</b>. No wallet, no gas, no install.</p>
+
+    <div class="scoreboard" id="scoreboard">
+      <span class="sb-label">Onchain actions · all cabinets</span>
+      <div class="odometer" id="odometer" role="status" aria-live="polite" aria-label="Total onchain actions across the Arcade">
+        <span class="dgt">·</span><span class="dgt">·</span><span class="dgt">·</span>
+      </div>
+      <div class="sb-foot">MultiversX testnet · <b>climbing as people play</b></div>
+    </div>
+  </section>
+
+  <!-- section label -->
+  <div class="seclab"><span class="ar">&#9656;</span> Pick your cabinet <span class="s-n" id="gameCount">one shared onchain backend</span></div>
+
+  <!-- game grid (rendered from CABINETS) -->
+  <div class="bank" id="grid"></div>
+
+  <!-- featured community builds -->
+  <div class="feat">
+    <span class="f-lab">Featured community builds</span>
+    <div class="f-row">
+      <div class="f-slot"><span class="fp-ic">★</span><span><span class="fp-t">Your game here</span> <span class="fp-b">first slots open</span></span></div>
+      <div class="f-slot"><span class="fp-ic">◆</span><span><span class="fp-t">Your game here</span> <span class="fp-b">jam winners featured</span></span></div>
+      <div class="f-add" id="featAdd">+ submit yours</div>
+    </div>
+  </div>
+
+  <!-- build your own -->
+  <section class="build" id="build">
+    <h2>Bring your own game</h2>
+    <p class="b-sub">Take any simple game and put it onchain: every move a real transaction, one tap, no wallet. Fork the open template (the Sprint stack) or roll your own. Meet the bar below and your game gets a permanent cabinet right here.</p>
+    <div class="reqs">
+      <div class="req"><span class="rq-n">01</span><span class="rq-t"><b>One-tap gasless play.</b> An ephemeral key in the browser, transactions relayed for free. No wallet, no install.</span></div>
+      <div class="req"><span class="rq-n">02</span><span class="rq-t"><b>An onchain score or shared state.</b> A leaderboard or a shared tally the hub can read.</span></div>
+      <div class="req"><span class="rq-n">03</span><span class="rq-t"><b>Uncheatable scores.</b> The score is the count of real transactions a player actually sends, so it can't be faked from the client without sending them onchain.</span></div>
+      <div class="req"><span class="rq-n">04</span><span class="rq-t"><b>The standard actions event.</b> Emit <span style="font-family:var(--mono)">arcadeAction</span> so your game feeds this counter.</span></div>
+    </div>
+    <div class="b-cta">
+      <a class="btn-byo" id="buildKitBtn" href="#build">Read the build kit</a>
+      <span class="b-note">Submit your repo, hosted URL, and contract address. Builds pass a safety and quality review (no malicious contracts, works on mobile) before they are featured.</span>
+    </div>
+  </section>
+
+  <!-- footer -->
+  <footer class="foot">
+    <div class="coin"><span class="slot" aria-hidden="true"></span><span class="ct">Every other arcade says insert coin. Here you <b>insert nothing</b>.</span></div>
+    <span class="net">Galaxy of Nodes · each cabinet lives on a <b>shard</b> · onchain actions read straight from the chain. A score is the count of real transactions a player sends, so it can't be faked. Testnet can be reset, which clears the boards.</span>
+  </footer>
+
+</div>
+
+<script type="module">
+"use strict";
+import { createArcadeClient, GAMES } from "/arcade-core.js";
+import { createArcadeScore } from "/arcade-score.js";
+import { mountGalaxy } from "/arcade-galaxy.js";
+
+/* ===========================================================================
+   CABINET REGISTRY — the config-driven grid. Add a game = add an entry.
+   status: 'live'      deployed + playable now (lit cabinet, Play, feeds counter)
+           'preview'   built, route exists, plays locally; onchain scheduled
+           'scheduled' concept on the roadmap; no route yet ("Soon")
+   color/shard: the cabinet's neon accent + the shard it lives on (matches the
+                game page's own theme + the galaxy cluster its play lights up).
+   counter: { address, view } — included in the global counter + the card meta.
+   =========================================================================== */
+const SPRINT_TAP_COUNTER = "erd1qqqqqqqqqqqqqpgqlwv6l2zpx9v0uv6869tn90exv3vdplejppuq97k7r4";
+
+const CABINETS = [
+  {
+    id: "sprint", name: "Supernova Sprint", status: "live", href: "/onchain", art: "sprint",
+    color: "#23F7DD", shard: "shard 1",
+    line: "How many transactions can you fire in 30 seconds? Tap fast, each tap is a real transaction that finalizes on the Supernova clock.",
+    metaSuffix: "taps onchain",
+    counter: { address: SPRINT_TAP_COUNTER, view: "getGlobalTaps" },
+  },
+  {
+    id: "tugofwar", name: "Tug of War", status: "live", href: "/tug-of-war", art: "tug",
+    color: "#23F7DD", shard: "shard 1",
+    line: "Two teams, one rope. Every pull is a transaction. Drag the knot across the line to your side before the buzzer.",
+    metaSuffix: "pulls onchain",
+    counter: { address: GAMES.tugofwar.contract, view: "getGlobalActions" },
+  },
+  {
+    id: "canvas", name: "Supernova Canvas", status: "live", href: "/canvas", art: "canvas",
+    color: "#A78BFA", shard: "shard 1",
+    line: "A shared pixel canvas. Every pixel you place is an onchain write. Build something together, one tap at a time.",
+    metaSuffix: "pixels onchain",
+    counter: { address: GAMES.canvas.contract, view: "getGlobalActions" },
+  },
+  {
+    id: "button", name: "The Button", status: "live", href: "/button", art: "button",
+    color: "#5B8DEF", shard: "shard 2",
+    line: "One button. A timer that resets on every press. Keep it alive together, or be the one who lets it hit zero.",
+    metaSuffix: "presses onchain",
+    counter: { address: GAMES.button.contract, view: "getGlobalActions" },
+  },
+  {
+    id: "clawback", name: "ETHperience", status: "live", href: "/clawback", art: "claw",
+    color: "#FF6B9D", shard: "shard 2",
+    line: "Defend your wallet from the attacks that drain crypto. Brutal on the ETH experience, a breeze with a MultiversX guardian. Same game, two worlds.",
+    metaSuffix: "counters onchain",
+    counter: { address: GAMES.clawback.contract, view: "getGlobalActions" },
+  },
+  {
+    id: "degendash", name: "Degen Dash", status: "preview", href: "/degen-dash", art: "dash",
+    color: "#FFD23F", shard: "shard 0",
+    line: "Crypto events fly in. Tap to collect the wins, dodge the rugs. Every collect is a real transaction. Stack the most before the buzzer.",
+    meta: "dodge the rugs",
+    counter: { address: GAMES.degendash.contract, view: "getGlobalActions" },
+  },
+];
+
+/* ---------- cabinet preview art (alive mini-games, themed via --c) ---------- */
+function artHTML(kind) {
+  switch (kind) {
+    case "sprint":
+      return '<span class="gx"><span class="ring"></span>'
+        + '<span class="txd" style="left:42%;animation-delay:0s"></span>'
+        + '<span class="txd" style="left:55%;animation-delay:.6s"></span>'
+        + '<span class="txd" style="left:48%;animation-delay:1.2s"></span></span>';
+    case "tug":
+      return '<span class="gx"><span class="rope"><i></i></span></span>';
+    case "canvas": {
+      let s = "";
+      for (let i = 0; i < 18; i++) s += '<i style="animation-delay:' + (i * 0.13).toFixed(2) + 's"></i>';
+      return '<span class="gx"><span class="pix">' + s + "</span></span>";
+    }
+    case "button":
+      return '<span class="gx"><span class="bbtn-ring"></span><span class="bbtn"></span></span>';
+    case "claw":
+      return '<span class="gx">'
+        + '<span class="fall" style="left:30%;color:var(--coral);background:rgba(255,107,157,.16);animation-delay:0s">-12</span>'
+        + '<span class="fall" style="left:60%;color:var(--green);background:rgba(74,222,128,.16);animation-delay:1.1s">+6</span>'
+        + '<span class="fall" style="left:44%;color:var(--coral);background:rgba(255,107,157,.16);animation-delay:1.9s">-8</span></span>';
+    case "dash":
+      return '<span class="gx">'
+        + '<span class="fall" style="left:28%;color:var(--mint);background:rgba(35,247,221,.16);animation-delay:0s">+18</span>'
+        + '<span class="fall" style="left:62%;color:var(--coral);background:rgba(255,107,157,.16);animation-delay:1s">&#9760; -7</span>'
+        + '<span class="fall" style="left:46%;color:var(--lavender);background:rgba(167,139,250,.16);animation-delay:1.8s">+9</span></span>';
+    default:
+      return '<span class="gx"><span class="ring"></span></span>';
+  }
+}
+
+/* ---------- render one cabinet (a physical neon machine) ---------- */
+function cabinetHTML(c) {
+  const liveInd = c.status === "live"
+    ? '<span class="live"><i></i>LIVE</span>'
+    : c.status === "preview"
+      ? '<span class="live"><i></i>PREVIEW</span>'
+      : '<span class="live">SOON</span>';
+  const playLabel = c.status === "live" ? "PLAY &#9656;" : c.status === "preview" ? "PREVIEW &#9656;" : "SOON";
+
+  const stage = c.metaSuffix
+    ? '<span class="count" id="meta-' + c.id + '">&middot;</span><span class="unit">' + c.metaSuffix + "</span>"
+    : '<span class="unit" style="font-size:10px;color:var(--text-dim);letter-spacing:.06em;">' + (c.meta || "") + "</span>";
+
+  const body =
+    '<div class="body">'
+    + '<div class="marquee"><span class="nm">' + c.name + "</span>" + liveInd + "</div>"
+    + '<div class="screen"><span class="shard">' + c.shard + "</span>" + artHTML(c.art)
+    + '<span class="stage">' + stage + "</span></div>"
+    + '<div class="deck"><span class="ctrls"><span class="joy"></span><span class="b"></span><span class="b b2"></span><span class="b b3"></span></span>'
+    + '<span class="play">' + playLabel + "</span></div>"
+    + "</div><div class=\"refl\"></div>";
+
+  const cls = "cab " + c.status;
+  const style = ' style="--c:' + c.color + '"';
+  if (c.href && (c.status === "live" || c.status === "preview")) {
+    return '<a class="' + cls + '"' + style + ' href="' + c.href + '">' + body + "</a>";
+  }
+  return '<div class="' + cls + '"' + style + ">" + body + "</div>";
+}
+
+/* community "bring your own" cabinet (always last) */
+function byoHTML() {
+  return '<a class="cab byo" style="--c:#A78BFA" href="#build">'
+    + '<div class="body">'
+    + '<div class="marquee"><span class="nm">BRING YOUR OWN</span><span class="live"><i></i>OPEN</span></div>'
+    + '<div class="screen"><span class="shard">your shard</span><span class="gx"><span class="byo-plus">+</span></span>'
+    + '<span class="stage"><span class="unit" style="font-size:10px;color:var(--text-dim);letter-spacing:.06em;">build a cabinet</span></span></div>'
+    + '<div class="deck"><span class="ctrls"><span class="joy"></span><span class="b"></span><span class="b b2"></span><span class="b b3"></span></span>'
+    + '<span class="play">BUILD &#9656;</span></div>'
+    + "</div><div class=\"refl\"></div></a>";
+}
+
+/* paint the grid */
+const grid = document.getElementById("grid");
+grid.innerHTML = CABINETS.map(cabinetHTML).join("") + byoHTML();
+
+/* "N games and counting" */
+document.getElementById("gameCount").innerHTML =
+  "<b>" + CABINETS.length + " games</b> and counting · one shared onchain backend";
+
+/* ===========================================================================
+   THE LIVING COUNTER — sum every cabinet's onchain action count, ~2s tick.
+   Sprint = getGlobalTaps; others = getGlobalActions. Placeholders read 0.
+   =========================================================================== */
+const client = createArcadeClient("canvas"); // throwaway — only used for query/decode
+const odo = document.getElementById("odometer");
+const scoreboard = document.getElementById("scoreboard");
+
+const counters = CABINETS.filter((c) => c.counter && c.counter.address);
+
+/* ===========================================================================
+   THE BIG CENTRAL GALAXY — the live network behind everything. Full intensity
+   (this is the loud hub register). Real play fires photons into a cabinet's
+   shard cluster (galaxy.pulse below, off the same ~2s reads).
+   =========================================================================== */
+const SI = { "shard 0": 0, "shard 1": 1, "shard 2": 2 };
+const galaxy = mountGalaxy({ intensity: 1, canvas: "#galaxy" });
+const prevVals = {}; // per-cabinet last reading, to diff into deltas for pulses
+let firstLoadPulse = true; // don't pulse the galaxy on the baseline read
+
+/* ===========================================================================
+   THE LIVE AMBIENT SCORE — the arcade plays itself from its own activity.
+   Rides the same ~2s counter reads (no extra polling). Each cabinet is a voice;
+   its delta fires its notes; the global delta sets intensity; round-number total
+   crossings fire a celebratory moment. Muted by default; opt-in via the toggle.
+   =========================================================================== */
+const demoMode = new URLSearchParams(location.search).has("score-demo")
+  || new URLSearchParams(location.search).has("mock");
+const score = createArcadeScore({
+  momentStep: 25000,
+  onBeat: (info) => {                   // subtle scoreboard breath, only when busy
+    if (!info || info.energy < 0.10) return;
+    scoreboard.classList.add("beat");
+    setTimeout(() => scoreboard.classList.remove("beat"), 130);
+  },
+  onMoment: (snapshot) => {
+    // MINT SEAM: a future "capture this moment" can listen for this event and
+    // freeze the snapshot. We only announce it here — no minting is built.
+    try { window.dispatchEvent(new CustomEvent("arcade:moment", { detail: snapshot })); } catch (e) {}
+    console.info("[arcade] moment", snapshot);
+  },
+});
+window.arcadeScore = score; // console mixer: arcadeScore.setLevel('canvas',0.55); arcadeScore.getMix()
+
+async function readCounter(c) {
+  const rd = await client.query(c.counter.view, [], c.counter.address);
+  const v = rd && rd.length ? client.decodeU64(rd[0]) : 0;
+  // live-update this cabinet's meta number if it shows one
+  if (c.metaSuffix) {
+    const el = document.getElementById("meta-" + c.id);
+    if (el && v > 0) el.textContent = v.toLocaleString("en-US");
+  }
+  return v;
+}
+
+/* --- odometer: variable length, comma groups, per-digit flip. Deliberately
+   rAF-free (like the design's tick) so the value stays correct even when a
+   background tab throttles animation frames — the flip is a pure CSS accent. --- */
+let settledStr = null;
+
+function renderDigits(value, flip) {
+  const str = Math.max(0, Math.round(value)).toLocaleString("en-US");
+  if (str === settledStr) return;
+  // (re)build the cells whenever the digit count / comma layout changes
+  if (odo.childElementCount !== str.length || odo.dataset.len !== String(str.length)) {
+    odo.dataset.len = String(str.length);
+    let html = "";
+    for (const ch of str) html += ch === "," ? '<span class="comma">,</span>' : '<span class="dgt">' + ch + "</span>";
+    odo.innerHTML = html;
+    if (flip) {
+      odo.querySelectorAll(".dgt").forEach((cell) => {
+        cell.classList.remove("flip"); void cell.offsetWidth; cell.classList.add("flip");
+      });
+    }
+  } else {
+    const cells = odo.childNodes;
+    for (let i = 0; i < str.length; i++) {
+      const ch = str[i];
+      const cell = cells[i];
+      if (cell && cell.textContent !== ch) {
+        cell.textContent = ch;
+        if (flip && cell.classList.contains("dgt")) {
+          cell.classList.remove("flip"); void cell.offsetWidth; cell.classList.add("flip");
+        }
+      }
+    }
+  }
+  settledStr = str;
+}
+
+/* one-shot odometer spin-up on first load — fun, and on-theme (it IS an odometer).
+   Rolls the trailing digits up to the real value; same digit-length so no cell rebuild. */
+function countUp(target) {
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) { renderDigits(target, true); return; }
+  const len = String(Math.round(target)).length;
+  const floor = Math.pow(10, Math.max(0, len - 1));
+  const start = Math.floor(target / floor) * floor; // same digit count → smooth, no rebuild flicker
+  if (target - start < 2) { renderDigits(target, true); return; }
+  const dur = 1100, t0 = performance.now();
+  (function frame(now) {
+    const p = Math.min(1, (now - t0) / dur);
+    const v = Math.round(start + (target - start) * (1 - Math.pow(1 - p, 3))); // ease-out
+    if (p < 1) { renderDigits(v, false); requestAnimationFrame(frame); }
+    else renderDigits(target, true); // settle + flip
+  })(performance.now());
+}
+
+let lastMilestone = null;            // 100k buckets, for the milestone pulse
+const MILESTONE = 100000;
+let firstLoad = true;
+
+async function refresh() {
+  const vals = await Promise.all(counters.map(readCounter));
+  // null-safe: failed reads already resolved to 0 and keep prior meta
+  const total = vals.reduce((a, b) => a + (b || 0), 0);
+  if (total <= 0) return; // keep showing "···" until the first real read lands
+
+  const bucket = Math.floor(total / MILESTONE);
+  if (!firstLoad && lastMilestone !== null && bucket > lastMilestone) {
+    scoreboard.classList.add("pulse");
+    setTimeout(() => scoreboard.classList.remove("pulse"), 900);
+  }
+  lastMilestone = bucket;
+  if (firstLoad) { firstLoad = false; countUp(total); }   // spin up on first load
+  else renderDigits(total, true);     // set value + flip the changed digits each ~2s read
+
+  /* fire photons into the galaxy for each cabinet that gained actions since the
+     last read — the network visibly reacts to real play. Skipped on first load
+     (the baseline) and capped so a backfill never floods. */
+  counters.forEach((c, i) => {
+    const v = vals[i] || 0;
+    const prev = prevVals[c.id];
+    if (!firstLoadPulse && prev != null && v > prev) {
+      const n = Math.min(5, v - prev);
+      const si = SI[c.shard] != null ? SI[c.shard] : null;
+      galaxy.pulse(si, n);
+    }
+    prevVals[c.id] = v;
+  });
+  firstLoadPulse = false;
+
+  /* feed the live ambient score the SAME reads (no extra polling) — it diffs to
+     per-cabinet deltas internally. Skipped under ?score-demo (a synthetic feeder
+     drives it there instead). */
+  if (score && !demoMode) {
+    const perCabinet = {};
+    counters.forEach((c, i) => { perCabinet[c.id] = vals[i] || 0; });
+    score.feed({ perCabinet, total });
+  }
+}
+
+refresh();
+setInterval(refresh, 2000);
+
+/* ---------- speaker toggle: muted by default; first click is the user gesture
+   that boots Tone.js and starts the score. ---------- */
+const soundToggle = document.getElementById("soundToggle");
+const soundLabel = soundToggle.querySelector(".st-label");
+const waveEl = soundToggle.querySelector(".st-wave");
+const muteEl = soundToggle.querySelector(".st-mute");
+function paintSound(nowOn) {
+  soundToggle.classList.toggle("on", nowOn);
+  soundToggle.setAttribute("aria-pressed", String(nowOn));
+  soundLabel.textContent = nowOn ? "Sound on" : "Sound";
+  if (waveEl) waveEl.style.display = nowOn ? "" : "none";
+  if (muteEl) muteEl.style.display = nowOn ? "none" : "";
+}
+soundToggle.addEventListener("click", async () => {
+  soundToggle.classList.add("loading");
+  try {
+    paintSound(await score.toggle());
+  } catch (e) {
+    console.warn("[arcade] sound toggle failed", e);
+  } finally {
+    soundToggle.classList.remove("loading");
+  }
+});
+
+/* ?score-demo (or ?mock): feed the score a synthetic activity stream so it can
+   be heard/verified without waiting on live taps. (Live feed is skipped above.) */
+if (demoMode) {
+  const fake = { sprint: 1200, tugofwar: 540, canvas: 360, button: 90, clawback: 140, degendash: 40 };
+  const tick = () => {
+    fake.sprint    += Math.floor(Math.random() * 24);
+    fake.tugofwar  += Math.floor(Math.random() * 9);
+    fake.canvas    += Math.floor(Math.random() * 11);
+    fake.button    += Math.random() < 0.45 ? 1 + Math.floor(Math.random() * 3) : 0;
+    fake.clawback  += Math.random() < 0.5 ? Math.floor(Math.random() * 6) : 0;
+    fake.degendash += Math.random() < 0.35 ? Math.floor(Math.random() * 7) : 0;
+    score.feed({ perCabinet: { ...fake }, total: Object.values(fake).reduce((a, b) => a + b, 0) });
+  };
+  tick();
+  setInterval(tick, 2000);
+  console.info("[arcade] score-demo: synthetic activity feeding the score.");
+}
+
+/* build-kit / submit CTAs (the kit page is not published yet → scroll to the
+   on-page section; set BUILD_KIT_URL once it ships). */
+const BUILD_KIT_URL = ""; // e.g. a hosted ARCADE-SPEC / template repo URL
+if (BUILD_KIT_URL) {
+  document.getElementById("buildKitBtn").setAttribute("href", BUILD_KIT_URL);
+}
+document.getElementById("featAdd").addEventListener("click", () => {
+  document.getElementById("build").scrollIntoView({ behavior: "smooth", block: "start" });
+});
+</script>
+</body>
+</html>

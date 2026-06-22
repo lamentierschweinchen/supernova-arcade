@@ -1,0 +1,901 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>ETHperience · Supernova Arcade</title>
+<meta name="description" content="Defend your wallet from the attacks that drain crypto. Brutal on the ETH theme, a breeze with a MultiversX guardian. A real onchain game on MultiversX, gasless and no wallet." />
+<link rel="icon" href="/favicon.svg" />
+<link rel="stylesheet" href="/arcade-shell.css" />
+<!--
+  CLAWBACK — a Supernova Arcade game (model A: the contract is the referee).
+
+  ONE defend-your-money game, TWO difficulty MODES of the SAME mechanic:
+
+    • ETH theme ("unnecessarily hard"): attacks rain down — sandwiches, MEV bots,
+      wallet drainers, approval exploits, bridge hacks. They come fast and mostly
+      land. You fight to keep your money and mostly can't. Brutal, a little funny.
+
+    • Guardian (MultiversX, "unreasonably secure"): the native guardian auto-blocks
+      the incoming attacks (a satisfying shield bounce). Trivially easy; your money
+      stays safe with little effort.
+
+  The proof is the TOGGLE: same game, hell on the ETH theme, a breeze with a
+  guardian. Switching feels like night and day.
+
+  HONESTY (hard rules): BOTH modes run on MultiversX (real onchain, NOVA, gasless).
+  "ETH theme" is a THEMED hard difficulty that DRAMATIZES the Ethereum attack
+  experience — we are NOT running on Ethereum and never imply we are. The attacks
+  are real NAMED ATTACK TYPES (drainers, sandwiches, MEV); the structural framing
+  leads with those. We never say "MvX = invincible / zero MEV." The precise
+  competitive claim sentence is PROTOCOL-TEAM-GATED and ships as a marked
+  placeholder ([CLAIM TBD]); only the MECHANIC + structural framing ship now.
+
+  Mechanically the guardian is a GAMEPLAY ASSIST that auto-fires the SAME real
+  gasless counter-transaction the player fires by hand — so the integrity model is
+  untouched: every save is a real tx the CONTRACT referees by the real block
+  timestamp, and the official final balance is read back onchain (getFinal). The
+  mode only changes attack rate, fall speed, labels, and the auto-block visuals;
+  it never changes how the score is computed. Kept NOVA is real — claim it.
+
+  A recall fired inside the settle window cancels a PENDING settlement before it
+  lands; you do NOT reverse a settled transaction.
+
+  Onchain reads are legible at ~2s, so the board/counter poll on a ~2s tick.
+
+  Two run states: ONCHAIN (deployed contract + relayer — real gasless txs + real
+  NOVA) and PRACTICE (no contract configured — fully playable locally, nothing
+  onchain). Both difficulty modes work in either run state.
+-->
+<style>
+  /* Clawback inherits the canon (Roobert, #06070A cosmos, mint, surfaces, buttons,
+     leaderboard, reset) from /arcade-shell.css. Game-specific accents map straight
+     onto the canon tokens: drains/loss = --coral, clawed-back/credits = --green,
+     whale = --amber. */
+  .wrap { max-width: 460px; display: flex; flex-direction: column; gap: 13px; }
+  header { text-align: center; }
+  h1 { margin: 0; font-size: 30px; letter-spacing: -0.01em; font-weight: 800; color: var(--text); }
+  h1 .x { color: var(--coral); }
+  .sub { color: var(--text-dim); font-size: 13px; margin-top: 4px; line-height: 1.5; }
+  .mode { display: inline-flex; align-items: center; gap: 6px; margin-top: 8px; font-size: 11px; font-weight: 600;
+    letter-spacing: 0.05em; text-transform: uppercase; padding: 4px 11px; border-radius: 999px;
+    border: 1px solid var(--border); color: var(--text-dim); }
+  .mode.onchain { color: var(--mint); border-color: rgba(35,247,221,0.4); background: rgba(35,247,221,0.05); }
+  .mode.practice { color: var(--amber); border-color: rgba(245,181,68,0.4); }
+
+  /* ---- mode selector: ETH theme (hard) vs Guardian (secure). The whole point is
+     the contrast, so it's a prominent segmented toggle, not a buried setting. ---- */
+  .modepick { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .modepick .opt { position: relative; cursor: pointer; border: 1px solid var(--border); border-radius: 14px;
+    background: var(--surface); padding: 12px 13px 11px; text-align: left; transition: border-color 0.16s, background 0.16s, transform 0.08s; }
+  .modepick .opt:active { transform: scale(0.985); }
+  .modepick .opt .nm { display: flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 700; color: var(--text); }
+  .modepick .opt .nm .ic { font-size: 15px; line-height: 1; }
+  .modepick .opt .tag { font-size: 10.5px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; margin-top: 3px; }
+  .modepick .opt .dsc { font-size: 11.5px; color: var(--text-faint); margin-top: 5px; line-height: 1.4; }
+  /* ETH = hard (coral) */
+  .modepick .opt.eth.sel { border-color: rgba(255,107,157,0.7); background: linear-gradient(150deg, rgba(255,107,157,0.10), var(--surface) 62%); }
+  .modepick .opt.eth .nm .ic, .modepick .opt.eth .tag { color: var(--coral); }
+  /* Guardian = secure (mint) */
+  .modepick .opt.mvx.sel { border-color: rgba(35,247,221,0.7); background: linear-gradient(150deg, rgba(35,247,221,0.10), var(--surface) 62%); }
+  .modepick .opt.mvx .nm .ic, .modepick .opt.mvx .tag { color: var(--mint); }
+  .modepick .opt .check { position: absolute; top: 10px; right: 11px; width: 16px; height: 16px; border-radius: 50%;
+    border: 1px solid var(--border); opacity: 0; transition: opacity 0.16s; }
+  .modepick .opt.sel .check { opacity: 1; }
+  .modepick .opt.eth.sel .check { background: var(--coral); border-color: var(--coral); box-shadow: 0 0 10px rgba(255,107,157,0.6); }
+  .modepick .opt.mvx.sel .check { background: var(--mint); border-color: var(--mint); box-shadow: 0 0 10px rgba(35,247,221,0.6); }
+  /* a small live caption above the arena that flips with the mode */
+  .modeline { font-size: 12px; text-align: center; color: var(--text-dim); min-height: 16px; line-height: 1.4; }
+  .modeline.eth b { color: var(--coral); } .modeline.mvx b { color: var(--mint); }
+
+  /* ---- ETH-theme arena tint (hostile red wash) ---- */
+  .arena.eth { background: linear-gradient(180deg, rgba(255,107,157,0.05), rgba(0,0,0,0) 22%), linear-gradient(180deg, var(--surface), #0a0d13); }
+  .arena.eth .settle-line { border-top-color: rgba(255,107,157,0.6); }
+
+  /* ---- Guardian (MvX) arena: a calm mint shield aura ---- */
+  .arena.mvx { background: linear-gradient(180deg, rgba(35,247,221,0.05), rgba(0,0,0,0) 26%), linear-gradient(180deg, var(--surface), #0a0d13); }
+  /* the guardian shield: a faint protective band the auto-block flares from */
+  .shield { position: absolute; left: 0; right: 0; top: 0; height: 0; border-bottom: 1px solid rgba(35,247,221,0.0);
+    pointer-events: none; transition: border-color 0.3s; }
+  .arena.mvx .shield { border-bottom-color: rgba(35,247,221,0.18); box-shadow: 0 10px 30px -16px rgba(35,247,221,0.5); }
+  .arena.mvx .shieldbadge { position: absolute; top: 7px; left: 8px; display: inline-flex; align-items: center; gap: 5px;
+    font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--mint);
+    padding: 3px 8px; border-radius: 999px; border: 1px solid rgba(35,247,221,0.4); background: rgba(35,247,221,0.07); z-index: 4; }
+  .arena.mvx .shieldbadge .gd { width: 6px; height: 6px; border-radius: 50%; background: var(--mint); box-shadow: 0 0 7px var(--mint); animation: pulse 2s ease-in-out infinite; }
+  .arena.eth .shield, .arena.eth .shieldbadge { display: none; }
+
+  /* a card the guardian auto-blocks: snaps up to the shield and bursts (mint) */
+  .card.guarded { animation: guardpop 0.42s cubic-bezier(.2,1.3,.4,1) forwards; pointer-events: none;
+    border-color: var(--mint) !important; box-shadow: 0 0 0 1px var(--mint), 0 0 22px rgba(35,247,221,0.55) !important; }
+  .card.guarded .ty, .card.guarded .amt { color: var(--mint) !important; }
+  @keyframes guardpop { 0% { transform: scale(1); } 35% { transform: scale(1.12); } 100% { transform: translateY(-30px) scale(0.6); opacity: 0; } }
+  /* the satisfying shield bounce ring where an attack hit the guardian */
+  .bounce { position: absolute; pointer-events: none; width: 46px; height: 46px; margin: -23px 0 0 -23px; border-radius: 50%;
+    border: 2px solid var(--mint); z-index: 6; animation: bounce 0.5s ease-out forwards; }
+  @keyframes bounce { 0% { transform: scale(0.4); opacity: 0.9; } 100% { transform: scale(1.7); opacity: 0; } }
+
+  /* balance hero */
+  .hero { background: radial-gradient(120% 80% at 80% -10%, rgba(35,247,221,0.10), transparent 55%), var(--surface);
+    border: 1px solid var(--border); border-radius: 18px; padding: 16px 18px 14px; text-align: center;
+    position: relative; overflow: hidden; }
+  .hero .cap { color: var(--text-faint); font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em; font-weight: 600; }
+  .bal { font-family: var(--mono); font-size: 48px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1.05;
+    letter-spacing: -0.02em; margin: 4px 0 0; transition: color 0.18s ease; color: var(--text); }
+  .bal .unit { font-family: 'Roobert PRO', system-ui, sans-serif; font-size: 16px; color: var(--text-dim); font-weight: 600; margin-left: 6px; letter-spacing: 0; }
+  .bal.flash-down { color: var(--coral); }
+  .bal.flash-up { color: var(--green); }
+  .bal.shake { animation: shake 0.32s ease; }
+  @keyframes shake { 0%,100%{transform:translateX(0)} 20%{transform:translateX(-6px)} 40%{transform:translateX(5px)} 60%{transform:translateX(-3px)} 80%{transform:translateX(2px)} }
+  .stack { height: 7px; border-radius: 5px; background: #0c1119; margin: 11px 0 4px; overflow: hidden; border: 1px solid var(--border); }
+  .stack > i { display: block; height: 100%; width: 100%; border-radius: 5px;
+    background: linear-gradient(90deg, var(--coral) 0%, var(--amber) 45%, var(--mint) 100%);
+    transform-origin: left; transition: transform 0.12s linear; }
+  .meta { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--text-faint); font-variant-numeric: tabular-nums; margin-top: 9px; }
+  .meta b { font-family: var(--mono); color: var(--text); }
+  .meta .saved b { color: var(--green); }
+  .meta .lost b { color: var(--coral); }
+  .rtimer { height: 4px; border-radius: 4px; background: #0c1119; overflow: hidden; border: 1px solid var(--border); margin-top: 9px; }
+  .rtimer > i { display: block; height: 100%; width: 100%; background: linear-gradient(90deg, var(--mint), #79e6d8); transform-origin: left; }
+
+  /* arena */
+  .arena { position: relative; height: 384px; border: 1px solid var(--border); border-radius: 16px;
+    background: linear-gradient(180deg, rgba(35,247,221,0.04), rgba(0,0,0,0) 22%), linear-gradient(180deg, var(--surface), #0a0d13);
+    overflow: hidden; touch-action: manipulation; user-select: none; }
+  .settle-line { position: absolute; left: 0; right: 0; bottom: 40px; height: 0; border-top: 1px dashed rgba(255,107,157,0.5); }
+  .settle-label { position: absolute; right: 8px; bottom: 44px; font-size: 10.5px; color: var(--coral); letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.8; }
+  .danger { position: absolute; left: 0; right: 0; bottom: 0; height: 40px; background: linear-gradient(180deg, rgba(255,107,157,0) 0%, rgba(255,107,157,0.12) 100%); pointer-events: none; }
+
+  .card { position: absolute; width: 30%; margin: 0; will-change: transform; cursor: pointer;
+    border-radius: 11px; padding: 7px 8px 8px; border: 1px solid var(--border);
+    background: linear-gradient(180deg, #1b2433, #141c28); box-shadow: 0 6px 16px -8px rgba(0,0,0,0.6); }
+  .card:active { transform: scale(0.95); }
+  .card .ty { font-size: 9.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; opacity: 0.92; }
+  .card .amt { font-family: var(--mono); font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums; margin-top: 1px; }
+  .card .amt .m { font-size: 10px; opacity: 0.7; font-weight: 700; }
+  .card .bar { height: 4px; border-radius: 3px; background: rgba(255,255,255,0.12); margin-top: 6px; overflow: hidden; }
+  .card .bar > i { display: block; height: 100%; width: 100%; transform-origin: left; background: var(--coral); }
+  /* drains (coral family — tap them); one class covers every drain label */
+  .card.drain { border-color: rgba(255,107,157,0.5); }
+  .card.drain .ty { color: var(--coral); }
+  .card.drain .amt { color: var(--text); }
+  /* credits (green — leave them) */
+  .card.credit { border-color: rgba(74,222,128,0.5); background: linear-gradient(160deg, rgba(74,222,128,0.12), rgba(14,17,23,0.7)); }
+  .card.credit .ty { color: var(--green); }
+  .card.credit .amt { color: var(--green); }
+  .card.credit .bar > i { background: var(--green); }
+  /* big drains — the whales (amber), prioritize */
+  .card.big { box-shadow: 0 0 0 1px var(--amber), 0 8px 22px -8px rgba(245,181,68,0.5); animation: bigpulse 1s ease-in-out infinite; }
+  .card.big .ty { color: var(--amber); }
+  .card.big .amt { color: var(--amber); }
+  @keyframes bigpulse { 0%,100%{box-shadow:0 0 0 1px rgba(245,181,68,0.7),0 8px 22px -10px rgba(245,181,68,0.45)} 50%{box-shadow:0 0 0 2px rgba(245,181,68,1),0 10px 26px -8px rgba(245,181,68,0.7)} }
+  .card.saved { animation: flyup 0.4s ease-out forwards; pointer-events: none; }
+  @keyframes flyup { to { transform: translateY(-46px) scale(1.08); opacity: 0; } }
+  .card.lost { animation: die 0.34s ease-out forwards; pointer-events: none; }
+  @keyframes die { 0%{ filter: brightness(1.8) saturate(1.6); } 100%{ transform: scale(0.86); opacity: 0; } }
+  .card.banked { animation: bank 0.4s ease-out forwards; pointer-events: none; }
+  @keyframes bank { to { transform: scale(0.9); opacity: 0; } }
+
+  .float { position: absolute; pointer-events: none; font-family: var(--mono); font-weight: 800; font-size: 16px; z-index: 5;
+    animation: rise 0.7s ease-out forwards; font-variant-numeric: tabular-nums; }
+  .float.save { color: var(--green); } .float.loss { color: var(--coral); }
+  @keyframes rise { from { opacity: 1; transform: translateY(0) scale(1); } to { opacity: 0; transform: translateY(-34px) scale(1.2); } }
+
+  .arena .center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 22px; gap: 12px; }
+  .arena .center.hide { display: none; }
+  .arena .center p { color: var(--text-dim); font-size: 13px; margin: 0; max-width: 330px; line-height: 1.5; }
+  .arena .center .legend { display: flex; gap: 16px; font-size: 12px; }
+  .arena .center .legend b { font-weight: 700; }
+  .arena .center .legend .r { color: var(--coral); } .arena .center .legend .g { color: var(--green); }
+  .arena .center .final { font-size: 13px; color: var(--text-dim); }
+  .arena .center .final b { font-family: var(--mono); font-size: 40px; color: var(--mint); display: block; font-variant-numeric: tabular-nums; font-weight: 800; text-shadow: 0 0 12px rgba(35,247,221,0.3); }
+  /* end-of-round breakdown: what got through vs what you saved + kept */
+  .tally { width: 100%; max-width: 290px; display: flex; flex-direction: column; gap: 8px; margin: 2px 0; }
+  .tally .tr { display: grid; grid-template-columns: 16px 1fr auto; align-items: baseline; gap: 9px; font-size: 13.5px; color: var(--text-dim); text-align: left; }
+  .tally .tr .ico { font-size: 13px; line-height: 1; }
+  .tally .tr .lab { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+  .tally .tr .lab em { font-style: normal; font-size: 10.5px; color: var(--text-faint); }
+  .tally .tr b { font-family: var(--mono); font-weight: 800; font-variant-numeric: tabular-nums; font-size: 15px; }
+  .tally .tr.lost b { color: var(--coral); } .tally .tr.lost .ico { color: var(--coral); }
+  .tally .tr.save b { color: var(--green); } .tally .tr.save .ico { color: var(--green); }
+  .tally .tr.gain b { color: var(--green); } .tally .tr.gain .ico { color: var(--green); }
+  .tally .rule { height: 1px; background: var(--border); margin: 1px 0; }
+  .spin { width: 26px; height: 26px; border-radius: 50%; border: 3px solid rgba(255,255,255,0.15); border-top-color: var(--mint); animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* shell mint pill (glow + 3px lip) comes from /arcade-shell.css; keep auto width for the side-by-side rows */
+  .btn { width: auto; }
+  .btn.gold { background: var(--amber); color: #2a1c02; box-shadow: 0 0 0 1px rgba(245,181,68,0.4), 0 8px 24px rgba(245,181,68,0.24); border-bottom: 3px solid #b9842a; }
+
+  .claim { display: none; gap: 8px; margin-top: 4px; }
+  .claim.show { display: flex; }
+  .claim input { flex: 1; background: #06070A; border: 1px solid var(--border); border-radius: 10px; color: var(--text); padding: 11px 12px; font-size: 15px; outline: none; }
+  .claim input:focus { border-color: #79e6d8; }
+  .row { display: flex; gap: 8px; justify-content: center; }
+  /* plain centered status line (override the shell status box) */
+  .status { border: none; background: none; padding: 0; min-height: 17px; display: block; font-size: 12.5px; text-align: center; }
+  .status.ok { color: var(--mint); } .status.err { color: var(--coral); }
+  .status a { color: var(--mint); }
+
+  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 14px; margin: 0; }
+  .panel h2 { margin: 0 0 9px; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-dim); font-weight: 600; display: flex; align-items: center; }
+  .global { text-align: center; }
+  .global .num { font-family: var(--mono); font-size: 32px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .global .num .g { color: var(--mint); }
+  .global .lbl { color: var(--text-faint); font-size: 12px; margin-top: 2px; }
+  .lb-row { display: grid; grid-template-columns: 26px 1fr auto; align-items: center; gap: 10px; padding: 8px 4px; font-size: 14px; }
+  .lb-row + .lb-row { border-top: 1px solid var(--border-soft); }
+  .lb-row .rank { color: var(--text-faint); font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  .lb-row .handle { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-dim); }
+  .lb-row .score { font-family: var(--mono); font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text-dim); }
+  .lb-row.you { background: rgba(35,247,221,0.08); border-radius: 8px; }
+  .lb-row.you .handle { color: var(--mint); }
+  .lb-row.you .score { color: var(--mint); }
+  .lb-row.you .handle::after { content: " you"; color: var(--mint); font-size: 11px; }
+  .lb-empty { color: var(--text-faint); font-size: 13px; text-align: center; padding: 10px 0; }
+
+  .how { font-size: 12.5px; color: var(--text-dim); line-height: 1.55; }
+  .how b { color: var(--text); } .how .r { color: var(--coral); font-weight: 700; } .how .g { color: var(--green); font-weight: 700; }
+  .tick { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--mint); box-shadow: 0 0 7px var(--mint); margin-right: 6px; vertical-align: middle; animation: pulse 2s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { opacity: 0.35; } 50% { opacity: 1; } }
+  .screen .play { width: 100%; display: flex; flex-direction: column; gap: 12px; align-items: stretch; }
+</style>
+    <!-- Vercel Web Analytics -->
+    <script defer src="/_vercel/insights/script.js"></script>
+</head>
+<body style="--c:#FF6B9D" data-shard="shard 2">
+<div class="scan"></div><div class="vignette"></div><div class="floor"></div>
+<div class="brk tl"></div><div class="brk tr"></div><div class="brk bl"></div><div class="brk br"></div>
+<div class="wrap">
+  <header class="abar">
+    <a class="back" href="/arcade"><span aria-hidden="true">&larr;</span> Arcade</a>
+    <span class="lockup"><img src="/mvx-wordmark.svg" alt="MultiversX" /><span class="shard">shard 2</span></span>
+  </header>
+
+  <h1><span class="x">ETH</span>perience</h1>
+  <p class="sub">Attacks rain down to drain your wallet. Tap to claw each one back before it settles. The catch: it depends which chain you are on.</p>
+  <span class="mode" id="modeBadge">connecting…</span>
+
+  <div class="onetap"><span class="ic"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M13 2 3 14h7l-1 8 10-12h-7z" stroke="#FF6B9D" stroke-width="1.6" stroke-linejoin="round"/></svg></span><span class="t"><b>No wallet, just play.</b> A key is created in your browser and we cover the gas.</span></div>
+
+  <div class="cabinet">
+    <div class="cab-marquee">Clawback · pull it back before it settles</div>
+    <div class="screen">
+      <div class="play">
+        <!-- the proof is the toggle: same game, two worlds. ETH theme = brutal; Guardian = safe. -->
+        <section class="modepick" id="modepick" aria-label="Choose your chain">
+          <button class="opt eth sel" id="optEth" data-mode="eth" type="button">
+            <span class="check"></span>
+            <span class="nm"><span class="ic">⚔︎</span>The ETH experience</span>
+            <span class="tag">Unnecessarily hard</span>
+            <span class="dsc">Sandwiches, MEV bots, drainers. They come fast and mostly land. Survive if you can.</span>
+          </button>
+          <button class="opt mvx" id="optMvx" data-mode="mvx" type="button">
+            <span class="check"></span>
+            <span class="nm"><span class="ic">⛨</span>With a MultiversX guardian</span>
+            <span class="tag">Unreasonably secure</span>
+            <span class="dsc">A native guardian auto-blocks the attacks. Your money just stays safe.</span>
+          </button>
+        </section>
+        <div class="modeline eth" id="modeline"><b>ETH experience.</b> Keeping your money is a fight.</div>
+
+        <section class="hero">
+          <div class="cap">Account balance</div>
+          <div class="bal" id="bal">···<span class="unit">NOVA</span></div>
+          <div class="stack"><i id="stackFill"></i></div>
+          <div class="meta">
+            <span class="saved">clawed back <b id="savedStat">0</b></span>
+            <span>time <b id="timeStat">60.0s</b></span>
+            <span class="lost">drained <b id="lostStat">0</b></span>
+          </div>
+          <div class="rtimer" style="margin-top:8px"><i id="rtimerFill"></i></div>
+        </section>
+
+        <section class="arena eth" id="arena">
+          <div class="shield"></div>
+          <span class="shieldbadge"><span class="gd"></span>Guardian active</span>
+          <div class="settle-line"></div>
+          <div class="settle-label">settles</div>
+          <div class="danger"></div>
+          <div class="center" id="center">
+            <p id="centerText">Attacks will rain in and drain your <b>1,000 NOVA</b>.</p>
+            <div class="legend"><span><b class="r">red</b> = attack, tap to claw back</span><span><b class="g">green</b> = inflow, leave it</span></div>
+            <button class="btn" id="startBtn">Defend the wallet</button>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="claim" id="claim">
+      <input id="handle" maxlength="32" placeholder="Pick a handle for the board" autocomplete="off" />
+      <button class="btn" id="claimBtn">Claim spot</button>
+    </div>
+  </div>
+  <div class="status" id="status"></div>
+
+  <section class="panel global">
+    <h2><span class="tick"></span>Global onchain actions</h2>
+    <div class="num"><span class="g" id="globalNum">···</span></div>
+    <div class="lbl">counter-transactions fired across everyone, read from the chain</div>
+  </section>
+
+  <section class="panel">
+    <h2><span class="tick"></span>Top defenders · most kept</h2>
+    <div id="lbRows"><div class="lb-empty">Reading the chain…</div></div>
+  </section>
+
+  <section class="panel how">
+    <h2>Two modes, one game</h2>
+    <span class="r">Red</span> cards are incoming attacks draining a valueless game token. Tap one to fire a
+    <b>real gasless counter-transaction</b> that claws the amount back before its settle window closes.
+    <span class="g">Green</span> ones are inflows; leave them (recall one by mistake and you forfeit it).
+    On the <b style="color:var(--coral)">ETH experience</b>, attacks pour in fast and mostly land, the way wallet drainers,
+    sandwiches, and MEV play out on Ethereum today. Switch to <b style="color:var(--mint)">a MultiversX guardian</b> and a
+    native co-signer auto-blocks the same attacks before they settle, so your money stays safe with little effort.
+    <br /><br />
+    <!-- [CLAIM TBD: hidden from UI pending protocol team. The precise sentence on MultiversX's MEV / front-running resistance vs Ethereum goes here once the protocol team confirms the wording. Restore as visible copy when supplied.] -->
+    The "ETH experience" is a themed hard mode. <b>Both modes run on MultiversX testnet</b> (real onchain, gasless). This game
+    never runs on Ethereum. The round seed and your final balance are computed <b>onchain</b>, so the score can't be faked,
+    and every run is unique.
+  </section>
+
+  <footer class="afoot"><span class="sn">Supernova · live on testnet</span> · 600ms rounds on MultiversX · gasless, no wallet · claw back before the window closes</footer>
+</div>
+
+<script type="module">
+import { createArcade } from "/clawback/arcade.js";
+import { ARCADE_CONFIG } from "/clawback/arcade.config.js";
+import { buildSchedule } from "/clawback/schedule.js";
+import { mountGalaxy } from "/arcade-galaxy.js";
+
+const $ = (id) => document.getElementById(id);
+const arcade = createArcade(ARCADE_CONFIG);
+const galaxy = mountGalaxy({ intensity: 0.5, focusShard: 2 });
+
+// config defaults mirror the contract; onchain mode overrides from getScheduleParams
+// practice/preview config mirrors the contract defaults, incl. the difficulty ramp
+// (rampPermil 500 = sparse/slow open, dense/fast finish; lateWindowShrinkPermil 0 = off).
+// Onchain mode overrides this from getScheduleParams so the client always matches the
+// deployed contract exactly.
+const DEFAULTS = { roundLengthMs: 60_000, settleWindowMs: 8_000, outflows: 440, startStack: 1_000, creditPermil: 130, rampPermil: 500, lateWindowShrinkPermil: 0 };
+
+// Attack labels = the REAL named attack TYPES that drain crypto wallets (the ETH
+// experience). Sourced from arcade-proof-research.md: wallet drainers ($494M in
+// 2024, 85.3% on Ethereum), MEV + sandwiches, approval/phishing exploits, bridge
+// hacks. The SAME attacks appear in Guardian mode — the difference is they bounce.
+const DRAIN_TYPES = [
+  "Sandwiched",
+  "MEV bot hit",
+  "Wallet drainer",
+  "Approval exploit",
+  "Phishing drain",
+  "Frontrun",
+  "Bridge hack",
+  "Honeypot",
+];
+const CREDIT_TYPES = ["Airdrop hit", "Sold the top", "Got paid"];
+const COLS = 3;
+
+// ---- the two difficulty MODES (client-side presentation/difficulty ONLY) ----
+// IMPORTANT: modes never touch the seed-derived schedule or the contract-computed
+// final. They scale fall SPEED (how long you have to react before a card settles)
+// and, for Guardian, auto-fire the SAME real claw-back tx on a share of attacks.
+// The contract still referees every save by the real block timestamp.
+//   fallScale  — multiplies the visible fall time. <1 = cards drop FASTER (harder).
+//   guardian   — fraction of attacks the native guardian auto-blocks for you (0..1).
+//   theme      — arena tint + copy.
+const MODES = {
+  eth: {
+    key: "eth", theme: "eth",
+    fallScale: 0.62,   // attacks come down fast — you mostly can't keep up
+    guardian: 0,       // no guardian on the ETH theme; every attack is yours to fight
+    label: "ETH experience",
+    line: '<b>ETH experience.</b> Keeping your money is a fight.',
+    center: "Attacks rain in and drain your <b>%S NOVA</b> in %T seconds. Claw back what you can. Most can't.",
+  },
+  mvx: {
+    key: "mvx", theme: "mvx",
+    fallScale: 1.5,    // calmer fall, but you barely need it — the guardian does the work
+    guardian: 0.82,    // the native guardian auto-blocks the vast majority of attacks
+    label: "MultiversX guardian",
+    line: '<b>MultiversX guardian.</b> The attacks bounce off. Your money stays safe.',
+    center: "Attacks come in, but your <b style=\"color:var(--mint)\">guardian</b> auto-blocks them. Your <b>%S NOVA</b> just stays safe.",
+  },
+};
+
+let cfg = { ...DEFAULTS };
+let mode = MODES.eth;        // default to the brutal ETH experience so the contrast lands
+let onchain = false;
+
+const G = {
+  phase: "idle", seed: 0n, startMs: 0, roundId: 0,
+  schedule: [], visibleFall: 2800, settleLineY: 280, arenaH: 384,
+  nextIdx: 0, savedCount: 0, lostCount: 0, savedAmt: 0, forfeitAmt: 0, forfeitCount: 0, spawnSeq: 0,
+  cards: new Map(), trueBalance: 0, dispBalance: 0, raf: null,
+  blockedCount: 0, // attacks the guardian auto-blocked this round (MvX mode)
+};
+
+// ---------- mode detection ----------
+function isPlaceholder(addr) {
+  return !addr || addr.includes("qqqqqqqqqqqqqpgq0000") || /^erd1?0{20,}/.test(addr) || addr.includes("000000000000000000000000000000");
+}
+async function detectMode() {
+  const configured = !isPlaceholder(ARCADE_CONFIG.contract) && !isPlaceholder(ARCADE_CONFIG.relayer);
+  if (!configured) { setMode(false, "Practice · not yet deployed"); return; }
+  const ok = await arcade.ready().catch(() => false);
+  if (!ok) { setMode(false, "Practice · relayer offline"); return; }
+  const params = await arcade.getScheduleParams().catch(() => null);
+  if (params && params.outflows > 0) cfg = params;
+  setMode(true, "Onchain · Supernova");
+  refreshBoard();
+}
+function setMode(on, label) {
+  onchain = on;
+  const b = $("modeBadge");
+  b.textContent = label;
+  b.className = "mode " + (on ? "onchain" : "practice");
+  refreshCenterText();
+}
+
+// ---------- difficulty MODE selector (ETH theme vs Guardian) ----------
+function refreshCenterText() {
+  // #centerText only exists in the idle pre-round prompt. Once a round starts (or
+  // the relayer-lock spinner shows), showCenter() replaces the whole #center, so
+  // the element is gone — skip rather than throw. beginRound rebuilds it as needed.
+  const el = $("centerText");
+  if (!el) return;
+  const secs = Math.round(cfg.roundLengthMs / 1000);
+  el.innerHTML = mode.center.replace("%S", fmt(cfg.startStack)).replace("%T", secs);
+}
+function selectMode(key) {
+  if (G.phase === "starting" || G.phase === "playing") return; // locked mid-round
+  mode = MODES[key] || MODES.eth;
+  try { localStorage.setItem("clawback_mode", mode.key); } catch {}
+  // toggle the segmented control
+  $("optEth").classList.toggle("sel", mode.key === "eth");
+  $("optMvx").classList.toggle("sel", mode.key === "mvx");
+  // arena theme + caption
+  const arena = $("arena");
+  arena.classList.toggle("eth", mode.theme === "eth");
+  arena.classList.toggle("mvx", mode.theme === "mvx");
+  const ml = $("modeline");
+  ml.className = "modeline " + mode.theme;
+  ml.innerHTML = mode.line;
+  refreshCenterText();
+}
+$("optEth").addEventListener("click", () => selectMode("eth"));
+$("optMvx").addEventListener("click", () => selectMode("mvx"));
+
+// ---------- start ----------
+$("startBtn").addEventListener("click", onDefend);
+async function onDefend() {
+  if (G.phase === "starting" || G.phase === "playing") return;
+  initAudio();
+  $("claim").classList.remove("show");
+  setStatus("", "");
+  if (onchain) return startOnchain();
+  return startLocal();
+}
+function startLocal() {
+  beginRound({ seed: randomU64(), startMs: Date.now(), roundId: G.roundId });
+}
+async function startOnchain() {
+  setPhase("starting");
+  showCenter(`<div class="spin"></div><p>Locking your round on Supernova…<br/>the schedule is being seeded onchain.</p>`);
+  const prevRound = G.roundId;
+  try {
+    await arcade.startRound();
+  } catch (err) {
+    return fallbackToPractice("Couldn't reach the relayer. Playing in practice mode.");
+  }
+  for (let i = 0; i < 10; i++) {
+    await wait(1200);
+    const r = await arcade.getRound().catch(() => null);
+    if (r && r.roundId > prevRound && r.seed !== "0") {
+      G.roundId = r.roundId;
+      return beginRound({ seed: BigInt(r.seed), startMs: r.startMs, roundId: r.roundId });
+    }
+  }
+  fallbackToPractice("The round didn't confirm in time. Playing in practice mode.");
+}
+function fallbackToPractice(msg) {
+  onchain = false;
+  cfg = { ...DEFAULTS }; // practice previews the intended (ramped) game
+  setMode(false, "Practice · fallback");
+  setStatus("err", msg);
+  startLocal();
+}
+
+function beginRound({ seed, startMs, roundId }) {
+  G.seed = seed; G.startMs = startMs; G.roundId = roundId;
+  G.schedule = buildSchedule(seed, cfg);
+  // base visible-fall, then scale by the chosen mode (ETH = faster/harder, Guardian
+  // = calmer). Visuals/difficulty only; the contract's settle window is unchanged.
+  const baseFall = Math.max(1500, Math.min(2000, cfg.settleWindowMs - 2500));
+  G.visibleFall = Math.round(baseFall * mode.fallScale);
+  G.arenaH = $("arena").clientHeight || 384;
+  G.settleLineY = G.arenaH - 40 - 58;
+  G.nextIdx = 0; G.savedCount = 0; G.lostCount = 0; G.savedAmt = 0; G.forfeitAmt = 0; G.forfeitCount = 0; G.spawnSeq = 0;
+  G.blockedCount = 0;
+  $("modepick").style.opacity = "0.5"; $("modepick").style.pointerEvents = "none"; // locked mid-round
+  G.trueBalance = cfg.startStack; G.dispBalance = cfg.startStack;
+  $("savedStat").textContent = "0";
+  $("lostStat").textContent = "0";
+  $("timeStat").textContent = (cfg.roundLengthMs / 1000).toFixed(1) + "s";
+  $("bal").firstChild.textContent = fmt(cfg.startStack);
+  $("stackFill").style.transform = "scaleX(1)";
+  $("rtimerFill").style.transform = "scaleX(1)";
+  clearCards();
+  hideCenter();
+  setPhase("playing");
+  // catch up anything that streamed during the onchain round-lock
+  const elapsed0 = now() - G.startMs;
+  while (G.nextIdx < G.schedule.length && G.schedule[G.nextIdx].spawnMs <= elapsed0) {
+    activate(G.schedule[G.nextIdx], elapsed0); G.nextIdx++;
+  }
+  G.raf = requestAnimationFrame(tick);
+}
+
+// ---------- the loop ----------
+function tick() {
+  const elapsed = now() - G.startMs;
+  if (elapsed >= cfg.roundLengthMs) return endRoundFlow();
+
+  while (G.nextIdx < G.schedule.length && G.schedule[G.nextIdx].spawnMs <= elapsed) {
+    activate(G.schedule[G.nextIdx], elapsed); G.nextIdx++;
+  }
+  for (const [, c] of G.cards) {
+    if (c.state !== "falling") continue;
+    const age = elapsed - c.o.spawnMs;
+    if (age >= G.visibleFall) { settleCard(c); continue; }
+    const p = age / G.visibleFall;
+    c.el.style.transform = `translateY(${(p * G.settleLineY).toFixed(1)}px)`;
+    c.barFill.style.transform = `scaleX(${(1 - p).toFixed(3)})`;
+    if (!c.o.credit) { // urgency color on drains (canon tokens)
+      if (p > 0.72) c.barFill.style.background = "var(--coral)";
+      else if (p > 0.45) c.barFill.style.background = "var(--amber)";
+    }
+  }
+  renderBalance();
+  const left = Math.max(0, cfg.roundLengthMs - elapsed);
+  $("timeStat").textContent = (left / 1000).toFixed(1) + "s";
+  $("rtimerFill").style.transform = `scaleX(${(left / cfg.roundLengthMs).toFixed(3)})`;
+  G.raf = requestAnimationFrame(tick);
+}
+
+// an item appearing immediately moves the balance: a drain pulls funds out, a
+// credit pays in. Recalling it later reverses that (and matches the contract).
+function activate(o, elapsed) {
+  G.trueBalance += o.credit ? o.amount : -o.amount;
+  const age = elapsed - o.spawnMs;
+  if (age >= G.visibleFall) {
+    // already past its window before we could render it (round-lock catch-up)
+    if (!o.credit) { G.lostCount++; $("lostStat").textContent = G.lostCount; }
+    return;
+  }
+  spawnCard(o, age);
+}
+
+function spawnCard(o, age) {
+  const el = document.createElement("div");
+  let label, sign, cls;
+  if (o.credit) {
+    label = CREDIT_TYPES[Number(BigInt(o.id) % BigInt(CREDIT_TYPES.length))];
+    sign = "+"; cls = "credit";
+  } else {
+    label = DRAIN_TYPES[Number(BigInt(o.id) % BigInt(DRAIN_TYPES.length))];
+    sign = "−"; cls = "drain" + (o.amount >= 9 ? " big" : "");
+  }
+  el.className = "card " + cls;
+  const col = G.spawnSeq++ % COLS;
+  const colW = 100 / COLS;
+  el.style.left = (col * colW + (colW - 30) / 2) + "%";
+  el.innerHTML = `<div class="ty">${label}</div><div class="amt">${sign}${o.amount}<span class="m"> NOVA</span></div><div class="bar"><i></i></div>`;
+  const c = { o, el, state: "falling", barFill: el.querySelector(".bar > i") };
+  el.addEventListener("pointerdown", () => tapCard(c), { passive: true });
+  $("arena").appendChild(el);
+  G.cards.set(o.id, c);
+  const p = Math.max(0, age) / G.visibleFall;
+  el.style.transform = `translateY(${(p * G.settleLineY).toFixed(1)}px)`;
+
+  // Guardian (MvX mode): the native guardian auto-blocks a share of incoming
+  // ATTACKS. Eligibility is deterministic per item (id-based), so a given run is
+  // reproducible and not a per-frame coin flip. The block fires the SAME real
+  // claw-back tx the player would — integrity model untouched, it just does it
+  // for you. Whales (big) always get through to the guardian's net too.
+  if (!o.credit && mode.guardian > 0 && (Number(BigInt(o.id) % 100n) < Math.round(mode.guardian * 100))) {
+    c.guardScheduled = true;
+    const delay = 220 + (Number(BigInt(o.id) % 260n)); // staggered, snappy
+    c.guardTimer = setTimeout(() => guardianBlock(c), delay);
+  }
+}
+
+// the guardian intercepts an attack: satisfying shield bounce, same real tx fires
+function guardianBlock(c) {
+  if (c.state !== "falling") return;
+  c.state = "acted";
+  if (onchain) arcade.clawBack(G.roundId, c.o.id).catch(() => {}); // real counter-tx, fired for you
+  // the guardian neutralizes the drain → balance restored, counts as saved
+  G.savedCount++; G.blockedCount++;
+  G.savedAmt += c.o.amount;
+  G.trueBalance += c.o.amount;
+  $("savedStat").textContent = G.savedCount;
+  bounceRing(c.el);
+  floatText(c.el, "blocked", "save");
+  blip(880, 0.06, "sine"); vibrate(6);
+  c.el.classList.add("guarded");
+  setTimeout(() => removeCard(c.o.id), 420);
+}
+
+function tapCard(c) {
+  if (c.state !== "falling") return;
+  galaxy.pulse(2);
+  c.state = "acted";
+  if (c.guardTimer) { clearTimeout(c.guardTimer); c.guardTimer = null; } // player beat the guardian to it
+  // fire the REAL counter-transaction either way; the contract decides the effect.
+  if (onchain) arcade.clawBack(G.roundId, c.o.id).catch(() => {});
+  if (c.o.credit) {
+    // mis-tap: you cancelled an inflow → forfeit it
+    G.trueBalance -= c.o.amount;
+    G.forfeitAmt += c.o.amount; G.forfeitCount++;
+    flashBalance("down");
+    floatText(c.el, "−" + c.o.amount, "loss");
+    blip(150, 0.12, "sawtooth"); vibrate(22);
+    c.el.classList.add("lost");
+  } else {
+    // recall a drain in time → save it
+    G.savedCount++;
+    G.savedAmt += c.o.amount;
+    G.trueBalance += c.o.amount;
+    $("savedStat").textContent = G.savedCount;
+    flashBalance("up");
+    floatText(c.el, "+" + c.o.amount, "save");
+    blip(660, 0.07, "triangle"); vibrate(8);
+    c.el.classList.add("saved");
+  }
+  setTimeout(() => removeCard(c.o.id), 380);
+}
+
+function settleCard(c) {
+  c.state = "settled";
+  if (c.guardTimer) { clearTimeout(c.guardTimer); c.guardTimer = null; }
+  if (c.o.credit) {
+    c.el.classList.add("banked"); // inflow kept (balance already counted at spawn)
+  } else {
+    G.lostCount++;
+    $("lostStat").textContent = G.lostCount;
+    floatText(c.el, "−" + c.o.amount, "loss");
+    if (c.o.amount >= 9) flashBalance("down"); // a whale got through — sting
+    blip(120, 0.1, "sawtooth"); vibrate(14);
+    c.el.classList.add("lost");
+  }
+  setTimeout(() => removeCard(c.o.id), 340);
+}
+
+function removeCard(id) { const c = G.cards.get(id); if (c) { if (c.guardTimer) clearTimeout(c.guardTimer); c.el.remove(); G.cards.delete(id); } }
+function clearCards() { for (const [, c] of G.cards) { if (c.guardTimer) clearTimeout(c.guardTimer); c.el.remove(); } G.cards.clear(); }
+
+// ---------- balance (tweened, both directions) ----------
+function renderBalance() {
+  const target = Math.max(0, G.trueBalance);
+  G.dispBalance += (target - G.dispBalance) * 0.2;
+  if (Math.abs(target - G.dispBalance) < 0.5) G.dispBalance = target;
+  $("bal").firstChild.textContent = fmt(Math.round(G.dispBalance));
+  $("stackFill").style.transform = `scaleX(${Math.max(0, Math.min(1, G.dispBalance / cfg.startStack)).toFixed(3)})`;
+}
+let flashTimer = null;
+function flashBalance(dir) {
+  const el = $("bal");
+  el.classList.remove("flash-up", "flash-down", "shake");
+  void el.offsetWidth;
+  el.classList.add(dir === "up" ? "flash-up" : "flash-down");
+  if (dir === "down") el.classList.add("shake");
+  clearTimeout(flashTimer);
+  flashTimer = setTimeout(() => el.classList.remove("flash-up", "flash-down", "shake"), 200);
+}
+function floatText(cardEl, text, cls) {
+  const f = document.createElement("span");
+  f.className = "float " + cls;
+  f.textContent = text;
+  const arena = $("arena"), ar = arena.getBoundingClientRect(), cr = cardEl.getBoundingClientRect();
+  f.style.left = (cr.left - ar.left + cr.width / 2 - 12) + "px";
+  f.style.top = (cr.top - ar.top) + "px";
+  arena.appendChild(f);
+  setTimeout(() => f.remove(), 700);
+}
+// the guardian's shield bounce — a mint ring expanding where the attack hit
+function bounceRing(cardEl) {
+  const b = document.createElement("span");
+  b.className = "bounce";
+  const arena = $("arena"), ar = arena.getBoundingClientRect(), cr = cardEl.getBoundingClientRect();
+  b.style.left = (cr.left - ar.left + cr.width / 2) + "px";
+  b.style.top = (cr.top - ar.top + cr.height / 2) + "px";
+  arena.appendChild(b);
+  setTimeout(() => b.remove(), 520);
+}
+
+// ---------- end of round ----------
+async function endRoundFlow() {
+  if (G.phase !== "playing") return;
+  setPhase("ending");
+  cancelAnimationFrame(G.raf);
+  clearCards();
+  $("timeStat").textContent = "0.0s";
+  $("rtimerFill").style.transform = "scaleX(0)";
+  $("modepick").style.opacity = ""; $("modepick").style.pointerEvents = ""; // mode switchable again
+
+  // the live projection already tracked every appear/recall, so it IS the final
+  if (!onchain) return reveal(localFinal(), 0, true);
+
+  showCenter(`<div class="spin"></div><p>Round over. Tallying your final balance onchain…</p>`);
+  // endRound must actually EXECUTE (not just relay) to record the score and put you
+  // on the board. It only succeeds once the BLOCK timestamp passes start+length —
+  // Supernova blocks trail wall-clock slightly, so the first send can revert as
+  // "round not over yet". Resend until getRound reports ended (not until relay-ack).
+  let ended = false;
+  for (let i = 0; i < 12 && !ended; i++) {
+    try { await arcade.endRound(G.roundId); } catch (err) { /* relay hiccup — retry */ }
+    await wait(1500);
+    const r = await arcade.getRound().catch(() => null);
+    if (r && r.ended) ended = true;
+  }
+  // authoritative reads once the contract has tallied
+  let final = ended ? await arcade.getFinal().catch(() => null) : null;
+  if (final == null) final = localFinal();
+  const claimable = (await arcade.getClaimable().catch(() => 0)) || 0;
+  reveal(final, claimable, false, ended);
+  refreshBoard();
+}
+
+// the live projection converges to the contract's final; use it as the local score
+function localFinal() { return Math.max(0, Math.round(G.trueBalance)); }
+
+function reveal(final, claimable, practice, ended = true) {
+  setPhase("done");
+  G.trueBalance = final; G.dispBalance = final;
+  $("bal").firstChild.textContent = fmt(final);
+  $("stackFill").style.transform = `scaleX(${Math.max(0, Math.min(1, final / cfg.startStack)).toFixed(3)})`;
+
+  // breakdown — what got through vs what you saved + kept (amounts, off the schedule)
+  let totalDrain = 0, totalCredit = 0;
+  for (const o of G.schedule) { if (o.credit) totalCredit += o.amount; else totalDrain += o.amount; }
+  const saved = G.savedAmt;
+  const lost = Math.max(0, totalDrain - saved);
+  const gained = Math.max(0, totalCredit - G.forfeitAmt);
+
+  const tag = practice ? " (practice)" : " (onchain)";
+  // the saved row reads differently per mode: a fight you won (ETH) vs the guardian
+  // doing the work (MvX). blockedCount = the share the guardian auto-intercepted.
+  const isMvx = mode.key === "mvx";
+  const savedSub = isMvx
+    ? `${G.blockedCount} blocked by your guardian`
+    : `${G.savedCount} recall${G.savedCount === 1 ? "" : "s"} in time`;
+  const savedHead = isMvx ? "Guardian blocked" : "Clawed back";
+  // a one-line verdict that makes the contrast land
+  const verdict = isMvx
+    ? `Your guardian held the line. <b style="color:var(--mint)">Try the ETH experience</b> and feel the difference.`
+    : `Brutal, right? <b style="color:var(--mint)">Switch on a MultiversX guardian</b> and watch the attacks bounce.`;
+  let html =
+    `<div class="final">Final balance${tag}<b>${fmt(final)} NOVA</b></div>` +
+    `<div class="tally">` +
+      `<div class="tr lost"><span class="ico">▼</span><span class="lab">Drained away<em>${G.lostCount} got through</em></span><b>−${fmt(lost)}</b></div>` +
+      `<div class="tr save"><span class="ico">✦</span><span class="lab">${savedHead}<em>${savedSub}</em></span><b>${fmt(saved)}</b></div>` +
+      `<div class="tr gain"><span class="ico">▲</span><span class="lab">Inflows kept${G.forfeitCount ? `<em>${G.forfeitCount} cancelled by mistake</em>` : ""}</span><b>+${fmt(gained)}</b></div>` +
+    `</div>` +
+    `<div class="final" style="font-size:12px;color:var(--text-dim);max-width:300px">${verdict}</div>` +
+    `<div class="row" style="margin-top:2px"><button class="btn" id="againBtn">Play again</button>`;
+  if (onchain && claimable > 0) html += `<button class="btn gold" id="claimNovaBtn">Claim ${fmt(claimable)} NOVA</button>`;
+  html += `</div>`;
+  showCenter(html);
+  $("againBtn").addEventListener("click", onDefend);
+  if (onchain && claimable > 0) $("claimNovaBtn").addEventListener("click", () => claimNova(claimable));
+
+  // a board spot only opens when the score is actually recorded onchain (round ended)
+  if (onchain && ended && final > 0) { $("claim").classList.add("show"); $("handle").focus({ preventScroll: true }); }
+  else if (onchain && !ended) setStatus("err", "Couldn't finalize onchain in time. Your balance shows, but the score didn't record. Play again to land on the board.");
+  else if (!onchain) setStatus("", "Practice round. Scores and NOVA go onchain once the cabinet is live.");
+}
+
+async function claimNova(amount) {
+  const btn = $("claimNovaBtn");
+  if (btn) { btn.disabled = true; btn.textContent = "Minting…"; }
+  try {
+    const r = await arcade.claim();
+    setStatus("ok", `Minted ${fmt(amount)} NOVA to your wallet. <a href="${r.explorerUrl}" target="_blank" rel="noopener">View tx ↗</a>`);
+    if (btn) btn.textContent = "Claimed ✓";
+  } catch (err) {
+    if (btn) { btn.disabled = false; btn.textContent = `Claim ${fmt(amount)} NOVA`; }
+    setStatus("err", "Couldn't claim right now. Try again.");
+  }
+}
+
+// ---------- claim a handle ----------
+$("claimBtn").addEventListener("click", claimHandle);
+$("handle").addEventListener("keydown", (e) => { if (e.key === "Enter") claimHandle(); });
+async function claimHandle() {
+  const handle = ($("handle").value || "").trim();
+  if (!handle) return setStatus("err", "Type a handle first.");
+  if (new TextEncoder().encode(handle).length > 32) return setStatus("err", "Keep it under 32 characters.");
+  $("claimBtn").disabled = true;
+  setStatus("", "Putting your handle onchain…");
+  try {
+    localStorage.setItem("clawback_handle", handle);
+    const r = await arcade.setHandle(handle);
+    setStatus("ok", `On the board. <a href="${r.explorerUrl}" target="_blank" rel="noopener">View tx ↗</a>`);
+    $("claimBtn").textContent = "On the board ✓";
+    // the handle takes a moment to index; keep refreshing so your row fills in
+    for (let i = 0; i < 6; i++) { await wait(1500); await refreshBoard(); }
+  } catch (err) {
+    $("claimBtn").disabled = false;
+    setStatus("err", friendlyError(err));
+  }
+}
+
+// ---------- onchain reads on a ~2s tick ----------
+async function refreshBoard() {
+  if (!onchain) return;
+  const [global, board] = await Promise.all([arcade.getGlobalActions(), arcade.getLeaderboard(10)]);
+  if (global != null) $("globalNum").textContent = fmt(global);
+  renderLeaderboard(board);
+}
+setInterval(refreshBoard, 2000);
+
+function renderLeaderboard(entries) {
+  const box = $("lbRows");
+  if (!onchain) { box.innerHTML = '<div class="lb-empty">Live once the cabinet is deployed.</div>'; return; }
+  if (!entries || entries.length === 0) { box.innerHTML = '<div class="lb-empty">No scores yet. Be the first to hold the line.</div>'; return; }
+  const me = arcade.address;
+  box.innerHTML = entries.map((e, i) => {
+    const mine = me && e.address === me ? " you" : "";
+    const name = e.handle ? escapeHtml(e.handle) : shortAddr(e.address);
+    return `<div class="lb-row${mine}"><span class="rank">${i + 1}</span><span class="handle">${name}</span><span class="score">${fmt(e.score)}</span></div>`;
+  }).join("");
+}
+
+// ---------- helpers ----------
+function setPhase(p) { G.phase = p; }
+function showCenter(html) { const c = $("center"); c.innerHTML = html; c.classList.remove("hide"); }
+function hideCenter() { $("center").classList.add("hide"); }
+function setStatus(kind, html) { const el = $("status"); el.className = "status " + kind; el.innerHTML = html; }
+function now() { return Date.now(); }
+function wait(ms) { return new Promise((r) => setTimeout(r, ms)); }
+function fmt(n) { return Number(n).toLocaleString("en-US"); }
+function shortAddr(a) { return a ? a.slice(0, 6) + "…" + a.slice(-4) : "anon"; }
+function escapeHtml(s) { return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+function randomU64() { const b = new Uint8Array(8); (self.crypto || window.crypto).getRandomValues(b); let v = 0n; for (const x of b) v = (v << 8n) | BigInt(x); return v; }
+function friendlyError(err) {
+  if (!err) return "Something went wrong.";
+  if (err.code === "relayer_unavailable" || err.code === "unavailable") return "The gasless relayer isn't switched on yet.";
+  if (err.code === "play first") return "Play a round first, then claim a handle.";
+  return "Couldn't set your handle right now.";
+}
+
+// ---------- audio + haptics ----------
+let actx = null;
+function initAudio() { try { if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)(); } catch {} }
+function blip(freq, dur, type) {
+  if (!actx) return;
+  try {
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.type = type || "sine"; o.frequency.value = freq;
+    g.gain.value = 0.05; o.connect(g); g.connect(actx.destination);
+    o.start(); g.gain.exponentialRampToValueAtTime(0.0001, actx.currentTime + dur);
+    o.stop(actx.currentTime + dur + 0.02);
+  } catch {}
+}
+function vibrate(ms) { try { navigator.vibrate && navigator.vibrate(ms); } catch {} }
+
+// ---------- boot ----------
+try { const s = localStorage.getItem("clawback_handle"); if (s) $("handle").value = s; } catch {}
+$("bal").firstChild.textContent = fmt(cfg.startStack);
+$("stackFill").style.transform = "scaleX(1)";
+// restore last-chosen mode (default ETH so the brutal contrast lands first)
+let savedMode = "eth";
+try { const m = localStorage.getItem("clawback_mode"); if (m === "mvx" || m === "eth") savedMode = m; } catch {}
+selectMode(savedMode);
+detectMode();
+refreshBoard();
+</script>
+</body>
+</html>

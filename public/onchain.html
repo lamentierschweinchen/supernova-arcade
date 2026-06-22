@@ -1,0 +1,2325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Every Tap Onchain · Supernova Sprint · MultiversX</title>
+<meta name="description" content="Every tap is a real smart-contract call on MultiversX testnet. Watch it confirm live, then see how Supernova finality compares to other chains." />
+<meta property="og:type" content="website" />
+<meta property="og:title" content="Every Tap Onchain · MultiversX" />
+<meta property="og:description" content="Every tap is a real smart-contract call on MultiversX testnet. Watch it confirm live, then see how Supernova finality compares to other chains." />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Every Tap Onchain · MultiversX" />
+<meta name="twitter:description" content="Every tap is a real smart-contract call on MultiversX testnet. Watch it confirm live, then see how Supernova finality compares to other chains." />
+<meta property="og:url" content="https://supernova-sprint.xyz/" />
+<meta property="og:image" content="https://supernova-sprint.xyz/supernova-sprint-og.png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta name="twitter:image" content="https://supernova-sprint.xyz/supernova-sprint-og.png" />
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+<!--
+================================================================================
+  ONCHAIN — "real onchain" Supernova Sprint experiment   (route: /onchain)
+================================================================================
+
+  A v2 of the Supernova Sprint tap game where EACH TAP fires a REAL relayed
+  transaction on MultiversX testnet (the public network currently running
+  Supernova, 600ms rounds) and the page counts the ones that actually finalize.
+
+  This is a NEW page. It does NOT touch the live /supernova-sprint game or the
+  live leaderboard contract. It uses its own contract (the tap-counter) and the
+  same gasless relayer, extended additively to relay `recordTaps`.
+
+  THE PIPELINE (per tap, default mode)
+  --------------------------------------------------------------------------------
+    1. tap → build a recordTaps(1) transaction
+    2. sign it with an ephemeral in-browser key, LOCAL nonce increment
+       (never wait between rapid taps — the nonce is tracked client-side)
+    3. POST the signed tx to /api/relay; the relayer adds its signature and
+       pays the testnet gas, so the player pays nothing
+    4. mark it "sent", then poll the tx status; when it finalizes, bump the
+       "finalized onchain" count. Finalized trails sent by the real finality
+       time (sub-second to ~1.8s) — that lag IS the demo.
+    5. headline a global on-chain counter read from the contract:
+       "players have fired N real transactions on MultiversX".
+
+  BUNDLED MODE (toggle / fallback)
+    Buffers taps over a short window and flushes them as one recordTaps(count)
+    tx. Default is per-tap (the visceral "every tap is a transaction"); bundled
+    keeps per-sender pending low at mash speed (the gateway caps ~100 pending
+    per sender), and the page auto-suggests it if pending climbs.
+
+  HONEST FRAMING
+    - Testnet only. Supernova is LIVE on testnet (600ms rounds) and scheduled
+      for mainnet — never claimed as a flat mainnet property.
+    - The count that is REAL is the number of recordTaps txs that finalize. The
+      per-tap count argument is the player's claim and is spoofable; acceptable
+      for a fun community demo on a test network (same caveat as the leaderboard).
+    - Testnet can be reset, which would clear the global counter.
+
+  FAIL-SOFT
+    Every onchain path is wrapped. If the crypto CDN is down, the relayer key is
+    unset, or the network errors, the page still loads and taps still register
+    locally; the onchain panel just shows an unavailable/degraded state.
+
+  CONFIG MIRRORS  src/lib/onchain/tap-counter.config.ts  (+ leaderboard.config.ts)
+================================================================================
+-->
+<style>
+/* ---------- Fonts (Roobert PRO, local @font-face, shared with the game) ---------- */
+@font-face{ font-family:'Roobert PRO'; src:url('/fonts/RoobertPRO-Light.otf') format('opentype'); font-weight:300; font-style:normal; font-display:swap; }
+@font-face{ font-family:'Roobert PRO'; src:url('/fonts/RoobertPRO-Regular.otf') format('opentype'); font-weight:400; font-style:normal; font-display:swap; }
+@font-face{ font-family:'Roobert PRO'; src:url('/fonts/RoobertPRO-Medium.otf') format('opentype'); font-weight:500; font-style:normal; font-display:swap; }
+@font-face{ font-family:'Roobert PRO'; src:url('/fonts/RoobertPRO-SemiBold.otf') format('opentype'); font-weight:600; font-style:normal; font-display:swap; }
+@font-face{ font-family:'Roobert PRO'; src:url('/fonts/RoobertPRO-Bold.otf') format('opentype'); font-weight:700; font-style:normal; font-display:swap; }
+@font-face{ font-family:'Roobert PRO'; src:url('/fonts/RoobertPRO-Heavy.otf') format('opentype'); font-weight:900; font-style:normal; font-display:swap; }
+
+:root{
+  --bg:#06070A;
+  --surface:#0E1117;
+  --surface-2:#141821;
+  --surface-3:#1a1f2b;
+  --border:#1E2330;
+  --border-soft:#161B25;
+  --mint:#23F7DD;
+  --mint-dim:#1ec8b4;
+  --text:#F4F6FA;
+  --text-dim:#9BA3B4;
+  --text-faint:#6B7385;
+  --blue:#5B8DEF;
+  --amber:#F5B544;
+  --coral:#FF6B9D;
+  --green:#4ADE80;
+  --lavender:#A78BFA;
+  --mono:'Roobert PRO',system-ui,sans-serif;
+  --ease-out:cubic-bezier(.16,1,.3,1);
+}
+
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+/* the [hidden] attribute must win over component display rules (e.g. .mode-row
+   is display:flex; without this it would stay visible when hidden in Sprint) */
+[hidden]{display:none !important;}
+html,body{min-height:100%;overscroll-behavior:none;}
+body{
+  font-family:'Roobert PRO',system-ui,sans-serif;
+  background:var(--bg);
+  color:var(--text);
+  position:relative;
+  min-height:100vh;
+  touch-action:manipulation;
+  -webkit-user-select:none;user-select:none;
+  overflow-x:hidden;
+}
+
+/* live Galaxy of Nodes backdrop (shared with the hub + cabinets), replaces the static glows */
+#galaxy{position:fixed;inset:0;z-index:0;display:block;pointer-events:none;}
+.cosmos{display:none;}
+.cosmos--unused{position:fixed;inset:0;z-index:0;overflow:hidden;pointer-events:none;}
+.glow{position:absolute;border-radius:50%;filter:blur(80px);opacity:.5;}
+.glow.g1{width:520px;height:520px;background:radial-gradient(circle,rgba(35,247,221,.20),transparent 70%);top:-180px;left:-120px;}
+.glow.g2{width:600px;height:600px;background:radial-gradient(circle,rgba(91,141,239,.13),transparent 70%);bottom:-260px;right:-160px;}
+.glow.g3{width:380px;height:380px;background:radial-gradient(circle,rgba(167,139,250,.10),transparent 70%);top:40%;left:55%;}
+.stars{position:absolute;inset:0;background-image:
+  radial-gradient(1px 1px at 20% 30%, rgba(244,246,250,.6), transparent),
+  radial-gradient(1px 1px at 70% 60%, rgba(244,246,250,.4), transparent),
+  radial-gradient(1px 1px at 40% 80%, rgba(244,246,250,.5), transparent),
+  radial-gradient(1px 1px at 85% 20%, rgba(244,246,250,.4), transparent);}
+
+/* layout */
+.wrap{position:relative;z-index:1;max-width:560px;margin:0 auto;padding:26px 20px 56px;display:flex;flex-direction:column;gap:18px;min-height:100vh;}
+
+/* header */
+/* canon Arcade back-link + wordmark lockup (matches /arcade.css; .wrap gap handles spacing) */
+.topbar{display:flex;align-items:center;justify-content:space-between;gap:12px;}
+.back{display:inline-flex;align-items:center;gap:6px;color:var(--text-dim);text-decoration:none;font-size:13px;font-weight:500;letter-spacing:.01em;border:1px solid var(--border);border-radius:11px;padding:7px 12px;white-space:nowrap;background:rgba(14,17,23,.7);transition:color .15s,border-color .15s;}
+.back:hover{color:var(--mint);border-color:rgba(35,247,221,.4);}
+.lockup{display:inline-flex;align-items:center;gap:8px;}
+.lockup .lk-wordmark{height:16px;width:auto;display:block;flex:0 0 auto;}
+.shard-tag{font-family:var(--mono);font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--mint);background:rgba(35,247,221,.12);border:1px solid rgba(35,247,221,.3);padding:4px 9px;border-radius:999px;}
+.head{display:flex;align-items:center;justify-content:space-between;gap:12px;}
+.brand{display:flex;align-items:center;gap:10px;}
+.brand svg{width:26px;height:auto;display:block;}
+.brand .bt{font-weight:600;font-size:14px;letter-spacing:.01em;color:var(--text);}
+.net-pill{display:inline-flex;align-items:center;gap:7px;font-family:var(--mono);font-size:10.5px;color:var(--text-dim);background:var(--surface-2);border:1px solid var(--border);border-radius:999px;padding:5px 11px;}
+.net-pill .dot{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 8px rgba(74,222,128,.8);animation:pulse 2s infinite;}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:.4;}}
+
+/* hero copy */
+.hero h1{font-weight:900;font-size:27px;line-height:1.12;letter-spacing:-.01em;margin-bottom:9px;}
+.hero h1 .accent{color:var(--mint);}
+.hero p{font-size:14.5px;line-height:1.5;color:var(--text-dim);max-width:48ch;}
+.hero a.link-mint{color:var(--mint);text-decoration:none;border-bottom:1px solid transparent;transition:border-color .2s;}
+.hero a.link-mint:hover{border-bottom-color:var(--mint);}
+
+/* counters strip */
+.counters{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.counter{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:15px 16px;}
+.counter .cl{font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--text-faint);margin-bottom:7px;display:flex;align-items:center;gap:6px;}
+.counter .cn{font-family:var(--mono);font-weight:900;font-size:30px;line-height:1;font-variant-numeric:tabular-nums;}
+.counter .cn.sent{color:var(--text);}
+.counter .cn.fin{color:var(--mint);text-shadow:0 0 16px rgba(35,247,221,.4);}
+.counter .cs{font-size:11px;color:var(--text-faint);margin-top:6px;}
+.counter.global{grid-column:1 / -1;background:linear-gradient(180deg,var(--surface-2),var(--surface));}
+.counter.global .cn{font-size:34px;color:var(--text);}
+.counter.global .cn .g-mint{color:var(--mint);}
+
+/* the tap zone */
+.tap-card{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:22px 20px 24px;display:flex;flex-direction:column;align-items:center;gap:14px;touch-action:none;-webkit-user-select:none;user-select:none;}
+.tap-btn{
+  position:relative;width:200px;height:200px;border-radius:50%;cursor:pointer;border:none;
+  background:radial-gradient(circle at 50% 38%, #12303a, #0c1820 70%);
+  box-shadow:0 0 0 1px rgba(35,247,221,.30), 0 14px 50px rgba(35,247,221,.14), inset 0 0 50px rgba(35,247,221,.06);
+  display:flex;align-items:center;justify-content:center;
+  transition:transform .08s var(--ease-out), box-shadow .18s;
+  touch-action:none;-webkit-user-select:none;user-select:none;
+}
+.tap-btn:active{transform:scale(.95);box-shadow:0 0 0 1px rgba(35,247,221,.6), 0 10px 36px rgba(35,247,221,.28), inset 0 0 60px rgba(35,247,221,.12);}
+.tap-btn svg{width:78px;height:auto;pointer-events:none;}
+.tap-btn .ring{position:absolute;inset:0;border-radius:50%;pointer-events:none;}
+.tap-btn[disabled]{opacity:.55;cursor:not-allowed;}
+.tap-hint{font-size:12.5px;color:var(--text-faint);text-align:center;}
+.tap-hint b{color:var(--text-dim);font-weight:600;}
+
+/* ripple/spark on tap */
+.spark{position:absolute;pointer-events:none;font-family:var(--mono);font-weight:700;font-size:12px;color:var(--mint);transform:translate(-50%,-50%);animation:spark .8s var(--ease-out) forwards;z-index:3;text-shadow:0 0 10px rgba(35,247,221,.7);white-space:nowrap;}
+@keyframes spark{0%{opacity:0;transform:translate(-50%,-50%) scale(.7);}18%{opacity:1;}100%{opacity:0;transform:translate(-50%,-160%) scale(1);}}
+
+/* mode toggle */
+.mode-row{display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;}
+.mode-toggle{display:inline-flex;background:var(--surface-2);border:1px solid var(--border);border-radius:999px;padding:3px;}
+.mode-toggle button{font-family:inherit;font-size:11.5px;font-weight:600;letter-spacing:.01em;color:var(--text-dim);background:none;border:none;cursor:pointer;border-radius:999px;padding:6px 14px;transition:background .18s,color .18s;}
+.mode-toggle button.on{background:var(--mint);color:#04221d;}
+.mode-note{font-size:11px;color:var(--text-faint);text-align:center;max-width:42ch;}
+
+/* status line */
+.status{display:none;font-size:12.5px;line-height:1.45;border-radius:12px;padding:11px 13px;background:var(--surface-2);border:1px solid var(--border);color:var(--text-dim);}
+.status.show{display:block;}
+.status.warn{border-color:rgba(245,181,68,.4);background:rgba(245,181,68,.07);color:#f3cd86;}
+.status.err{border-color:rgba(255,107,157,.4);background:rgba(255,107,157,.07);color:#ffaecb;}
+.status.ok{border-color:rgba(74,222,128,.35);background:rgba(74,222,128,.06);color:#a7eec0;}
+.status a{color:var(--mint);text-decoration:none;font-family:var(--mono);font-size:11px;word-break:break-all;}
+
+/* recent transactions feed */
+.feed{background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:16px 16px 8px;}
+.feed h2{font-size:12px;font-weight:600;letter-spacing:.02em;color:var(--text-dim);margin-bottom:4px;display:flex;align-items:center;justify-content:space-between;}
+.feed h2 .legend{font-family:var(--mono);font-size:9.5px;font-weight:500;color:var(--text-faint);text-transform:none;letter-spacing:0;}
+.feed-note{font-size:10.5px;line-height:1.45;color:var(--text-faint);margin:0 0 8px;}
+.feed-list{display:flex;flex-direction:column;height:188px;overflow-y:auto;overscroll-behavior:contain;}
+.feed-empty{font-size:12.5px;color:var(--text-faint);padding:14px 2px 16px;text-align:center;}
+.tx-row{display:flex;align-items:center;gap:10px;padding:9px 2px;border-bottom:1px solid var(--border-soft);}
+.tx-row:last-child{border-bottom:none;}
+.tx-state{width:9px;height:9px;border-radius:50%;flex:0 0 auto;}
+.tx-state.pending{background:var(--amber);box-shadow:0 0 8px rgba(245,181,68,.7);animation:pulse 1.2s infinite;}
+.tx-state.final{background:var(--mint);box-shadow:0 0 8px rgba(35,247,221,.8);}
+.tx-state.failed{background:var(--coral);}
+.tx-hash{font-family:var(--mono);font-size:11px;color:var(--text-dim);text-decoration:none;flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.tx-hash:hover{color:var(--mint);}
+.tx-meta{font-family:var(--mono);font-size:10px;color:var(--text-faint);flex:0 0 auto;text-align:right;min-width:64px;}
+.tx-meta.final{color:var(--mint);}
+
+/* footer note */
+.foot{font-size:11.5px;line-height:1.5;color:var(--text-faint);text-align:center;max-width:50ch;margin:2px auto 0;}
+.foot a{color:var(--text-dim);text-decoration:none;border-bottom:1px solid transparent;}
+.foot a:hover{border-bottom-color:var(--text-dim);}
+.foot .sep{opacity:.4;margin:0 6px;}
+
+.spin{display:inline-block;width:12px;height:12px;border:2px solid rgba(35,247,221,.3);border-top-color:var(--mint);border-radius:50%;animation:rot .7s linear infinite;vertical-align:-2px;margin-right:5px;}
+@keyframes rot{to{transform:rotate(360deg);}}
+
+/* ====================== SPRINT MODE ====================== */
+/* top-level app-mode toggle [ 30s Sprint | Unlimited ] */
+.appmode-row{display:flex;justify-content:center;}
+.appmode-toggle{display:inline-flex;background:var(--surface-2);border:1px solid var(--border);border-radius:999px;padding:4px;gap:2px;}
+.appmode-toggle button{font-family:inherit;font-size:13px;font-weight:600;letter-spacing:.01em;color:var(--text-dim);background:none;border:none;cursor:pointer;border-radius:999px;padding:8px 18px;transition:background .18s,color .18s;display:inline-flex;align-items:center;gap:7px;}
+.appmode-toggle button.on{background:var(--mint);color:#04221d;}
+.appmode-toggle button .am-ic{font-size:13px;line-height:1;}
+
+/* countdown ring around the tap button (sprint) */
+.tap-ringwrap{position:absolute;inset:-14px;pointer-events:none;}
+.tap-ringwrap svg{width:100%;height:100%;transform:rotate(-90deg);}
+.tap-ringwrap circle{fill:none;stroke-width:5;}
+.tap-ringwrap .ring-track{stroke:rgba(35,247,221,.10);}
+.tap-ringwrap .ring-prog{stroke:var(--mint);stroke-linecap:round;transition:stroke-dashoffset .12s linear, stroke .25s;filter:drop-shadow(0 0 6px rgba(35,247,221,.5));}
+
+/* big countdown number overlaid on the tap button */
+.pre-count{position:absolute;inset:0;display:none;align-items:center;justify-content:center;font-family:var(--mono);font-weight:900;font-size:72px;color:var(--mint);text-shadow:0 0 30px rgba(35,247,221,.6);pointer-events:none;z-index:4;letter-spacing:-.02em;}
+.pre-count.go{font-size:56px;}
+
+/* seconds readout in the center of the tap button while running */
+.sprint-clock{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;z-index:2;}
+.sprint-clock.show{display:flex;}
+.sprint-clock .sc-secs{font-family:var(--mono);font-weight:900;font-size:46px;line-height:1;color:var(--text);font-variant-numeric:tabular-nums;text-shadow:0 0 18px rgba(35,247,221,.35);}
+.sprint-clock .sc-lbl{font-family:var(--mono);font-size:9.5px;letter-spacing:.10em;text-transform:uppercase;color:var(--text-faint);margin-top:6px;}
+/* tension in the final seconds */
+.tap-card.danger .sprint-clock .sc-secs{color:var(--coral);text-shadow:0 0 22px rgba(255,107,157,.6);}
+.tap-card.danger .tap-btn{box-shadow:0 0 0 1px rgba(255,107,157,.5), 0 14px 50px rgba(255,107,157,.20), inset 0 0 50px rgba(255,107,157,.08);animation:dangerPulse .6s ease-in-out infinite;}
+@keyframes dangerPulse{0%,100%{transform:scale(1);}50%{transform:scale(1.015);}}
+
+/* idle "start sprint" affordance over the button */
+.sprint-start-hint{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;z-index:2;text-align:center;padding:0 18px;}
+.sprint-start-hint .ssh-go{font-weight:900;font-size:20px;color:var(--mint);line-height:1.1;text-shadow:0 0 18px rgba(35,247,221,.4);}
+.sprint-start-hint .ssh-sub{font-size:11px;color:var(--text-faint);margin-top:6px;}
+.tap-card.sprint-idle .tap-btn svg{opacity:.22;}
+
+/* settling phase banner */
+.settling{display:none;align-items:center;gap:10px;font-size:13px;line-height:1.4;border-radius:12px;padding:12px 14px;background:rgba(35,247,221,.06);border:1px solid rgba(35,247,221,.3);color:#a7eec0;width:100%;}
+.settling.show{display:flex;}
+.settling .spin{margin-right:0;}
+
+/* sprint live mini-stats (taps fired + finalized so far) */
+.sprint-live{display:none;grid-template-columns:1fr 1fr;gap:12px;width:100%;}
+.sprint-live.show{display:grid;}
+.sprint-live .sl-cell{background:var(--surface-2);border:1px solid var(--border);border-radius:14px;padding:12px 14px;text-align:center;}
+.sprint-live .sl-n{font-family:var(--mono);font-weight:900;font-size:26px;line-height:1;font-variant-numeric:tabular-nums;}
+.sprint-live .sl-n.fired{color:var(--text);}
+.sprint-live .sl-n.fin{color:var(--mint);text-shadow:0 0 14px rgba(35,247,221,.4);}
+.sprint-live .sl-l{font-family:var(--mono);font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:var(--text-faint);margin-top:7px;}
+
+/* ====================== SPRINT RESULTS ====================== */
+.results{display:none;flex-direction:column;gap:16px;}
+.results.show{display:flex;}
+.res-card{background:linear-gradient(180deg,var(--surface-2),var(--surface));border:1px solid var(--border);border-radius:20px;padding:24px 20px;text-align:center;position:relative;overflow:hidden;}
+.res-card::before{content:"";position:absolute;top:-60px;right:-40px;width:170px;height:170px;border-radius:50%;background:radial-gradient(circle,rgba(35,247,221,.12),transparent 65%);pointer-events:none;}
+.res-kicker{font-family:var(--mono);font-size:10px;letter-spacing:.10em;text-transform:uppercase;color:var(--text-faint);margin-bottom:10px;}
+.res-score{font-family:var(--mono);font-weight:900;font-size:72px;line-height:.95;color:var(--mint);text-shadow:0 0 30px rgba(35,247,221,.4);font-variant-numeric:tabular-nums;}
+.res-score-sub{font-size:13px;color:var(--text-dim);margin-top:8px;}
+.res-score-sub b{color:var(--text);}
+.res-pb{font-size:12px;margin-top:12px;border-radius:10px;padding:8px 12px;display:inline-block;}
+.res-pb.win{background:rgba(35,247,221,.10);border:1px solid rgba(35,247,221,.35);color:#a7eec0;}
+.res-pb.norm{background:var(--surface-3);border:1px solid var(--border);color:var(--text-dim);}
+.res-stats{display:flex;justify-content:center;gap:0;margin-top:18px;border-top:1px solid var(--border-soft);padding-top:16px;}
+.res-stat{flex:1;padding:0 8px;}
+.res-stat .rs-n{font-family:var(--mono);font-weight:700;font-size:18px;color:var(--text);font-variant-numeric:tabular-nums;}
+.res-stat .rs-l{font-size:10px;color:var(--text-faint);margin-top:4px;letter-spacing:.02em;}
+.res-stat + .res-stat{border-left:1px solid var(--border-soft);}
+
+/* result action buttons */
+.res-actions{display:flex;flex-direction:column;gap:10px;}
+.res-btn-row{display:flex;gap:10px;}
+.btn{flex:1;font-family:inherit;font-size:14px;font-weight:600;border-radius:12px;padding:13px 16px;cursor:pointer;border:1px solid var(--border);transition:transform .08s var(--ease-out),background .18s,border-color .18s;display:inline-flex;align-items:center;justify-content:center;gap:8px;}
+.btn:active{transform:scale(.97);}
+.btn-primary{background:var(--mint);color:#04221d;border-color:var(--mint);}
+.btn-primary:hover{background:#3ffbe4;}
+.btn-primary:disabled{opacity:.55;cursor:not-allowed;}
+.btn-ghost{background:var(--surface-2);color:var(--text);}
+.btn-ghost:hover{border-color:var(--mint);color:var(--mint);}
+.btn .spin{margin-right:0;}
+.res-switch{text-align:center;font-size:12px;}
+.res-switch a{color:var(--text-dim);text-decoration:none;border-bottom:1px solid transparent;cursor:pointer;}
+.res-switch a:hover{color:var(--mint);border-bottom-color:var(--mint);}
+
+/* leaderboard submit card */
+.lb-card{background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:18px 16px;}
+.lb-card-head{display:flex;align-items:center;gap:8px;margin-bottom:6px;}
+.lb-card-head .lc-t{font-size:13px;font-weight:600;color:var(--text);}
+.lb-card-head .lc-net{margin-left:auto;font-family:var(--mono);font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:var(--text-faint);background:var(--surface-2);border:1px solid var(--border);border-radius:999px;padding:3px 8px;}
+.lb-card-copy{font-size:12px;line-height:1.5;color:var(--text-dim);margin-bottom:12px;}
+.lb-handle{width:100%;font-family:inherit;font-size:14px;color:var(--text);background:var(--surface-2);border:1px solid var(--border);border-radius:11px;padding:11px 13px;margin-bottom:10px;outline:none;transition:border-color .18s;-webkit-user-select:text;user-select:text;}
+.lb-handle:focus{border-color:var(--mint);}
+.lb-handle::placeholder{color:var(--text-faint);}
+.lb-submit-status{display:none;font-size:12px;line-height:1.45;border-radius:11px;padding:10px 12px;margin-top:10px;background:var(--surface-2);border:1px solid var(--border);color:var(--text-dim);}
+.lb-submit-status.show{display:block;}
+.lb-submit-status.err{border-color:rgba(255,107,157,.4);background:rgba(255,107,157,.07);color:#ffaecb;}
+.lb-submit-status.ok{border-color:rgba(74,222,128,.35);background:rgba(74,222,128,.06);color:#a7eec0;}
+.lb-submit-status .st-t{display:block;font-weight:600;color:var(--text);margin-bottom:3px;}
+.lb-submit-status .st-hash{margin-top:8px;font-family:var(--mono);font-size:11px;display:flex;gap:6px;align-items:baseline;}
+.lb-submit-status .st-hash .st-lbl{color:var(--text-faint);}
+.lb-submit-status a{color:var(--mint);text-decoration:none;word-break:break-all;}
+
+/* leaderboard rows */
+.lb-board{margin-top:14px;border-top:1px solid var(--border-soft);padding-top:12px;}
+.lb-board-head{font-family:var(--mono);font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--text-faint);display:flex;align-items:center;gap:6px;margin-bottom:8px;}
+.lb-board-head .dot{width:6px;height:6px;border-radius:50%;background:var(--mint);box-shadow:0 0 7px var(--mint);display:inline-block;}
+.lb-rows{display:flex;flex-direction:column;max-height:300px;overflow-y:auto;overscroll-behavior:contain;}
+.lb-empty{font-size:12px;color:var(--text-faint);text-align:center;padding:12px 2px;}
+.lb-row{display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid var(--border-soft);}
+.lb-row:last-child{border-bottom:none;}
+.lb-row.you{background:rgba(35,247,221,.06);border-radius:8px;margin:0 -4px;padding:8px;border-bottom:none;}
+.lb-rank{font-family:var(--mono);font-size:12px;color:var(--text-faint);width:22px;flex:0 0 auto;}
+.lb-row.you .lb-rank{color:var(--mint);}
+.lb-handle-cell{flex:1 1 auto;font-size:13px;color:var(--text-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.lb-row.you .lb-handle-cell{color:var(--text);font-weight:600;}
+.lb-score-cell{font-family:var(--mono);font-weight:700;font-size:14px;color:var(--text);font-variant-numeric:tabular-nums;flex:0 0 auto;}
+.lb-row.you .lb-score-cell{color:var(--mint);}
+.lb-you{display:none;margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);}
+.lb-you.show{display:block;}
+.lb-you-label{font-family:var(--mono);font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-faint);margin-bottom:3px;}
+
+/* ====================== INFO BUTTON + POPOVER ====================== */
+.info-btn{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;border:1px solid var(--border);background:var(--surface-2);color:var(--text-faint);font-size:11px;font-weight:700;cursor:pointer;flex:0 0 auto;transition:border-color .18s,color .18s;font-family:var(--mono);line-height:1;padding:0;-webkit-user-select:none;user-select:none;}
+.info-btn:hover{border-color:var(--mint);color:var(--mint);}
+/* modal backdrop + sheet */
+.info-modal{position:fixed;inset:0;z-index:50;display:none;align-items:flex-end;justify-content:center;background:rgba(4,6,10,.66);backdrop-filter:blur(3px);padding:0;}
+.info-modal.open{display:flex;}
+.info-sheet{background:var(--surface);border:1px solid var(--border);border-top-left-radius:20px;border-top-right-radius:20px;width:100%;max-width:560px;padding:22px 20px 28px;position:relative;animation:sheetUp .28s var(--ease-out);}
+@keyframes sheetUp{from{transform:translateY(40px);opacity:0;}to{transform:translateY(0);opacity:1;}}
+.info-sheet h3{font-size:15px;font-weight:700;color:var(--text);margin-bottom:10px;display:flex;align-items:center;gap:8px;}
+.info-sheet h3 svg{width:18px;height:18px;}
+.info-sheet p{font-size:13.5px;line-height:1.6;color:var(--text-dim);}
+.info-sheet p b{color:var(--text);}
+.info-close{position:absolute;top:14px;right:16px;width:30px;height:30px;border:none;background:var(--surface-2);border-radius:8px;color:var(--text-dim);font-size:20px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+.info-close:hover{color:var(--text);}
+@media (min-width:560px){
+  .info-modal{align-items:center;}
+  .info-sheet{border-radius:18px;}
+}
+
+/* ====================== CROSS-SHARD TOGGLE (Unlimited only) ====================== */
+.shard-row{display:none;flex-direction:column;align-items:center;gap:7px;width:100%;}
+.shard-row.show{display:flex;}
+.shard-toggle{display:inline-flex;background:var(--surface-2);border:1px solid var(--border);border-radius:999px;padding:3px;}
+.shard-toggle button{font-family:inherit;font-size:11px;font-weight:600;color:var(--text-dim);background:none;border:none;cursor:pointer;border-radius:999px;padding:6px 13px;transition:background .18s,color .18s;display:inline-flex;align-items:center;gap:6px;}
+.shard-toggle button.on{background:var(--mint);color:#04221d;}
+.shard-toggle button.on.cross{background:var(--amber);color:#2a1f06;}
+.shard-caption{font-size:10.5px;line-height:1.45;color:var(--text-faint);text-align:center;max-width:42ch;}
+.shard-caption b{color:var(--text-dim);font-weight:600;}
+.shard-caption.cross b{color:var(--amber);}
+
+/* ====================== CROSS-CHAIN SIMULATION (reveal) ======================
+   Lifted from /supernova-sprint. This is the apples-to-apples SIMULATION: it
+   replays the player's REAL tap timings at each chain's published finality and
+   counts how many would finalize inside the 30s. MvX uses its ~250ms intra-shard
+   finality — the SIMULATION value, distinct from the real measured count above.
+   Explicitly labeled a simulation/estimate throughout. */
+.honest-line{font-size:11.5px;line-height:1.55;color:var(--text-faint);background:var(--surface-2);border:1px solid var(--border);border-left:2px solid var(--mint-dim);border-radius:10px;padding:11px 13px;margin:2px 0 2px;}
+.compare{margin-top:4px;}
+.compare-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:6px;flex-wrap:wrap;}
+.compare-head .ch-t{font-size:13px;font-weight:600;color:var(--text);line-height:1.4;}
+.compare-head .ch-t .sim-tag{display:inline-block;font-family:var(--mono);font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--amber);border:1px solid rgba(245,181,68,.45);background:rgba(245,181,68,.08);border-radius:999px;padding:2px 8px;margin-right:7px;vertical-align:1px;}
+.compare-head .legend{display:flex;gap:13px;font-size:10.5px;color:var(--text-faint);}
+.compare-head .legend span{display:inline-flex;align-items:center;gap:5px;}
+.lg-dot{width:8px;height:8px;border-radius:2px;display:inline-block;flex:0 0 auto;}
+.lg-sub{background:var(--text-faint);}
+.lg-inc{background:var(--amber);box-shadow:0 0 6px rgba(245,181,68,.5);}
+.lg-fin{background:var(--mint);box-shadow:0 0 7px rgba(35,247,221,.7);}
+.compare-sub{font-size:11.5px;color:var(--text-faint);line-height:1.5;margin-bottom:12px;}
+.compare-sub b{color:var(--text-dim);font-weight:600;}
+
+/* the bridge banner: REAL measured count vs MvX SIMULATED, side by side */
+.bridge{display:flex;align-items:stretch;gap:10px;margin-bottom:14px;}
+.bridge-cell{flex:1;border-radius:13px;padding:13px 14px;position:relative;overflow:hidden;}
+.bridge-cell .bc-tag{font-family:var(--mono);font-size:8.5px;font-weight:700;letter-spacing:.10em;text-transform:uppercase;margin-bottom:6px;display:inline-flex;align-items:center;gap:5px;}
+.bridge-cell .bc-n{font-family:var(--mono);font-weight:900;font-size:30px;line-height:1;font-variant-numeric:tabular-nums;}
+.bridge-cell .bc-l{font-size:10.5px;color:var(--text-dim);margin-top:6px;line-height:1.4;}
+.bridge-cell.real{background:linear-gradient(180deg,rgba(35,247,221,.10),var(--surface));border:1px solid rgba(35,247,221,.40);}
+.bridge-cell.real .bc-tag{color:var(--mint);}
+.bridge-cell.real .bc-tag::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--mint);box-shadow:0 0 8px var(--mint);}
+.bridge-cell.real .bc-n{color:var(--mint);text-shadow:0 0 16px rgba(35,247,221,.4);}
+.bridge-cell.sim{background:linear-gradient(180deg,rgba(245,181,68,.07),var(--surface));border:1px solid rgba(245,181,68,.32);}
+.bridge-cell.sim .bc-tag{color:var(--amber);}
+.bridge-cell.sim .bc-n{color:var(--text);}
+.bridge-note{font-size:11.5px;color:var(--text-dim);line-height:1.55;margin-bottom:14px;padding:0 2px;}
+.bridge-note b{color:var(--mint);font-weight:700;}
+
+/* lanes (one per chain) */
+.lanes{display:flex;flex-direction:column;gap:9px;}
+.lane{border:1px solid var(--border);border-radius:14px;background:var(--surface);padding:11px 13px;position:relative;overflow:hidden;opacity:0;transform:translateY(10px);}
+.lane.in{opacity:1;transform:translateY(0);transition:opacity .42s ease, transform .42s var(--ease-out);}
+.lane.mvx{border-color:rgba(35,247,221,.45);background:linear-gradient(100deg, rgba(35,247,221,.07), var(--surface) 55%);box-shadow:0 0 0 1px rgba(35,247,221,.08), 0 8px 30px rgba(35,247,221,.06);}
+.lane-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:9px;}
+.lane-id{display:flex;align-items:center;gap:9px;min-width:0;}
+.lane-badge{width:22px;height:22px;border-radius:6px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:11px;color:var(--text);}
+.lane-badge svg{height:13px;width:auto;max-width:18px;display:block;}
+.lane-name{font-weight:600;font-size:14px;color:var(--text);white-space:nowrap;}
+.lane-spec{font-size:10px;color:var(--text-faint);font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.lane-tag{font-size:9px;font-weight:600;letter-spacing:.04em;color:var(--mint);border:1px solid rgba(35,247,221,.4);border-radius:999px;padding:2px 8px;white-space:nowrap;background:rgba(35,247,221,.05);}
+.lane-tag .tip-underline{border-bottom-color:rgba(35,247,221,.5);}
+/* MvX intra-shard / cross-shard finality toggle (Supernova lane only) */
+.mvx-toggle{display:inline-flex;align-items:center;gap:0;margin:-2px 0 10px;border:1px solid rgba(35,247,221,.35);border-radius:999px;padding:2px;background:rgba(35,247,221,.05);}
+.mvx-toggle button{font-family:inherit;font-size:9.5px;font-weight:600;letter-spacing:.02em;color:var(--text-dim);background:none;border:none;cursor:pointer;border-radius:999px;padding:4px 11px;transition:background .18s, color .18s;white-space:nowrap;}
+.mvx-toggle button.on{background:var(--mint);color:#04221F;}
+.mvx-toggle button:not(.on):hover{color:var(--mint);}
+.lane-final{display:flex;align-items:baseline;gap:5px;flex:0 0 auto;}
+.lane-final .n{font-family:var(--mono);font-weight:900;font-size:23px;line-height:1;color:var(--text);font-variant-numeric:tabular-nums;}
+.lane-final.good .n{color:var(--mint);text-shadow:0 0 14px rgba(35,247,221,.5);}
+.lane-final .of{font-size:11px;color:var(--text-faint);font-family:var(--mono);}
+.lane-final .lab{font-size:9px;color:var(--text-faint);text-transform:uppercase;letter-spacing:.1em;margin-left:2px;}
+/* the pipeline track */
+.track{position:relative;height:34px;border-radius:9px;background:var(--surface-2);overflow:hidden;box-shadow:inset 0 0 0 1px var(--border-soft);}
+.track .seg-labels{position:absolute;inset:0;display:flex;pointer-events:none;}
+.track .seg-labels div{flex:1;display:flex;align-items:center;justify-content:center;font-size:8px;letter-spacing:.09em;text-transform:uppercase;color:rgba(155,163,180,.32);border-right:1px dashed rgba(30,35,48,.9);}
+.track .seg-labels div:last-child{border-right:none;}
+.track .final-zone{position:absolute;top:0;right:0;bottom:0;width:30%;background:linear-gradient(90deg,transparent,rgba(35,247,221,.05));pointer-events:none;}
+.dot-tx{position:absolute;top:50%;width:8px;height:8px;border-radius:50%;transform:translate(-50%,-50%);transition:left .45s linear, background .35s, box-shadow .35s;}
+.dot-sub{background:var(--text-faint);}
+.dot-inc{background:var(--amber);box-shadow:0 0 6px rgba(245,181,68,.55);}
+.dot-fin{background:var(--mint);box-shadow:0 0 9px rgba(35,247,221,.8);}
+.lane-counts{display:flex;gap:16px;margin-top:8px;font-size:10.5px;font-family:var(--mono);color:var(--text-faint);font-variant-numeric:tabular-nums;}
+.lane-counts span{display:inline-flex;align-items:center;gap:5px;}
+.lane-counts b{font-weight:700;}
+.lane-counts .c-fin b{color:var(--mint);}
+.lane-counts .c-inc b{color:var(--amber);}
+.lane-counts .cdot{width:7px;height:7px;border-radius:2px;display:inline-block;}
+/* honest line under the lanes */
+.compare-line{text-align:center;font-size:12.5px;color:var(--text-dim);line-height:1.55;padding:14px 8px 2px;}
+.compare-line b{color:var(--text);font-weight:600;}
+.compare-line .mvx-h{color:var(--mint);font-weight:700;}
+.compare-foot{font-size:10px;color:var(--text-faint);line-height:1.5;padding:10px 4px 2px;text-align:center;border-top:1px solid var(--border-soft);margin-top:12px;}
+.compare-foot b{color:var(--text-dim);font-weight:600;}
+
+/* tooltip system (hover on desktop, tap-to-toggle on touch) — ported */
+.tip{position:relative;cursor:help;}
+.tip-underline{border-bottom:1px dotted var(--text-faint);}
+.tip::after{content:attr(data-tip);position:absolute;left:50%;bottom:calc(100% + 9px);transform:translateX(-50%) translateY(4px);width:max-content;max-width:230px;background:var(--surface-3);color:var(--text);border:1px solid var(--border);border-radius:10px;padding:9px 12px;font-size:11.5px;font-weight:400;line-height:1.45;letter-spacing:0;text-transform:none;text-align:left;box-shadow:0 10px 30px rgba(0,0,0,.55), 0 0 0 1px rgba(35,247,221,.06);opacity:0;pointer-events:none;z-index:60;transition:opacity .16s ease, transform .16s var(--ease-out);}
+.tip::before{content:"";position:absolute;left:50%;bottom:calc(100% + 4px);transform:translateX(-50%) rotate(45deg);width:9px;height:9px;background:var(--surface-3);border-right:1px solid var(--border);border-bottom:1px solid var(--border);opacity:0;pointer-events:none;z-index:61;transition:opacity .16s ease;}
+@media (hover:hover){.tip:hover::after{opacity:1;transform:translateX(-50%) translateY(0);}.tip:hover::before{opacity:1;}}
+.tip.tip-open::after{opacity:1;transform:translateX(-50%) translateY(0);}
+.tip.tip-open::before{opacity:1;}
+.tip.tip-left::after{left:0;transform:translateX(0) translateY(4px);}
+.tip.tip-left.tip-open::after{left:0;transform:translateX(0) translateY(0);}
+@media(hover:hover){.tip.tip-left:hover::after{left:0;transform:translateX(0) translateY(0);}}
+
+@media (max-width:430px){
+  .hero h1{font-size:23px;}
+  .tap-btn{width:172px;height:172px;}
+  .tap-btn svg{width:66px;}
+  .counter .cn{font-size:26px;}
+  .counter.global .cn{font-size:29px;}
+}
+@media (max-width:380px){
+  .lane-spec{display:none;}
+  .bridge-cell .bc-n{font-size:26px;}
+}
+@media (prefers-reduced-motion:reduce){
+  .lane{opacity:1;transform:none;}
+}
+
+/* ============================================================
+   ARCADE LAYER — visual language ported from the Supernova
+   Arcade concept (marketing/games/output/supernova-arcade-concept.html):
+   cosmos grid-floor horizon, CRT scanlines, marquee headline,
+   odometer scoreboard, keycap buttons, leaderboard avatars.
+   Purely cosmetic: only restyles existing elements + adds
+   non-interactive decoration. Every JS id and toggled class
+   (on/show/cross/danger/in/sprint-idle/res-pb/lane/dot-tx/
+   lb-you/lb-submit-status…) is preserved untouched.
+   ============================================================ */
+
+/* richer 8-point starfield */
+.stars{opacity:.6;background-repeat:no-repeat;background-image:
+  radial-gradient(1.4px 1.4px at 12% 20%, rgba(244,246,250,.7), transparent),
+  radial-gradient(1px 1px at 24% 64%, rgba(244,246,250,.5), transparent),
+  radial-gradient(1.3px 1.3px at 41% 30%, rgba(244,246,250,.6), transparent),
+  radial-gradient(1px 1px at 58% 76%, rgba(244,246,250,.5), transparent),
+  radial-gradient(1.2px 1.2px at 73% 22%, rgba(244,246,250,.55), transparent),
+  radial-gradient(1px 1px at 86% 58%, rgba(244,246,250,.5), transparent),
+  radial-gradient(1.3px 1.3px at 92% 84%, rgba(244,246,250,.45), transparent),
+  radial-gradient(1px 1px at 6% 86%, rgba(244,246,250,.5), transparent);}
+
+/* retro perspective grid along the bottom horizon */
+.grid-floor{position:absolute;left:-12%;right:-12%;bottom:0;height:42vh;max-height:330px;pointer-events:none;opacity:.4;
+  background:
+    linear-gradient(to top, rgba(35,247,221,.05), transparent 72%),
+    repeating-linear-gradient(90deg, transparent 0 58px, rgba(35,247,221,.10) 58px 59px);
+  -webkit-mask-image:linear-gradient(to top,#000,transparent);mask-image:linear-gradient(to top,#000,transparent);
+  transform:perspective(360px) rotateX(67deg);transform-origin:bottom;}
+.grid-floor::after{content:"";position:absolute;inset:0;
+  background:repeating-linear-gradient(0deg, transparent 0 26px, rgba(35,247,221,.10) 26px 27px);}
+
+/* CRT scanline overlay for framed "screen" panels (over content, click-through) */
+.scan{position:absolute;inset:0;pointer-events:none;border-radius:inherit;z-index:3;opacity:.5;
+  background:repeating-linear-gradient(0deg, rgba(0,0,0,0) 0 2px, rgba(0,0,0,.14) 2px 3px);}
+
+/* arcade status chips */
+.chip{display:inline-flex;align-items:center;gap:7px;font-family:var(--mono);font-size:10.5px;font-weight:500;letter-spacing:.01em;
+  padding:5px 11px;border-radius:999px;border:1px solid var(--border);background:rgba(14,17,23,.7);color:var(--text-dim);white-space:nowrap;}
+.chip .cdot{width:7px;height:7px;border-radius:50%;background:var(--mint);box-shadow:0 0 9px var(--mint);flex:0 0 auto;}
+.head .t-right{display:flex;align-items:center;gap:8px;justify-content:flex-end;}
+
+/* marquee headline — gradient clip + arcade bulbs (the .accent span stays solid mint) */
+.hero{position:relative;}
+.bulbs{display:flex;gap:9px;margin-bottom:13px;}
+.bulbs i{width:6px;height:6px;border-radius:50%;background:var(--mint);box-shadow:0 0 8px var(--mint);opacity:.85;animation:bulb 2.4s ease-in-out infinite;}
+.bulbs i:nth-child(2){animation-delay:.18s}.bulbs i:nth-child(3){animation-delay:.36s}.bulbs i:nth-child(4){animation-delay:.54s}.bulbs i:nth-child(5){animation-delay:.72s}.bulbs i:nth-child(6){animation-delay:.9s}
+@keyframes bulb{0%,100%{opacity:.85}50%{opacity:.28}}
+.hero h1{font-size:clamp(26px,8.5vw,34px);line-height:1.0;letter-spacing:-.02em;margin-bottom:11px;
+  background:linear-gradient(176deg,#FFFFFF 0%,#C9F8F2 58%,var(--mint) 128%);
+  -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;
+  filter:drop-shadow(0 4px 26px rgba(35,247,221,.16));}
+.hero h1 .accent{-webkit-text-fill-color:var(--mint);color:var(--mint);}
+
+/* GLOBAL COUNTER → odometer scoreboard */
+.counter.global{border:1px solid var(--border);border-radius:20px;position:relative;overflow:hidden;
+  background:radial-gradient(120% 90% at 80% -20%,rgba(35,247,221,.12),transparent 55%),linear-gradient(165deg,#0E1117,#090B10);
+  box-shadow:0 18px 60px rgba(0,0,0,.5),0 0 0 1px rgba(35,247,221,.05);padding:22px 22px 20px;}
+.counter.global .cl{font-family:var(--mono);letter-spacing:.16em;position:relative;z-index:4;}
+.counter.global .cn{font-size:clamp(30px,9.5vw,46px);letter-spacing:.005em;position:relative;z-index:4;}
+.counter.global .cn .g-mint{color:var(--mint);text-shadow:0 0 26px rgba(35,247,221,.6);}
+.counter.global .cs{position:relative;z-index:4;}
+
+/* TAP CARD → arcade play-screen (radial mint glow + rising tx-stream) */
+.tap-card{position:relative;overflow:hidden;
+  background:radial-gradient(120% 70% at 50% -5%,rgba(35,247,221,.08),transparent 60%),var(--surface);}
+.tx-stream{position:absolute;top:8px;left:50%;transform:translateX(-50%);width:172px;height:120px;pointer-events:none;}
+.tx-stream i{position:absolute;bottom:0;width:6px;height:6px;border-radius:50%;background:var(--mint);box-shadow:0 0 9px var(--mint);animation:rise 2.8s linear infinite;opacity:0;}
+.tx-stream i:nth-child(1){left:8px;animation-delay:0s}.tx-stream i:nth-child(2){left:50px;animation-delay:.6s}.tx-stream i:nth-child(3){left:88px;animation-delay:1.2s}.tx-stream i:nth-child(4){left:124px;animation-delay:1.8s}.tx-stream i:nth-child(5){left:162px;animation-delay:1.0s}.tx-stream i:nth-child(6){left:30px;animation-delay:2.2s}
+@keyframes rise{0%{opacity:0;transform:translateY(28px) scale(.5)}18%{opacity:.65}100%{opacity:0;transform:translateY(-104px) scale(1)}}
+
+/* keycap buttons (chunky bottom edge that compresses on press) */
+.btn-primary{box-shadow:0 0 0 1px rgba(35,247,221,.4),0 8px 22px rgba(35,247,221,.24);border-bottom:3px solid #0e9c8c;}
+.btn-primary:active{transform:translateY(2px) scale(.99);border-bottom-width:1px;}
+.btn-ghost{border-bottom:3px solid #11151d;}
+
+/* leaderboard → avatar rows */
+.lb-row{gap:11px;}
+.lb-av{width:23px;height:23px;border-radius:7px;flex:0 0 auto;display:grid;place-items:center;font-family:var(--mono);font-size:11px;font-weight:700;color:#06070A;}
+.lb-row.you .lb-av{box-shadow:0 0 0 2px rgba(35,247,221,.45);}
+
+@media (max-width:430px){
+  .chip.gasless{display:none;}
+}
+@media (prefers-reduced-motion:reduce){
+  .bulbs i,.tx-stream i{animation:none;}
+  .tx-stream i{opacity:.22;}
+}
+</style>
+    <!-- Vercel Web Analytics -->
+    <script defer src="/_vercel/insights/script.js"></script>
+    <script type="module">
+      // live Galaxy of Nodes backdrop (shared with the hub + cabinets). Deferred
+      // module: runs after the DOM parses, so #galaxy exists. Exposed on window so
+      // the (non-module) tap code can fire a photon on each onchain tap.
+      import { mountGalaxy } from "/arcade-galaxy.js";
+      try { window.__arcadeGalaxy = mountGalaxy({ intensity: 0.5, focusShard: 1, canvas: "#galaxy" }); }
+      catch (e) { console.warn("[onchain] galaxy mount failed", e); }
+    </script>
+</head>
+<body>
+<canvas id="galaxy" aria-hidden="true"></canvas>
+<div class="cosmos" aria-hidden="true">
+  <div class="stars"></div>
+  <div class="glow g1"></div>
+  <div class="glow g2"></div>
+  <div class="glow g3"></div>
+  <div class="grid-floor"></div>
+</div>
+
+<main class="wrap">
+  <div class="topbar">
+    <a class="back" href="/arcade"><span aria-hidden="true">&larr;</span> Arcade</a>
+    <span class="lockup">
+      <img class="lk-wordmark" src="/mvx-wordmark.svg" alt="MultiversX" />
+      <span class="shard-tag">shard 1</span>
+    </span>
+  </div>
+
+  <header class="head">
+    <div class="brand">
+      <svg viewBox="0 0 48 37" fill="none" aria-label="MultiversX"><path d="M26.6389 18.408L48.0001 6.93761L44.4089 0L24.8488 7.95166C24.3452 8.15668 23.7868 8.15668 23.2831 7.95166L3.72305 0L0.131836 6.93761L21.493 18.408L0.131836 29.8783L3.72305 36.8159L23.2831 28.8642C23.7868 28.6592 24.3452 28.6592 24.8488 28.8642L44.4089 36.8159L48.0001 29.8783L26.6389 18.408Z" fill="#23F7DD"/></svg>
+      <span class="bt">Supernova Sprint</span>
+    </div>
+    <div class="t-right">
+      <span class="chip gasless"><span class="cdot"></span>No wallet · gasless</span>
+      <span class="net-pill" id="netPill"><span class="dot"></span><span id="netLabel">testnet</span></span>
+    </div>
+  </header>
+
+  <section class="hero">
+    <div class="bulbs" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+    <h1 id="heroTitle">Sprint at <span class="accent">Supernova Speed</span>.</h1>
+    <p id="heroCopy">
+      Tap as fast as you can for 30 seconds. Every tap is a real transaction.
+    </p>
+  </section>
+
+  <!-- top-level mode: 30s Sprint (default) | Unlimited -->
+  <div class="appmode-row">
+    <div class="appmode-toggle" role="group" aria-label="Game mode">
+      <button id="appSprint" class="on" type="button"><span class="am-ic">⏱</span> 30s Sprint</button>
+      <button id="appUnlimited" type="button"><span class="am-ic">∞</span> Unlimited</button>
+    </div>
+  </div>
+
+  <!-- UNLIMITED-mode counters (the original session counters) -->
+  <section class="counters" id="counters">
+    <div class="counter">
+      <div class="cl">Your taps · sent</div>
+      <div class="cn sent" id="cSent">0</div>
+      <div class="cs" id="cSentSub">transactions broadcast this session</div>
+    </div>
+    <div class="counter">
+      <div class="cl">Confirmed onchain · live <button class="info-btn" id="infoBtn2" type="button" aria-label="What you're watching">i</button></div>
+      <div class="cn fin" id="cFinal">0</div>
+      <div class="cs" id="cFinalSub">real transactions, confirmed onchain</div>
+    </div>
+  </section>
+
+  <section class="tap-card sprint-idle" id="tapCard">
+    <div class="tx-stream" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+    <div class="scan" aria-hidden="true"></div>
+    <div style="position:relative;">
+      <!-- countdown ring (sprint) -->
+      <div class="tap-ringwrap" id="ringWrap" hidden>
+        <svg viewBox="0 0 120 120"><circle class="ring-track" cx="60" cy="60" r="56"></circle><circle class="ring-prog" id="ringProg" cx="60" cy="60" r="56"></circle></svg>
+      </div>
+      <button class="tap-btn" id="tapBtn" aria-label="Tap to fire a transaction">
+        <span class="ring" id="tapRing"></span>
+        <svg viewBox="0 0 48 37" fill="none"><path d="M26.6389 18.408L48.0001 6.93761L44.4089 0L24.8488 7.95166C24.3452 8.15668 23.7868 8.15668 23.2831 7.95166L3.72305 0L0.131836 6.93761L21.493 18.408L0.131836 29.8783L3.72305 36.8159L23.2831 28.8642C23.7868 28.6592 24.3452 28.6592 24.8488 28.8642L44.4089 36.8159L48.0001 29.8783L26.6389 18.408Z" fill="#23F7DD"/></svg>
+        <!-- idle start affordance (sprint) -->
+        <span class="sprint-start-hint" id="sprintStartHint"><span class="ssh-go">Start</span><span class="ssh-sub">30-second sprint</span></span>
+        <!-- countdown 3·2·1·GO (sprint) -->
+        <span class="pre-count" id="preCount"></span>
+        <!-- live seconds readout (sprint, running) -->
+        <span class="sprint-clock" id="sprintClock"><span class="sc-secs" id="scSecs">30</span><span class="sc-lbl">seconds left</span></span>
+      </button>
+    </div>
+
+    <div class="tap-hint" id="tapHint">Press <b>Start 30-second sprint</b>, then tap, click, or hit <b>space</b></div>
+
+    <!-- sprint live mini-stats -->
+    <div class="sprint-live" id="sprintLive">
+      <div class="sl-cell"><div class="sl-n fired" id="slFired">0</div><div class="sl-l">taps fired</div></div>
+      <div class="sl-cell"><div class="sl-n fin" id="slFin">0</div><div class="sl-l">confirmed onchain · live <button class="info-btn" id="infoBtn1" type="button" aria-label="Why not instant?">i</button></div></div>
+    </div>
+
+    <!-- settling banner (sprint, after buzzer) -->
+    <div class="settling" id="settling"><span class="spin"></span><span id="settlingMsg">Resolving the taps still in flight…</span></div>
+
+    <!-- UNLIMITED-mode sub-toggle (per-tap / bundled) -->
+    <div class="mode-row" id="modeRow" hidden>
+      <div class="mode-toggle" role="group" aria-label="Transaction mode">
+        <button id="modePerTap" class="on" type="button">Per tap</button>
+        <button id="modeBundled" type="button">Bundled</button>
+      </div>
+    </div>
+    <div class="mode-note" id="modeNote" hidden>One transaction per tap. The visceral version.</div>
+
+    <!-- CROSS-SHARD toggle (Unlimited only): a live demo of MultiversX sharding -->
+    <div class="shard-row" id="shardRow">
+      <div class="shard-toggle" role="group" aria-label="Shard routing demo">
+        <button id="shardIntra" class="on" type="button">Intra-shard (fast)</button>
+        <button id="shardCross" type="button">Cross-shard</button>
+      </div>
+      <div class="shard-caption" id="shardCaption">
+        Sharding demo: taps hit a <b>shard-0</b> contract. Same shard as the sender, so they finalize fast.
+      </div>
+    </div>
+
+    <div class="status" id="status"></div>
+  </section>
+
+  <!-- SPRINT RESULTS (shown after a sprint locks) -->
+  <section class="results" id="results">
+    <div class="res-card">
+      <div class="scan" aria-hidden="true"></div>
+      <div class="res-kicker">Real · live · 30 seconds</div>
+      <div class="res-score" id="resScore">0</div>
+      <div class="res-score-sub"><b id="resFinalized">0</b> real transactions confirmed onchain · <span id="resFired">0</span> taps fired</div>
+      <div class="res-pb norm" id="resPb"></div>
+      <div class="res-stats">
+        <div class="res-stat"><div class="rs-n" id="resFinEst">~250ms</div><div class="rs-l">est. finality <button class="info-btn" id="infoBtn3" type="button" aria-label="How is finality estimated?">i</button></div></div>
+        <div class="res-stat"><div class="rs-n" id="resLanded">0</div><div class="rs-l">landed after buzzer</div></div>
+        <div class="res-stat"><div class="rs-n" id="resPbNum">0</div><div class="rs-l">personal best</div></div>
+      </div>
+    </div>
+
+    <!-- leaderboard submit + live board -->
+    <div class="lb-card">
+      <div class="lb-card-head">
+        <span aria-hidden="true" style="display:inline-flex"><svg viewBox="0 0 24 24" width="17" height="17" fill="none"><path d="M12 2 L20 6.5 V15 L12 22 L4 15 V6.5 Z" stroke="#23F7DD" stroke-width="1.6" stroke-linejoin="round"/><path d="M9 12 l2.2 2.2 L15 9.5" stroke="#23F7DD" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        <span class="lc-t">Onchain leaderboard</span>
+        <span class="lc-net">Testnet</span>
+      </div>
+      <div class="lb-card-copy">Put your finalized score on a leaderboard read straight from a MultiversX testnet contract. Gasless, no wallet needed.</div>
+      <input class="lb-handle" id="lbHandle" type="text" maxlength="20" autocomplete="off" spellcheck="false" placeholder="Pick a handle (e.g. novapilot)" />
+      <button class="btn btn-primary" id="lbSubmitBtn" type="button">
+        <span id="lbSubmitIcon" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16" fill="none"><path d="M5 12 h14 M13 6 l6 6 -6 6" stroke="#04221d" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        <span id="lbSubmitLabel">Submit to leaderboard</span>
+      </button>
+      <div class="lb-submit-status" id="lbSubmitStatus"></div>
+
+      <div class="lb-board">
+        <div class="lb-board-head"><span class="dot"></span> Top finalized sprints · live from chain</div>
+        <div class="lb-rows" id="lbRows">
+          <div class="lb-empty">Loading the live board…</div>
+        </div>
+        <div class="lb-you" id="lbYou"></div>
+      </div>
+    </div>
+
+    <div class="res-actions">
+      <div class="res-btn-row">
+        <button class="btn btn-ghost" id="resAgainBtn" type="button">Play again</button>
+        <button class="btn btn-ghost" id="resShareBtn" type="button">Share</button>
+      </div>
+    </div>
+
+    <!-- honest bridge line: what you watched is the API catching up, not finality -->
+    <p class="honest-line">What you watch confirm here is the public API catching up, a beat behind. True finality is sub-second. The comparison below is a simulation at each chain's real finality.</p>
+
+    <!-- CROSS-CHAIN SIMULATION: the apples-to-apples comparison (clearly labeled) -->
+    <section class="compare">
+      <div class="compare-head">
+        <div class="ch-t"><span class="sim-tag">Simulated</span>At each chain's finality, how many of your taps finalize in 30 seconds</div>
+        <div class="legend">
+          <span><i class="lg-dot lg-inc"></i> in block</span>
+          <span><i class="lg-dot lg-fin"></i> final</span>
+        </div>
+      </div>
+      <div class="compare-sub">
+        An apples-to-apples estimate: your <b>real tap timings</b> replayed at each chain's published
+        block time and finality. Not throughput, latency only. MultiversX is shown at its
+        <b>~250ms intra-shard finality</b> (the Supernova target).
+      </div>
+
+      <!-- the bridge: REAL measured count vs MvX SIMULATED, side by side -->
+      <div class="bridge">
+        <div class="bridge-cell real">
+          <div class="bc-tag">Real · live</div>
+          <div class="bc-n" id="brReal">0</div>
+          <div class="bc-l">confirmed onchain in the 30s, you watched these land</div>
+        </div>
+        <div class="bridge-cell sim">
+          <div class="bc-tag">Simulated · MvX 250ms</div>
+          <div class="bc-n" id="brSim">0</div>
+          <div class="bc-l">would finalize at ~250ms intra-shard finality</div>
+        </div>
+      </div>
+      <div class="bridge-note" id="bridgeNote">
+        MultiversX is the only one where this isn't hypothetical. You just watched
+        your real transactions confirm live.
+      </div>
+
+      <!-- per-chain lanes (simulation) -->
+      <div class="lanes" id="lanes"></div>
+
+      <div class="compare-line" id="compareLine"></div>
+      <div class="compare-foot" id="compareFoot"></div>
+    </section>
+    <div class="res-switch"><a id="resToUnlimited">Prefer open-ended? Switch to Unlimited →</a></div>
+  </section>
+
+  <section class="feed">
+    <h2>Recent transactions <span class="legend"><span style="color:var(--amber)">●</span> pending&nbsp;&nbsp;<span style="color:var(--mint)">●</span> confirmed</span></h2>
+    <div class="feed-note">Live confirmation via the public API, a beat behind. True finality is sub-second.</div>
+    <div class="feed-list" id="feedList">
+      <div class="feed-empty" id="feedEmpty">Your transactions will appear here with live testnet explorer links.</div>
+    </div>
+  </section>
+
+  <!-- UNLIMITED: the live global tap-counter, moved below the feed -->
+  <section id="globalBar" style="display:none;margin-bottom:16px;">
+    <div class="counter global">
+      <div class="scan" aria-hidden="true"></div>
+      <div class="cl">Total Sprint Transactions</div>
+      <div class="cn"><span class="g-mint" id="cGlobal">—</span></div>
+      <div class="cs" id="cGlobalSub">live from the tap-counter contract, across every player</div>
+    </div>
+  </section>
+
+  <div style="text-align:center;margin:6px 0 18px;">
+    <a href="/supernova-sprint" style="display:inline-block;font-family:'Roobert PRO',system-ui,sans-serif;font-size:13.5px;font-weight:600;color:var(--mint);background:rgba(35,247,221,.06);border:1px solid rgba(35,247,221,.4);border-radius:999px;padding:11px 22px;text-decoration:none;">Compare Supernova finality with other chains →</a>
+  </div>
+  <p class="foot">
+    Testnet only. Supernova runs here at 600ms rounds. The confirmed count is real onchain transactions, gasless via a relayer. Testnet can be reset, which clears the counter.
+    <br>
+    <a id="contractLink" href="#" target="_blank" rel="noopener">tap-counter contract</a>
+  </p>
+</main>
+
+<!-- INFO MODAL: what the player is watching (API-confirm vs true finality) -->
+<div class="info-modal" id="infoModal" role="dialog" aria-modal="true" aria-label="What you're watching">
+  <div class="info-sheet">
+    <button class="info-close" id="infoClose" aria-label="Close">&times;</button>
+    <h3><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9.2" stroke="#23F7DD" stroke-width="1.6"/><path d="M12 11v5M12 7.6v.2" stroke="#23F7DD" stroke-width="1.9" stroke-linecap="round"/></svg> What you're watching</h3>
+    <p>What you see confirm here is the <b>public API catching up</b>, about a beat behind. It bundles an indexing buffer, the gasless relayer hop (it co-signs and pays the gas so you play with no wallet), and a polling interval, so it reads in roughly two seconds. <b>That number is not finality.</b></p>
+    <p style="margin-top:11px;"><b>True finality on MultiversX is sub-second</b>, about 250ms intra-shard. We show that as an <b>estimate</b>, sourced from Supernova / Battle of Nodes telemetry, rather than measuring it through the API. The cross-chain comparison below uses each chain's real finality the same way. The transactions themselves are 100% real. (Flip the cross-shard toggle to feel the extra cost when a transaction hops between shards.)</p>
+  </div>
+</div>
+
+<script>
+/* ============================================================================
+   CONFIG — mirrors src/lib/onchain/tap-counter.config.ts (+ leaderboard.config.ts).
+   Safe to expose (addresses + public endpoints). The relayer SIGNING KEY lives
+   only in the server env (see app/api/relay/route.ts).
+   ============================================================================ */
+var CFG = {
+  // PRIMARY tap-counter — SHARD 0, intra-shard, fast finality (default). The
+  // ephemeral player keys + relayer are also shard 0, so a recordTaps here is
+  // intra-shard and finalizes in ~sub-2s.
+  contract: 'erd1qqqqqqqqqqqqqpgqlwv6l2zpx9v0uv6869tn90exv3vdplejppuq97k7r4', // tap-counter shard 0 (intra, fast)
+  // CROSS-SHARD tap-counter — SHARD 1. From a shard-0 sender this is a
+  // cross-shard tx that trails several seconds (Unlimited-mode toggle only).
+  contractCrossShard: 'erd1qqqqqqqqqqqqqpgq9tmxfe7dm4ndgzt4cx9z83mrj750kgnuenwscvaddk', // tap-counter shard 1 (cross, slow)
+  // SPRINT leaderboard — SHARD 0, intra-shard.
+  sprintLeaderboard: 'erd1qqqqqqqqqqqqqpgqh9wpfl0mt337h68z8cuv6w6mkfucqv5tppuqsxz6sp',
+  relayer:  'erd1ru08dt4u5e0psfrwth38u0dfed0hw8289xqdd9yghl3ec24uppuq6hgphm', // gas payer (shard 0)
+  api:      'https://testnet-api.multiversx.com',
+  explorer: 'https://testnet-explorer.multiversx.com',
+  chainID:  'T',
+  gasLimit: 6000000,
+  lbGasLimit: 10000000,     // submitScore gas limit (mirrors SUBMIT_GAS_LIMIT)
+  gasPrice: 1000000000,
+  numShards: 3,
+  relayerShard: 0,          // erd1ru08... is in shard 0 (verified); grind handles any value
+  fn: 'recordTaps',
+  maxPerCall: 1000,         // mirrors the contract's MAX_TAPS_PER_CALL
+  bundleWindowMs: 600,      // bundled mode flush window (one Supernova round)
+  pendingSoftCap: 60,       // suggest bundled mode if local pending climbs past this
+  pollIntervalMs: 500,      // tighter poll → snappier confirmation detection + a sharper 30s window boundary
+  pollMaxTries: 26,         // ~13s ceiling per tx before we stop polling (matches the old wall at 500ms)
+  globalRefreshMs: 4000,
+  feedMax: 8,
+  sprintMs: 30000,          // 30-second sprint window
+  settleMaxMs: 12000        // max time we keep polling stragglers after the buzzer
+};
+
+function $(id){ return document.getElementById(id); }
+
+/* runtime state */
+var ST = {
+  libs: null,            // { ed, bech32 }
+  key: null,             // { priv, pub, address }
+  nonce: 0,              // LOCAL nonce, incremented per tx (never wait between taps)
+  keyReady: false,       // ephemeral key + starting nonce resolved
+  initPromise: null,     // single-flight key init
+  available: true,       // false => degraded (no crypto / no relayer)
+  appMode: 'sprint',     // 'sprint' | 'unlimited' — top-level game mode
+  shardMode: 'intra',    // 'intra' | 'cross' — which tap-counter (Unlimited only)
+  mode: 'pertap',        // 'pertap' | 'bundled' (Unlimited sub-toggle)
+  sent: 0,               // txs broadcast this session (Unlimited counters)
+  finalized: 0,          // txs that reached finality this session
+  pending: 0,            // sent but not yet finalized (local view)
+  global: null,          // global counter from the contract
+  bundleBuf: 0,          // buffered taps awaiting flush (bundled mode)
+  bundleTimer: null,
+  feed: [],              // recent { hash, state, sentAt, finalMs, count }
+  warnedPending: false,
+  warnedUnavailable: false,
+  // ---- sprint sub-state ----
+  sprint: {
+    phase: 'idle',       // 'idle' | 'countdown' | 'running' | 'settling' | 'done'
+    runId: 0,            // bumped each run; stragglers from a prior run can't score
+    tapsFired: 0,        // recordTaps txs broadcast during this run
+    finalized: 0,        // REAL txs confirmed onchain WITHIN the 30s window = the SCORE (N_real)
+    finalizedLate: 0,    // REAL txs that confirmed AFTER the buzzer — honest, but excluded from the score
+    inFlight: [],        // entries still being polled to finality
+    finalityTimes: [],   // ms-to-confirm for each in-window confirmed tx (live confirmation via API, NOT finality)
+    taps: [],            // elapsed-ms timestamp of each tap while running — drives the cross-chain SIMULATION
+    startTime: 0,        // performance.now() at GO (sprint clock origin)
+    rafId: null,
+    settleTimer: null
+  }
+};
+
+/* the active tap-counter contract for the CURRENT mode. Sprint is ALWAYS
+   intra-shard (shard 0) for a fair fast board; Unlimited honors the shard
+   toggle so players can feel cross-shard finality. */
+function activeTapContract(){
+  if(ST.appMode === 'unlimited' && ST.shardMode === 'cross') return CFG.contractCrossShard;
+  return CFG.contract;
+}
+
+/* ---------- tiny encoders ---------- */
+function bytesToHex(b){ var h=''; for(var i=0;i<b.length;i++){ h+=b[i].toString(16).padStart(2,'0'); } return h; }
+function u32ToHex(n){ // recordTaps takes a u32 — pad to 8 hex (4 bytes BE)
+  var h = (n>>>0).toString(16); while(h.length<8) h='0'+h; return h;
+}
+
+/* address shard from the last pubkey byte (matches sdk-core AddressComputer) */
+function shardOfPubkey(pub){
+  var last = pub[31];
+  var shard = last & 3;                  // maskHigh = 0b11
+  if(shard > CFG.numShards - 1){ shard = last & 1; } // maskLow = 0b01
+  return shard;
+}
+
+/* lazy-load crypto libs from a CDN; resolve null on any failure (fail-soft) */
+function loadLibs(){
+  if(ST.libs) return Promise.resolve(ST.libs);
+  return Promise.all([
+    import('https://esm.sh/@noble/ed25519@2.1.0'),
+    import('https://esm.sh/@scure/base@1.1.6')
+  ]).then(function(mods){
+    ST.libs = { ed: mods[0], bech32: mods[1].bech32 };
+    return ST.libs;
+  }).catch(function(err){
+    console.warn('[onchain] crypto libs failed to load:', err);
+    return null;
+  });
+}
+
+function addressFromPubkey(bech32, pub){
+  return bech32.encode('erd', bech32.toWords(pub), 256);
+}
+
+/* generate an ephemeral keypair whose address lands in the relayer's shard */
+async function generateEphemeral(libs){
+  var ed = libs.ed, bech32 = libs.bech32;
+  for(var tries=0; tries<300; tries++){
+    var priv = ed.utils.randomPrivateKey();
+    var pub = await ed.getPublicKeyAsync(priv);
+    if(shardOfPubkey(pub) === CFG.relayerShard){
+      return { priv: priv, pub: pub, address: addressFromPubkey(bech32, pub) };
+    }
+  }
+  throw new Error('could not derive a key in the relayer shard');
+}
+
+/* canonical signing bytes — field ORDER + encoding match sdk-core
+   TransactionComputer.computeBytesForSigning exactly. */
+function signingString(tx){
+  return JSON.stringify({
+    nonce: tx.nonce, value: tx.value, receiver: tx.receiver, sender: tx.sender,
+    gasPrice: tx.gasPrice, gasLimit: tx.gasLimit, data: tx.dataB64,
+    chainID: tx.chainID, version: tx.version, relayer: tx.relayer
+  });
+}
+
+/* one-time (single-flight) ephemeral key + starting nonce init */
+function ensureKey(){
+  if(ST.keyReady) return Promise.resolve(true);
+  if(ST.initPromise) return ST.initPromise;
+  ST.initPromise = (async function(){
+    var libs = await loadLibs();
+    if(!libs){ ST.available = false; return false; }
+    try {
+      ST.key = await generateEphemeral(libs);
+    } catch(e){
+      console.warn('[onchain] key gen failed:', e);
+      ST.available = false;
+      return false;
+    }
+    // fetch the starting nonce once (fresh key => 0, but be correct), then
+    // increment LOCALLY for every tx so rapid taps never wait on the network.
+    ST.nonce = 0;
+    try {
+      var r = await fetch(CFG.api + '/accounts/' + ST.key.address);
+      if(r.ok){ var j = await r.json(); ST.nonce = j.nonce || 0; }
+    } catch(e){ /* fresh key, nonce stays 0 */ }
+    ST.keyReady = true;
+    return true;
+  })();
+  return ST.initPromise;
+}
+
+/* ---------- the core: fire ONE recordTaps(count) transaction ---------- */
+async function fireTaps(count){
+  // guard the per-call cap (the contract also enforces it)
+  if(count > CFG.maxPerCall) count = CFG.maxPerCall;
+  if(count <= 0) return;
+
+  var ok = await ensureKey();
+  if(!ok){ degrade(); return; }
+
+  var libs = ST.libs, key = ST.key;
+  var nonce = ST.nonce++;            // LOCAL increment — claim this nonce now
+  var receiver = activeTapContract(); // intra-shard (default) or cross-shard (Unlimited toggle)
+
+  // Intra-shard per-tap is the UNCHEATABLE scored path: one recordTap = one tx,
+  // no claimable count. The cross-shard demo and any bundled flush keep
+  // recordTaps(count) (throughput stat only, never the leaderboard score).
+  var dataStr = (receiver === CFG.contract && count === 1) ? 'recordTap' : (CFG.fn + '@' + u32ToHex(count));
+  var dataB64 = btoa(dataStr);
+  var txForSign = {
+    nonce: nonce, value: '0', receiver: receiver, sender: key.address,
+    gasPrice: CFG.gasPrice, gasLimit: CFG.gasLimit, dataB64: dataB64,
+    chainID: CFG.chainID, version: 2, relayer: CFG.relayer
+  };
+
+  var sigBytes = await libs.ed.signAsync(new TextEncoder().encode(signingString(txForSign)), key.priv);
+  var plainTx = {
+    nonce: nonce, value: '0', receiver: receiver, sender: key.address,
+    senderUsername: undefined, receiverUsername: undefined,
+    gasPrice: CFG.gasPrice, gasLimit: CFG.gasLimit, data: dataB64,
+    chainID: CFG.chainID, version: 2, relayer: CFG.relayer,
+    signature: bytesToHex(sigBytes)
+  };
+
+  var res, out;
+  try {
+    res = await fetch('/api/relay', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ transaction: plainTx })
+    });
+    out = await res.json();
+  } catch(e){
+    console.warn('[onchain] relay request failed:', e);
+    setStatus('err', 'Network hiccup reaching the relayer. Your taps still count locally; onchain will resume when it recovers.');
+    return;
+  }
+
+  if(!res.ok || out.error){
+    handleRelayError(out, res.status);
+    return;
+  }
+
+  // SENT: the relayer broadcast it. Count it and track it to finality.
+  try { if (window.__arcadeGalaxy) window.__arcadeGalaxy.pulse(1); } catch (e) {} // photon into shard 1 per real tap
+  var inSprint = (ST.appMode === 'sprint');
+  var entry = { hash: out.txHash, state: 'pending', sentAt: Date.now(), finalMs: null, count: count, sprint: inSprint, runId: ST.sprint.runId };
+
+  if(inSprint){
+    ST.sprint.tapsFired += count;
+    ST.sprint.inFlight.push(entry);
+    renderSprintLive();
+  } else {
+    ST.sent += 1;
+    ST.pending += 1;
+    renderCounters();
+    maybeSuggestBundled();
+  }
+
+  ST.feed.unshift(entry);
+  if(ST.feed.length > CFG.feedMax) ST.feed.length = CFG.feedMax;
+  renderFeed();
+
+  pollToFinality(entry);
+}
+
+/* poll a tx until it is finalized (or fails / times out) */
+async function pollToFinality(entry){
+  for(var i=0;i<CFG.pollMaxTries;i++){
+    await new Promise(function(r){ setTimeout(r, CFG.pollIntervalMs); });
+    var status = await fetchTxStatus(entry.hash);
+    if(status === 'success'){
+      entry.state = 'final';
+      entry.finalMs = Date.now() - entry.sentAt;
+      if(entry.sprint){ onSprintTxResolved(entry, true); }
+      else {
+        ST.finalized += 1;
+        ST.pending = Math.max(0, ST.pending - 1);
+        renderCounters();
+      }
+      renderFeed();
+      refreshGlobal(); // the global counter just grew
+      return;
+    }
+    if(status === 'fail' || status === 'invalid'){
+      entry.state = 'failed';
+      if(entry.sprint){ onSprintTxResolved(entry, false); }
+      else { ST.pending = Math.max(0, ST.pending - 1); renderCounters(); }
+      renderFeed();
+      return;
+    }
+    // pending / not-yet-indexed: keep polling
+  }
+  // timed out waiting — leave it pending in the feed, free the local slot
+  if(entry.sprint){ onSprintTxResolved(entry, false); renderFeed(); }
+  else { ST.pending = Math.max(0, ST.pending - 1); renderCounters(); }
+}
+
+/* read a tx's status from the testnet API. Returns
+   'success' | 'fail' | 'invalid' | 'pending' | 'unknown'. */
+async function fetchTxStatus(hash){
+  try {
+    var r = await fetch(CFG.api + '/transactions/' + hash + '?fields=status');
+    if(!r.ok) return 'pending';
+    var j = await r.json();
+    return j && j.status ? j.status : 'pending';
+  } catch(e){ return 'pending'; }
+}
+
+/* ---------- global counter (read live from the contract) ---------- */
+async function refreshGlobal(){
+  try {
+    var body = { scAddress: activeTapContract(), funcName: 'getGlobalTaps', args: [] };
+    var r = await fetch(CFG.api + '/vm-values/query', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    if(!r.ok) return;
+    var j = await r.json();
+    var data = j && j.data && j.data.data ? j.data.data : null;
+    if(!data || data.returnCode !== 'ok') return;
+    var parts = data.returnData || [];
+    var b64 = parts[0] || '';
+    ST.global = b64 ? decodeU64(b64) : 0;
+    renderGlobal();
+  } catch(e){ /* leave the last known value */ }
+}
+
+/* decode a base64 big-endian u64 into a JS number (safe for our magnitudes) */
+function decodeU64(b64){
+  var bin = atob(b64);
+  var v = 0n;
+  for(var i=0;i<bin.length;i++){ v = (v<<8n) | BigInt(bin.charCodeAt(i)); }
+  return Number(v);
+}
+
+/* ---------- rendering ---------- */
+function fmt(n){ return (n==null) ? '—' : Number(n).toLocaleString('en-US'); }
+
+function renderCounters(){
+  $('cSent').textContent = fmt(ST.sent);
+  $('cFinal').textContent = fmt(ST.finalized);
+  var trailing = ST.sent - ST.finalized;
+  $('cFinalSub').textContent = trailing > 0
+    ? (trailing + ' still confirming, the API runs a beat behind')
+    : 'real transactions, confirmed onchain';
+}
+function renderGlobal(){
+  $('cGlobal').textContent = fmt(ST.global);
+}
+function renderFeed(){
+  var list = $('feedList');
+  if(!ST.feed.length){ return; }
+  var empty = $('feedEmpty'); if(empty) empty.style.display = 'none';
+  var html = '';
+  for(var i=0;i<ST.feed.length;i++){
+    var e = ST.feed[i];
+    var short = e.hash.slice(0,10) + '…' + e.hash.slice(-8);
+    var url = CFG.explorer + '/transactions/' + e.hash;
+    var meta, metaCls='', metaTitle='';
+    if(e.state === 'final'){
+      // "confirmed" (real) — the time is the API confirmation lag, NOT finality
+      meta = '✓ ' + (e.finalMs!=null ? (e.finalMs/1000).toFixed(2)+'s' : 'confirmed'); metaCls='final';
+      metaTitle = 'Live confirmation via the public API, a beat behind. True finality is sub-second.';
+    }
+    else if(e.state === 'failed'){ meta = 'failed'; }
+    else { meta = 'pending'; }
+    var cnt = e.count > 1 ? (' <span style="color:var(--text-faint)">×'+e.count+'</span>') : '';
+    var titleAttr = metaTitle ? (' title="'+metaTitle+'"') : '';
+    html += '<div class="tx-row">' +
+      '<span class="tx-state '+e.state+'"></span>' +
+      '<a class="tx-hash" href="'+url+'" target="_blank" rel="noopener">'+short+cnt+'</a>' +
+      '<span class="tx-meta '+metaCls+'"'+titleAttr+'>'+meta+'</span>' +
+    '</div>';
+  }
+  list.innerHTML = html;
+}
+
+/* ---------- status + degradation ---------- */
+function setStatus(kind, html){
+  var el = $('status');
+  el.className = 'status show' + (kind ? (' '+kind) : '');
+  el.innerHTML = html;
+}
+function clearStatus(){ var el=$('status'); el.className='status'; el.innerHTML=''; }
+
+function degrade(){
+  if(ST.warnedUnavailable) return;
+  ST.warnedUnavailable = true;
+  ST.available = false;
+  setStatus('warn', 'Onchain submission is unavailable right now (crypto libraries or relayer not reachable). Your taps still register here. The real-transaction layer just isn’t live this moment.');
+}
+
+function handleRelayError(out, status){
+  var code = out && out.error;
+  if(code === 'relayer_unavailable'){
+    setStatus('warn', 'The gasless relayer isn’t switched on yet. Taps still register locally; real transactions go live once the relayer key is set.');
+    ST.available = false; return;
+  }
+  if(code === 'relayer_misconfigured'){
+    setStatus('err', 'The relayer is misconfigured (flagged for the team). Taps still register locally.');
+    ST.available = false; return;
+  }
+  if(code === 'rate_limited'){
+    // most likely in per-tap mode at high speed — nudge to bundled
+    setStatus('warn', 'Going fast! You hit the relayer’s per-minute limit. Switch to <b>Bundled</b> to keep firing. It packs many taps into one transaction.');
+    return;
+  }
+  if(code === 'broadcast_failed'){
+    setStatus('err', 'The network didn’t accept that one (testnet can be busy or resetting). Keep tapping; the next should go through.');
+    return;
+  }
+  setStatus('err', 'Onchain submission hiccuped (' + (code || ('HTTP '+status)) + '). Your taps still count here.');
+}
+
+/* suggest bundled mode if local pending climbs toward the gateway's ~100/sender cap */
+function maybeSuggestBundled(){
+  if(ST.mode === 'bundled' || ST.warnedPending) return;
+  if(ST.pending >= CFG.pendingSoftCap){
+    ST.warnedPending = true;
+    setStatus('warn', 'Lots of transactions in flight. <b>Bundled</b> mode keeps things smooth at mash speed. It packs taps into one transaction per round.');
+  }
+}
+
+/* ---------- tap handling ---------- */
+function spark(x, y, label){
+  var card = $('tapBtn');
+  var rect = card.getBoundingClientRect();
+  var s = document.createElement('span');
+  s.className = 'spark';
+  s.textContent = label || '+1 tx';
+  s.style.left = (x - rect.left) + 'px';
+  s.style.top = (y - rect.top) + 'px';
+  card.appendChild(s);
+  setTimeout(function(){ s.remove(); }, 800);
+}
+
+function onTap(x, y){
+  // ---- SPRINT mode ----
+  if(ST.appMode === 'sprint'){
+    var ph = ST.sprint.phase;
+    // idle / done: the tap button is the "start" affordance
+    if(ph === 'idle' || ph === 'done'){ startSprint(); return; }
+    // only accept taps while the clock is running (NOT during countdown/settling)
+    if(ph !== 'running') return;
+    // record this tap's elapsed-ms within the window — the cross-chain SIMULATION
+    // replays exactly these timings at each chain's finality (clamped to the window).
+    var elapsed = performance.now() - ST.sprint.startTime;
+    if(elapsed >= 0 && elapsed <= CFG.sprintMs){ ST.sprint.taps.push(elapsed); }
+    spark(x, y, '+1 tx');
+    fireTaps(1).catch(function(e){ console.warn('[onchain] fire failed', e); });
+    return;
+  }
+  // ---- UNLIMITED mode (original behavior) ----
+  if(ST.mode === 'pertap'){
+    spark(x, y, '+1 tx');
+    fireTaps(1).catch(function(e){ console.warn('[onchain] fire failed', e); });
+  } else {
+    // bundled: buffer this tap, flush on a short window or when the buffer is full
+    ST.bundleBuf += 1;
+    spark(x, y, '+1');
+    if(ST.bundleBuf >= CFG.maxPerCall){ flushBundle(); return; }
+    if(!ST.bundleTimer){
+      ST.bundleTimer = setTimeout(flushBundle, CFG.bundleWindowMs);
+    }
+  }
+}
+function flushBundle(){
+  if(ST.bundleTimer){ clearTimeout(ST.bundleTimer); ST.bundleTimer = null; }
+  var n = ST.bundleBuf; ST.bundleBuf = 0;
+  if(n > 0){ fireTaps(n).catch(function(e){ console.warn('[onchain] bundle fire failed', e); }); }
+}
+
+/* ---------- mode toggle ---------- */
+function setMode(mode){
+  if(ST.mode === mode) return;
+  // flush any buffered taps before leaving bundled mode
+  if(ST.mode === 'bundled') flushBundle();
+  ST.mode = mode;
+  ST.warnedPending = false;
+  $('modePerTap').classList.toggle('on', mode === 'pertap');
+  $('modeBundled').classList.toggle('on', mode === 'bundled');
+  $('modeNote').textContent = mode === 'pertap'
+    ? 'One transaction per tap. The visceral version.'
+    : 'Packs your taps into one transaction per ~600ms round, smoother at mash speed.';
+  clearStatus();
+}
+
+/* ============================================================================
+   APP MODE — 30s Sprint (default) vs Unlimited
+   ============================================================================ */
+function setAppMode(mode){
+  if(ST.appMode === mode) return;
+  // never switch mid-sprint; bail back to idle first
+  if(ST.appMode === 'sprint' && ST.sprint.phase !== 'idle' && ST.sprint.phase !== 'done'){
+    resetSprint();
+  }
+  // leaving unlimited: flush any buffered bundle so nothing is lost
+  if(ST.appMode === 'unlimited' && ST.mode === 'bundled') flushBundle();
+
+  ST.appMode = mode;
+  $('appSprint').classList.toggle('on', mode === 'sprint');
+  $('appUnlimited').classList.toggle('on', mode === 'unlimited');
+  clearStatus();
+  applyAppModeView();
+  // the active contract (and thus the global counter) may have changed
+  updateContractLink();
+  refreshGlobal();
+}
+
+/* cross-shard demo toggle (Unlimited only). Flips which tap-counter recordTaps
+   targets: shard-0 (intra, fast, default) vs shard-1 (cross-shard, slower). The
+   ephemeral SENDER stays shard 0 in both; only the RECEIVER contract changes, so
+   the cross-shard run shows the extra finality cost of hopping between shards. */
+function setShardMode(mode){
+  if(ST.shardMode === mode) return;
+  // flush any buffered bundle bound for the old contract first
+  if(ST.mode === 'bundled') flushBundle();
+  ST.shardMode = mode;
+  var cross = mode === 'cross';
+  var bIntra = $('shardIntra'), bCross = $('shardCross');
+  bIntra.classList.toggle('on', !cross);
+  bCross.classList.toggle('on', cross);
+  bCross.classList.toggle('cross', cross);
+  var cap = $('shardCaption');
+  cap.classList.toggle('cross', cross);
+  cap.innerHTML = cross
+    ? 'Sharding demo: taps now hit a <b>shard-1</b> contract while you send from shard 0. Each transaction has to hop between shards, so finality visibly trails. Same security, more distance.'
+    : 'Sharding demo: taps hit a <b>shard-0</b> contract. Same shard as the sender, so they finalize fast.';
+  updateContractLink();
+  refreshGlobal();   // the cross-shard contract has its own global counter
+  clearStatus();
+}
+
+function updateContractLink(){
+  var cl = $('contractLink');
+  if(cl) cl.href = CFG.explorer + '/accounts/' + activeTapContract();
+}
+
+/* ---------- info modal ("why not instant?") ---------- */
+function openInfo(){ $('infoModal').classList.add('open'); }
+function closeInfo(){ $('infoModal').classList.remove('open'); }
+
+/* show/hide the right UI for the active app mode */
+function applyAppModeView(){
+  var sprint = ST.appMode === 'sprint';
+  var card = $('tapCard');
+  var ph = ST.sprint.phase;
+  var showingResults = sprint && ph === 'done';
+  // results panel takes over when a sprint has locked
+  $('results').classList.toggle('show', showingResults);
+  // the tap card is hidden while results are up; everything else uses it
+  card.style.display = showingResults ? 'none' : '';
+  // counters strip is the Unlimited session view
+  $('counters').style.display = sprint ? 'none' : '';
+  // the live global tap-counter sits below the feed, Unlimited only
+  $('globalBar').style.display = sprint ? 'none' : '';
+  // Unlimited sub-toggle (per-tap/bundled) + note + cross-shard demo
+  $('modeRow').hidden = sprint;
+  $('modeNote').hidden = sprint;
+  $('shardRow').classList.toggle('show', !sprint);
+  // sprint-only widgets
+  $('ringWrap').hidden = !sprint || ph === 'idle' || ph === 'done';
+  $('sprintLive').classList.toggle('show', sprint && (ph === 'running' || ph === 'settling'));
+  $('sprintStartHint').style.display = (sprint && ph === 'idle') ? 'flex' : 'none';
+  $('sprintClock').classList.toggle('show', sprint && ph === 'running');
+  card.classList.toggle('sprint-idle', sprint && ph === 'idle');
+  if(!sprint){ card.classList.remove('sprint-idle','danger'); }
+
+  // hero + hint copy per mode
+  if(sprint){
+    $('heroTitle').innerHTML = 'Sprint at <span class="accent">Supernova Speed</span>.';
+    $('heroCopy').innerHTML = 'Tap as fast as you can for 30 seconds. Every tap is a real transaction.';
+    $('tapHint').innerHTML = 'Press <b>Start 30-second sprint</b>, then tap, click, or hit <b>space</b>';
+  } else {
+    $('heroTitle').innerHTML = 'Sprint at <span class="accent">Supernova Speed</span>.';
+    $('heroCopy').innerHTML = 'Tap as long as you like. Every tap is a real transaction.';
+    $('tapHint').innerHTML = 'Tap, click, or press <b>space</b>. Each one goes onchain.';
+  }
+}
+
+/* ============================================================================
+   SPRINT state machine: idle → countdown → running → settling → done
+   ============================================================================ */
+var SP_RING_C = 2 * Math.PI * 56;  // ring circle r=56 (matches the SVG)
+function initSprintRing(){
+  var rp = $('ringProg');
+  if(rp){ rp.style.strokeDasharray = SP_RING_C.toFixed(2); rp.style.strokeDashoffset = '0'; }
+}
+function setSprintRing(frac, cls){
+  var rp = $('ringProg');
+  if(!rp) return;
+  rp.style.strokeDashoffset = (SP_RING_C * (1 - frac)).toFixed(2);
+  rp.style.stroke = cls === 'danger' ? 'var(--coral)' : (cls === 'warn' ? 'var(--amber)' : 'var(--mint)');
+}
+
+/* reset to a clean idle sprint (cancels any running clock / settle poll) */
+function resetSprint(){
+  var s = ST.sprint;
+  if(s.rafId){ cancelAnimationFrame(s.rafId); s.rafId = null; }
+  if(s.settleTimer){ clearTimeout(s.settleTimer); s.settleTimer = null; }
+  // bump the run id so any still-polling entries from the run we're leaving
+  // become stragglers and can no longer touch the (now-zeroed) score
+  s.runId += 1;
+  s.phase = 'idle'; s.tapsFired = 0; s.finalized = 0; s.finalizedLate = 0;
+  s.inFlight = []; s.finalityTimes = []; s.taps = []; s.startTime = 0;
+  $('tapCard').classList.remove('danger');
+  applyAppModeView();
+}
+
+/* kick off the 3·2·1·GO countdown, then the running clock */
+function startSprint(){
+  var s = ST.sprint;
+  if(s.phase === 'countdown' || s.phase === 'running' || s.phase === 'settling') return;
+  // fresh run: bump the run id and clear any leftover sprint state. Stragglers
+  // from a previous run carry the old id and are ignored when they resolve.
+  s.runId += 1;
+  s.phase = 'countdown'; s.tapsFired = 0; s.finalized = 0; s.finalizedLate = 0;
+  s.inFlight = []; s.finalityTimes = []; s.taps = []; s.startTime = 0;
+  clearStatus();
+  // warm the ephemeral key now so the first GO tap is instant (fail-soft)
+  ensureKey().then(function(ok){ if(!ok) degrade(); });
+
+  $('tapCard').classList.remove('danger');
+  $('sprintStartHint').style.display = 'none';
+  $('counters').style.display = 'none';
+  $('globalBar').style.display = 'none';
+  $('ringWrap').hidden = false;
+  $('sprintClock').classList.remove('show');
+  $('sprintLive').classList.remove('show');
+  initSprintRing();
+  setSprintRing(1, '');
+
+  var pc = $('preCount');
+  pc.style.display = 'flex';
+  var seq = ['3','2','1','GO']; var i = 0;
+  function tick(){
+    pc.textContent = seq[i];
+    pc.className = seq[i] === 'GO' ? 'pre-count go' : 'pre-count';
+    try { pc.animate([{transform:'scale(.6)',opacity:0},{transform:'scale(1)',opacity:1}],{duration:200,easing:'cubic-bezier(.16,1,.3,1)'}); } catch(e){}
+    i++;
+    if(i < seq.length){ setTimeout(tick, 650); }
+    else { setTimeout(function(){ pc.style.display = 'none'; beginSprintClock(); }, 420); }
+  }
+  tick();
+}
+
+function beginSprintClock(){
+  var s = ST.sprint;
+  s.phase = 'running';
+  s.startTime = performance.now();
+  $('sprintClock').classList.add('show');
+  $('sprintLive').classList.add('show');
+  $('scSecs').textContent = (CFG.sprintMs/1000).toFixed(0);
+  renderSprintLive();
+  sprintLoop();
+}
+
+function sprintLoop(){
+  var s = ST.sprint;
+  if(s.phase !== 'running') return;
+  var elapsed = performance.now() - s.startTime;
+  var left = Math.max(0, CFG.sprintMs - elapsed);
+  var secs = left / 1000;
+  var frac = left / CFG.sprintMs;
+  $('scSecs').textContent = secs >= 10 ? secs.toFixed(0) : secs.toFixed(1);
+  var cls = secs <= 5 ? 'danger' : (secs <= 10 ? 'warn' : '');
+  setSprintRing(frac, cls);
+  $('tapCard').classList.toggle('danger', cls === 'danger');
+  if(left <= 0){ buzzer(); return; }
+  s.rafId = requestAnimationFrame(sprintLoop);
+}
+
+/* buzzer at 0: stop accepting taps, enter the settling phase */
+function buzzer(){
+  var s = ST.sprint;
+  if(s.rafId){ cancelAnimationFrame(s.rafId); s.rafId = null; }
+  s.phase = 'settling';
+  $('scSecs').textContent = '0';
+  setSprintRing(0, 'danger');
+  $('tapCard').classList.remove('danger');
+  $('sprintClock').classList.remove('show');
+
+  // flash the button
+  var btn = $('tapBtn');
+  try { btn.animate([{boxShadow:'0 0 0 0 rgba(35,247,221,.7)'},{boxShadow:'0 0 0 26px rgba(35,247,221,0)'}],{duration:520,easing:'ease-out'}); } catch(e){}
+
+  // any taps still in flight? keep polling them; otherwise lock immediately.
+  if(s.inFlight.length === 0){ lockSprint(); return; }
+  $('settling').classList.add('show');
+  updateSettlingMsg();
+  // hard ceiling: if stragglers never resolve, lock anyway
+  s.settleTimer = setTimeout(function(){ lockSprint(); }, CFG.settleMaxMs);
+}
+
+/* called by pollToFinality when a sprint tx resolves (confirmed or not).
+   THE IN-WINDOW RULE (honest, conservative): a tx counts toward the SCORE
+   (N_real) only if it is observed confirmed onchain WHILE THE CLOCK IS STILL
+   RUNNING (phase 'running'). If it confirms after the buzzer (phase 'settling'),
+   it is real but TOO LATE for the 30s — tallied separately, excluded from N_real. */
+function onSprintTxResolved(entry, ok){
+  var s = ST.sprint;
+  // ignore stragglers from a previous run (they can't move the current score)
+  if(entry.runId !== s.runId) return;
+  // remove from in-flight
+  var idx = s.inFlight.indexOf(entry);
+  if(idx !== -1) s.inFlight.splice(idx, 1);
+  if(ok){
+    if(s.phase === 'running'){
+      // confirmed before the buzzer → counts toward N_real (the score)
+      s.finalized += (entry.count || 1);
+      if(entry.finalMs != null) s.finalityTimes.push(entry.finalMs);
+    } else {
+      // confirmed after the buzzer (settling) → real, but excluded from the score
+      s.finalizedLate += (entry.count || 1);
+    }
+  }
+  // during running OR settling, keep the live counts animating up
+  if(s.phase === 'running' || s.phase === 'settling'){
+    renderSprintLive();
+    if(s.phase === 'settling'){
+      updateSettlingMsg();
+      if(s.inFlight.length === 0){ lockSprint(); }
+    }
+  }
+}
+
+function updateSettlingMsg(){
+  var s = ST.sprint;
+  var n = s.inFlight.length;
+  var late = s.finalizedLate;
+  if(n > 0){
+    $('settlingMsg').textContent = late > 0
+      ? ('Resolving the taps still in flight… ' + n + ' to go · ' + late + ' landed just after the buzzer')
+      : ('Resolving the taps still in flight… ' + n + ' to go');
+  } else {
+    $('settlingMsg').textContent = 'Locking your score…';
+  }
+}
+
+/* end of settling: LOCK the score (= finalized count) and show results */
+function lockSprint(){
+  var s = ST.sprint;
+  if(s.phase === 'done') return;
+  if(s.settleTimer){ clearTimeout(s.settleTimer); s.settleTimer = null; }
+  s.phase = 'done';
+  $('settling').classList.remove('show');
+  $('tapCard').classList.remove('danger');
+  showSprintResults();   // populates + reveals the results panel
+  applyAppModeView();    // swap tap card → results
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function renderSprintLive(){
+  $('slFired').textContent = fmt(ST.sprint.tapsFired);
+  $('slFin').textContent = fmt(ST.sprint.finalized);
+}
+
+/* eased count-up for the results headline */
+function animateNumber(el, from, to, dur){
+  var start = performance.now();
+  function step(now){
+    var p = Math.min(1, (now - start) / dur);
+    var eased = 1 - Math.pow(1 - p, 3);
+    el.textContent = fmt(Math.round(from + (to - from) * eased));
+    if(p < 1) requestAnimationFrame(step);
+    else el.textContent = fmt(to);
+  }
+  requestAnimationFrame(step);
+}
+
+/* "Play again" from the results panel — back to idle, then straight into a run */
+function playAgain(){
+  resetSprint();        // clears state, shows the tap card idle
+  startSprint();        // straight into the 3·2·1 countdown
+}
+
+/* ============================================================================
+   SPRINT RESULTS — real in-window score, the simulation, personal best,
+   leaderboard, share
+   ============================================================================ */
+/* personal best — a NEW key, distinct from the main game's PB. The score is the
+   in-window REAL confirmed tx count (real, hard to spoof). */
+var SPRINT_PB_KEY = 'mvx_onchain_sprint_pb';
+function getSprintPB(){ var v = parseInt(localStorage.getItem(SPRINT_PB_KEY) || '0', 10); return isNaN(v) ? 0 : v; }
+function setSprintPB(v){ try { localStorage.setItem(SPRINT_PB_KEY, String(v)); } catch(e){} }
+
+function showSprintResults(){
+  var s = ST.sprint;
+  var score = s.finalized;                 // the SCORE = REAL in-window confirmed count (N_real)
+  LB.lastScore = score;
+  LB.submitted = false;
+
+  // animate the headline real in-window number
+  $('resScore').textContent = '0';
+  animateNumber($('resScore'), 0, score, 800);
+  $('resFired').textContent = fmt(s.tapsFired);
+  $('resFinalized').textContent = fmt(score);
+
+  // estimated finality for THIS run: average tap-to-final from the same 250ms
+  // intra-shard model the comparison uses (Supernova block-inclusion wait + the
+  // 250ms finality), computed over the player's real tap timings — a concrete
+  // per-run number, not a static spec figure. NOT the API-confirm time watched.
+  var mvxSim = CHAINS[0];
+  var estSum = 0;
+  for(var ei = 0; ei < s.taps.length; ei++){ estSum += lifecycle(s.taps[ei], mvxSim).finalAt - s.taps[ei]; }
+  var estAvg = s.taps.length ? (estSum / s.taps.length) : mvxSim.finalityMs;
+  $('resFinEst').textContent = '~' + (estAvg < 1000 ? (Math.round(estAvg / 10) * 10) + 'ms' : (estAvg / 1000).toFixed(2) + 's');
+  // "landed after the buzzer" — real, but excluded from the score (the honest tally)
+  $('resLanded').textContent = fmt(s.finalizedLate);
+
+  // personal best
+  var prevPB = getSprintPB();
+  var isPB = score > prevPB;
+  if(isPB) setSprintPB(score);
+  var pbEl = $('resPb');
+  if(isPB && score > 0){ pbEl.className = 'res-pb win'; pbEl.textContent = 'New personal best. Previous: ' + prevPB + '.'; }
+  else if(score > 0){ pbEl.className = 'res-pb norm'; pbEl.textContent = 'Your best: ' + prevPB + '. Go again to beat it.'; }
+  else { pbEl.className = 'res-pb norm'; pbEl.textContent = 'Nothing confirmed in the window. Testnet may be busy, try again.'; }
+  $('resPbNum').textContent = fmt(Math.max(score, prevPB));
+
+  // build the cross-chain SIMULATION (lanes + the bridge to the real count)
+  buildCompare();
+
+  // reset the submit control + load the live board
+  LB.reset();
+  lbLoadLeaderboard();
+}
+
+/* ============================================================================
+   CROSS-CHAIN SIMULATION model — lifted from /supernova-sprint.
+   --------------------------------------------------------------------------------
+   THIS IS A SIMULATION, NOT A MEASUREMENT. It replays the player's REAL tap
+   timings (ST.sprint.taps, in ms-from-GO) at each chain's PUBLISHED block time
+   and finality, and counts how many would finalize inside the 30s window. Latency
+   only (block time + finality) — never throughput.
+
+   The MvX lane uses its ~250ms intra-shard finality TARGET — the simulation value,
+   deliberately distinct from the real measured count (ST.sprint.finalized). The
+   bridge surfaces both: MvX is the one chain where the simulation is also reality,
+   because the player just watched the real ones confirm live.
+   ============================================================================ */
+var SIM_WINDOW_MS = CFG.sprintMs;     // the 30s window the simulation finalizes within
+var MVX_INTRA_FINALITY_MS = 250;      // intra-shard finality target (Supernova)
+var MVX_CROSS_FINALITY_MS = 1800;     // cross-shard end-to-end target (~3 x 600ms blocks)
+
+var CHAINS = [
+  { key:'mvx', name:'MultiversX', badge:'X', color:'#23F7DD',
+    logo:{vb:'0 0 48 37', d:'M26.6389 18.408L48.0001 6.93761L44.4089 0L24.8488 7.95166C24.3452 8.15668 23.7868 8.15668 23.2831 7.95166L3.72305 0L0.131836 6.93761L21.493 18.408L0.131836 29.8783L3.72305 36.8159L23.2831 28.8642C23.7868 28.6592 24.3452 28.6592 24.8488 28.8642L44.4089 36.8159L48.0001 29.8783L26.6389 18.408Z'},
+    blockMs:600, finalityMs:MVX_INTRA_FINALITY_MS,
+    spec:'~600ms block · 250ms intra-shard final',
+    tag:'Supernova · intra-shard finality', isMvx:true, mvxMode:'intra' },
+  { key:'sol', name:'Solana', badge:'S', color:'#A78BFA',
+    logo:{vb:'0 0 24 24', d:'m23.8764 18.0313-3.962 4.1393a.9201.9201 0 0 1-.306.2106.9407.9407 0 0 1-.367.0742H.4599a.4689.4689 0 0 1-.2522-.0733.4513.4513 0 0 1-.1696-.1962.4375.4375 0 0 1-.0314-.2545.4438.4438 0 0 1 .117-.2298l3.9649-4.1393a.92.92 0 0 1 .3052-.2102.9407.9407 0 0 1 .3658-.0746H23.54a.4692.4692 0 0 1 .2523.0734.4531.4531 0 0 1 .1697.196.438.438 0 0 1 .0313.2547.4442.4442 0 0 1-.1169.2297zm-3.962-8.3355a.9202.9202 0 0 0-.306-.2106.941.941 0 0 0-.367-.0742H.4599a.4687.4687 0 0 0-.2522.0734.4513.4513 0 0 0-.1696.1961.4376.4376 0 0 0-.0314.2546.444.444 0 0 0 .117.2297l3.9649 4.1394a.9204.9204 0 0 0 .3052.2102c.1154.049.24.0744.3658.0746H23.54a.469.469 0 0 0 .2523-.0734.453.453 0 0 0 .1697-.1961.4382.4382 0 0 0 .0313-.2546.4444.4444 0 0 0-.1169-.2297zM.46 6.7225h18.7815a.9411.9411 0 0 0 .367-.0742.9202.9202 0 0 0 .306-.2106l3.962-4.1394a.4442.4442 0 0 0 .117-.2297.4378.4378 0 0 0-.0314-.2546.453.453 0 0 0-.1697-.196.469.469 0 0 0-.2523-.0734H4.7596a.941.941 0 0 0-.3658.0745.9203.9203 0 0 0-.3052.2102L.1246 5.9687a.4438.4438 0 0 0-.1169.2295.4375.4375 0 0 0 .0312.2544.4512.4512 0 0 0 .1692.196.4689.4689 0 0 0 .2518.0739z'},
+    blockMs:400, finalityMs:12800, spec:'~400ms slot · ~12.8s final', tag:null, isMvx:false },
+  { key:'eth', name:'Ethereum', badge:'E', color:'#5B8DEF',
+    logo:{vb:'0 0 24 24', d:'M11.944 17.97L4.58 13.62 11.943 24l7.37-10.38-7.372 4.35h.003zM12.056 0L4.69 12.223l7.365 4.354 7.365-4.35L12.056 0z'},
+    blockMs:12000, finalityMs:768000, spec:'12s slot · ~12.8min final', tag:null, isMvx:false },
+  { key:'btc', name:'Bitcoin', badge:'B', color:'#F5B544',
+    logo:{vb:'0 0 24 24', d:'M23.638 14.904c-1.602 6.43-8.113 10.34-14.542 8.736C2.67 22.05-1.244 15.525.362 9.105 1.962 2.67 8.475-1.243 14.9.358c6.43 1.605 10.342 8.115 8.738 14.548v-.002zm-6.35-4.613c.24-1.59-.974-2.45-2.64-3.03l.54-2.153-1.315-.33-.525 2.107c-.345-.087-.705-.167-1.064-.25l.526-2.127-1.32-.33-.54 2.165c-.285-.067-.565-.132-.84-.2l-1.815-.45-.35 1.407s.975.225.955.236c.535.136.63.486.615.766l-1.477 5.92c-.075.166-.24.406-.614.314.015.02-.96-.24-.96-.24l-.66 1.51 1.71.426.93.242-.54 2.19 1.32.327.54-2.17c.36.1.705.19 1.05.273l-.51 2.154 1.32.33.545-2.19c2.24.427 3.93.257 4.64-1.774.57-1.637-.03-2.58-1.217-3.196.854-.193 1.5-.76 1.68-1.93h.01zm-3.01 4.22c-.404 1.64-3.157.75-4.05.53l.72-2.9c.896.23 3.757.67 3.33 2.37zm.41-4.24c-.37 1.49-2.662.735-3.405.55l.654-2.64c.744.18 3.137.524 2.75 2.084v.006z'},
+    blockMs:600000, finalityMs:3600000, spec:'~10min block · ~60min final', tag:null, isMvx:false },
+  { key:'trx', name:'Tron', badge:'T', color:'#FF6B9D',
+    logo:{vb:'6 6 21 21', d:'M7.5 7.257l7.595 19.112 10.583-12.894-3.746-3.562L7.5 7.257zm16.252 6.977l-7.67 9.344.983-8.133 6.687-1.21zM9.472 9.488l6.633 5.502-1.038 8.58L9.472 9.487zM21.7 11.083l2.208 2.099-6.038 1.093 3.83-3.192zM10.194 8.778l10.402 1.914-4.038 3.364-6.364-5.278z'},
+    blockMs:3000, finalityMs:57000, spec:'~3s block · ~57s final', tag:null, isMvx:false }
+];
+
+/* apply the MvX lane finality mode (intra ~250ms / cross ~1.8s — both simulated) */
+function setMvxMode(mode){
+  var c = CHAINS[0];
+  c.mvxMode = mode;
+  if(mode === 'cross'){
+    c.finalityMs = MVX_CROSS_FINALITY_MS;
+    c.spec = '~600ms block · ~1.8s cross-shard final';
+    c.tag = 'Supernova · cross-shard finality';
+  } else {
+    c.finalityMs = MVX_INTRA_FINALITY_MS;
+    c.spec = '~600ms block · 250ms intra-shard final';
+    c.tag = 'Supernova · intra-shard finality';
+  }
+}
+
+/* for a tap at time t (ms from GO): when it lands in a block, and when it is
+   final. INCLUDED at the next block boundary after t; FINAL = inclusion + finality. */
+function lifecycle(tapT, chain){
+  var included = Math.ceil((tapT + 1) / chain.blockMs) * chain.blockMs;
+  var finalAt = included + chain.finalityMs;
+  return { included: included, finalAt: finalAt };
+}
+
+/* count of the player's taps that finalize WITHIN the 30s window on a given chain */
+function countFinalized(taps, chain){
+  var n = 0;
+  for(var i=0;i<taps.length;i++){ if(lifecycle(taps[i], chain).finalAt <= SIM_WINDOW_MS) n++; }
+  return n;
+}
+
+/* finalized counts by chain key, order-independent */
+function finalizedByKey(results){
+  var out = { mvx:0, sol:0, eth:0, btc:0, trx:0 };
+  results.forEach(function(r){ out[r.chain.key] = r.finalized; });
+  return out;
+}
+
+var simResult = null;   // { tapsTotal, results:[{chain, finalized}] }
+
+/* build + reveal the simulation: per-chain lanes + the bridge to the real count */
+function buildCompare(){
+  var taps = ST.sprint.taps.slice();
+  var tapsTotal = taps.length;       // the simulation's denominator (your N taps)
+  var nReal = ST.sprint.finalized;   // the REAL in-window confirmed count (the score)
+
+  // per-chain finalized-in-window counts (honest, computed from the real timings)
+  var results = CHAINS.map(function(c){ return { chain:c, finalized: countFinalized(taps, c) }; });
+  simResult = { tapsTotal: tapsTotal, results: results };
+
+  // the bridge: REAL measured vs MvX SIMULATED, side by side.
+  // NOTE: build bridgeNote's innerHTML in one shot — don't depend on an inner
+  // span persisting across calls (Play again re-runs this; the old span is gone).
+  var fin = finalizedByKey(results);
+  $('brReal').textContent = '0'; animateNumber($('brReal'), 0, nReal, 800);
+  $('brSim').textContent = '0';  animateNumber($('brSim'), 0, fin.mvx, 800);
+  $('bridgeNote').innerHTML = (nReal > 0)
+    ? 'MultiversX is the only one where this isn’t hypothetical. You just watched <b>' + fmt(nReal) + '</b> of them confirm live.'
+    : 'MultiversX is the only one where this isn’t hypothetical. The real ones confirm live, on the same Supernova clock the simulation uses.';
+
+  // build the per-chain lanes (hidden; staged in below)
+  var wrap = $('lanes');
+  wrap.innerHTML = '';
+  var laneEls = results.map(function(res){
+    var el = makeLane(res.chain, res.finalized, tapsTotal);
+    wrap.appendChild(el);
+    return el;
+  });
+
+  // honest summary sentence (simulation), looked up by key so it is order-independent
+  $('compareLine').innerHTML =
+    'Finalized in 30s (simulated): <span class="mvx-h">MultiversX ' + fin.mvx + '</span> &middot; <b>Solana ' + fin.sol + '</b> &middot; <b>Ethereum ' + fin.eth + '</b> &middot; <b>Bitcoin ' + fin.btc + '</b> &middot; <b>Tron ' + fin.trx + '</b>.';
+
+  // sources footnote — block time + finality (not throughput), with the MvX 250ms source
+  $('compareFoot').innerHTML =
+    '<b>Simulation, not measurement.</b> A latency comparison of block time and finality, not throughput. ' +
+    'Sources: ethereum.org, solana.com, Bitcoin Wiki, Tron DPoS docs; MultiversX ~600ms block / ~250ms intra-shard finality from Supernova (Battle of Nodes telemetry).';
+
+  // stage the reveal so the contrast breathes: MvX lands almost instantly, then
+  // the slow lanes drop in and visibly stall. Deterministic, no reliance on sampling.
+  var STAGGER = 460;
+  laneEls.forEach(function(el, idx){
+    var delay = 220 + idx * STAGGER;
+    setTimeout(function(){ el.classList.add('in'); replayLane(el); }, delay);
+  });
+}
+
+/* one simulation lane (chain row): header, the pipeline track, live counts */
+function makeLane(chain, finalized, tapsTotal){
+  var lane = document.createElement('div');
+  lane.className = 'lane' + (chain.isMvx ? ' mvx' : '');
+  lane.setAttribute('data-key', chain.key);
+
+  var good = chain.isMvx || (tapsTotal > 0 && finalized / tapsTotal > 0.5);
+
+  var tagTip = '';
+  if(chain.isMvx){
+    tagTip = chain.mvxMode === 'cross'
+      ? 'Cross-shard: between shards. Settled across about three blocks. Simulated.'
+      : 'Intra-shard: sender and receiver on the same shard. Simulated.';
+  }
+  var tagHtml = chain.tag
+    ? '<span class="lane-tag tip" data-tip="' + tagTip + '"><span class="tip-underline">' + chain.tag + '</span></span>'
+    : '';
+
+  var toggleHtml = '';
+  if(chain.isMvx){
+    var intraOn = chain.mvxMode !== 'cross';
+    toggleHtml =
+      '<div class="mvx-toggle" role="group" aria-label="MultiversX finality mode (simulated)">' +
+        '<button type="button" data-mode="intra" class="' + (intraOn ? 'on' : '') + '">intra-shard 250ms</button>' +
+        '<button type="button" data-mode="cross" class="' + (intraOn ? '' : 'on') + '">cross-shard ~1.8s</button>' +
+      '</div>';
+  }
+
+  lane.innerHTML =
+    '<div class="lane-head">' +
+      '<div class="lane-id">' +
+        '<span class="lane-badge" style="background:' + chain.color + '1a;">' + (chain.logo ? ('<svg viewBox="' + chain.logo.vb + '" aria-hidden="true"><path d="' + chain.logo.d + '" fill="' + chain.color + '"/></svg>') : chain.badge) + '</span>' +
+        '<span class="lane-name">' + chain.name + '</span>' +
+        '<span class="lane-spec">' + chain.spec + '</span>' +
+      '</div>' +
+      '<div class="lane-final' + (good ? ' good' : '') + '">' +
+        '<span class="n" data-fin="' + finalized + '">0</span>' +
+        '<span class="of">/ ' + tapsTotal + '</span>' +
+        '<span class="lab">final</span>' +
+      '</div>' +
+    '</div>' +
+    (tagHtml ? ('<div style="margin:-2px 0 8px;">' + tagHtml + '</div>') : '') +
+    toggleHtml +
+    '<div class="track">' +
+      '<div class="final-zone"></div>' +
+      '<div class="seg-labels">' +
+        '<div class="tip tip-left" data-tip="Sent. Instant on any chain.">Submitted</div>' +
+        '<div class="tip" data-tip="Landed in a block. Still reversible.">In block</div>' +
+        '<div class="tip" data-tip="Irreversible. The number that matters.">Final</div>' +
+      '</div>' +
+    '</div>' +
+    '<div class="lane-counts">' +
+      '<span class="c-sub"><i class="cdot" style="background:var(--text-faint)"></i>sent <b>' + tapsTotal + '</b></span>' +
+      '<span class="c-inc"><i class="cdot" style="background:var(--amber)"></i>in block <b class="inc-n">0</b></span>' +
+      '<span class="c-fin"><i class="cdot" style="background:var(--mint)"></i>final <b class="fin-n">0</b></span>' +
+    '</div>';
+  return lane;
+}
+
+/* replay the player's burst through one lane, time-compressed. The HONEST
+   finalized count (data-fin, from countFinalized) is authoritative: the headline
+   animates to it and the live counts settle to it. Sampling only affects how many
+   DOTS are drawn, never the numbers. */
+var REPLAY_MS = 4600;
+function replayLane(lane){
+  if(lane._raf){ cancelAnimationFrame(lane._raf); lane._raf = null; }
+
+  var key = lane.getAttribute('data-key');
+  var chain = CHAINS.filter(function(c){ return c.key === key; })[0];
+  var track = lane.querySelector('.track');
+  var incN = lane.querySelector('.inc-n');
+  var finN = lane.querySelector('.fin-n');
+  var finBig = lane.querySelector('.lane-final .n');
+  var exactFin = parseInt(finBig.getAttribute('data-fin'), 10) || 0;
+
+  var old = track.querySelectorAll('.dot-tx');
+  for(var j=0;j<old.length;j++){ old[j].remove(); }
+
+  var taps = ST.sprint.taps.slice();
+  var tapsTotal = taps.length;
+  if(tapsTotal === 0){ finN.textContent = '0'; incN.textContent = '0'; finBig.textContent = '0'; return; }
+
+  // cap rendered dots for performance/readability; sample evenly if huge
+  var MAX_DOTS = 56;
+  var rendered = taps;
+  if(taps.length > MAX_DOTS){
+    rendered = [];
+    var step = taps.length / MAX_DOTS;
+    for(var i=0;i<MAX_DOTS;i++){ rendered.push(taps[Math.floor(i*step)]); }
+  }
+  var dotScale = taps.length / rendered.length;
+
+  var dots = rendered.map(function(tapT, idx){
+    var d = document.createElement('div');
+    d.className = 'dot-tx dot-sub';
+    d.style.left = '4%';
+    var vy = 50 + ((idx % 5) - 2) * 13;
+    d.style.top = vy + '%';
+    track.appendChild(d);
+    var lc = lifecycle(tapT, chain);
+    return { el:d, tapT:tapT, included:lc.included, finalAt:lc.finalAt, jx:(idx%7)/7 };
+  });
+
+  function xFor(stage, frac, jx){
+    if(stage === 0) return 4 + frac*26;
+    if(stage === 1) return 37 + jx*24 + frac*2;
+    return 72 + 6 + jx*18;
+  }
+
+  var animStart = performance.now();
+  function frame(){
+    var rt = performance.now() - animStart;
+    var prog = Math.min(1, rt / REPLAY_MS);
+    var vtMax = SIM_WINDOW_MS * 1.18;     // window + tail so MvX dots finalize on screen
+    var vt = prog * vtMax;
+
+    var incCount = 0, finCount = 0;
+    dots.forEach(function(o){
+      var stage, frac;
+      if(vt < o.tapT){ stage = 0; frac = 0; }
+      else if(vt < o.included){ stage = 0; frac = Math.min(1, (vt-o.tapT)/Math.max(1,(o.included-o.tapT))); }
+      else if(vt < o.finalAt){ stage = 1; frac = Math.min(1, (vt-o.included)/Math.max(1,(o.finalAt-o.included))); incCount++; }
+      else { stage = 2; frac = 1; finCount++; }
+      o.el.style.left = xFor(stage, frac, o.jx).toFixed(2) + '%';
+      var cls = stage === 0 ? 'dot-sub' : (stage === 1 ? 'dot-inc' : 'dot-fin');
+      if(o.el.className !== 'dot-tx ' + cls) o.el.className = 'dot-tx ' + cls;
+    });
+
+    incN.textContent = Math.round(incCount * dotScale);
+    finN.textContent = Math.round(finCount * dotScale);
+
+    if(prog < 1){ lane._raf = requestAnimationFrame(frame); }
+    else {
+      lane._raf = null;
+      // settle on the HONEST numbers (exact, not sampled)
+      finN.textContent = exactFin;
+      incN.textContent = Math.max(0, tapsTotal - exactFin);
+      animateNumber(finBig, 0, exactFin, 650);
+      // settle dots to match the honest counts
+      var finalDots = Math.round((exactFin/Math.max(1, tapsTotal)) * dots.length);
+      dots.forEach(function(o, i){
+        var isFin = i < finalDots;
+        o.el.style.left = xFor(isFin?2:1, 1, o.jx).toFixed(2) + '%';
+        o.el.className = 'dot-tx ' + (isFin ? 'dot-fin' : 'dot-inc');
+      });
+    }
+  }
+  lane._raf = requestAnimationFrame(frame);
+}
+
+/* MvX lane intra/cross toggle: recompute its simulated count, rebuild + replay
+   just that lane, and refresh the bridge + summary. Other lanes untouched. */
+function onMvxModeToggle(mode){
+  if(CHAINS[0].mvxMode === mode) return;
+  setMvxMode(mode);
+
+  var mvxChain = CHAINS[0];
+  var tapsTotal = simResult ? simResult.tapsTotal : ST.sprint.taps.length;
+  var finalized = countFinalized(ST.sprint.taps, mvxChain);
+
+  if(simResult){
+    for(var i=0;i<simResult.results.length;i++){
+      if(simResult.results[i].chain.key === 'mvx'){ simResult.results[i].finalized = finalized; }
+    }
+  }
+
+  // replace just the MvX lane, preserving its position
+  var oldLane = document.querySelector('.lane[data-key="mvx"]');
+  if(oldLane){
+    var newLane = makeLane(mvxChain, finalized, tapsTotal);
+    newLane.classList.add('in');
+    oldLane.parentNode.replaceChild(newLane, oldLane);
+    replayLane(newLane);
+  }
+
+  // refresh the simulated MvX bridge cell + summary sentence
+  $('brSim').textContent = '0'; animateNumber($('brSim'), 0, finalized, 500);
+  if(simResult){
+    var fin = finalizedByKey(simResult.results);
+    $('compareLine').innerHTML =
+      'Finalized in 30s (simulated): <span class="mvx-h">MultiversX ' + fin.mvx + '</span> &middot; <b>Solana ' + fin.sol + '</b> &middot; <b>Ethereum ' + fin.eth + '</b> &middot; <b>Bitcoin ' + fin.btc + '</b> &middot; <b>Tron ' + fin.trx + '</b>.';
+  }
+}
+
+/* ============================================================================
+   ONCHAIN SPRINT LEADERBOARD (testnet, gasless Relayed v3)
+   Lifted from /supernova-sprint's oc* code, retargeted to the SHARD-0 sprint
+   leaderboard. submitScore data encoding is identical to the original. A fresh
+   ephemeral key (shard 0) is generated per submit. Fail-soft on every path.
+   ============================================================================ */
+var LB = {
+  contract: CFG.contract,   // the upgraded tap-counter (shard 0): bestScore + handle per address
+  submitted: false,
+  lastScore: 0,
+  reset: function(){
+    LB.submitted = false;
+    var st = $('lbSubmitStatus'); if(st){ st.className = 'lb-submit-status'; st.innerHTML = ''; }
+    lbSetSubmitting(false);
+    var label = $('lbSubmitLabel'); if(label) label.textContent = 'Submit to leaderboard';
+    var btn = $('lbSubmitBtn'); if(btn) btn.disabled = false;
+  }
+};
+
+function lbStatus(kind, html){
+  var el = $('lbSubmitStatus');
+  if(!el) return;
+  el.className = 'lb-submit-status show' + (kind ? (' '+kind) : '');
+  el.innerHTML = html;
+}
+function lbSetSubmitting(on){
+  var btn = $('lbSubmitBtn'), label = $('lbSubmitLabel'), icon = $('lbSubmitIcon');
+  if(!btn) return;
+  btn.disabled = on;
+  if(on){
+    if(icon) icon.innerHTML = '<span class="spin"></span>';
+    if(label) label.textContent = 'Submitting to testnet…';
+  } else {
+    if(icon) icon.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none"><path d="M5 12 h14 M13 6 l6 6 -6 6" stroke="#04221d" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    if(label) label.textContent = 'Submit to leaderboard';
+  }
+}
+
+/* minimal even-length big-endian hex for a non-negative integer (u64) */
+function lbU64ToHex(n){ var h = BigInt(n).toString(16); if(h.length % 2) h = '0' + h; return h; }
+function lbUtf8ToHex(str){ return bytesToHex(new TextEncoder().encode(str)); }
+
+/* setHandle(handle) — attaches a username to the address that holds the onchain
+   score. The score itself is already onchain (the count of real recordTap txs),
+   so it is never submitted as a number; this just labels it. */
+async function lbSubmit(){
+  if(LB.submitted) return;
+  var score = LB.lastScore;
+  if(!score || score <= 0){ lbStatus('err', 'Nothing confirmed to submit. Play a sprint first.'); return; }
+
+  var handle = ($('lbHandle').value || '').trim();
+  if(!handle){ lbStatus('err', 'Pick a handle so you show up on the leaderboard.'); $('lbHandle').focus(); return; }
+  if(new TextEncoder().encode(handle).length > 32){ lbStatus('err', 'That handle is a bit long. Keep it under 32 characters.'); return; }
+  if(!ST.key){ lbStatus('err', 'No run to submit yet. Play a sprint first.'); return; }
+
+  lbSetSubmitting(true);
+  lbStatus('', 'Preparing your transaction…');
+
+  try {
+    var libs = await loadLibs();
+    if(!libs){ throw new Error('crypto-unavailable'); }
+
+    // setHandle is sent by the SAME ephemeral key that fired the taps — that
+    // address holds the onchain bestScore, so the username attaches to the score
+    // that earned it. No score in the data: it is already onchain, unforgeable.
+    var key = ST.key;
+    var nonce = ST.nonce++;
+
+    var dataStr = 'setHandle@' + lbUtf8ToHex(handle);
+    var dataB64 = btoa(dataStr);
+    var txForSign = {
+      nonce: nonce, value: '0', receiver: LB.contract, sender: key.address,
+      gasPrice: CFG.gasPrice, gasLimit: CFG.lbGasLimit, dataB64: dataB64,
+      chainID: CFG.chainID, version: 2, relayer: CFG.relayer
+    };
+    var sigBytes = await libs.ed.signAsync(new TextEncoder().encode(signingString(txForSign)), key.priv);
+    var plainTx = {
+      nonce: nonce, value: '0', receiver: LB.contract, sender: key.address,
+      senderUsername: undefined, receiverUsername: undefined,
+      gasPrice: CFG.gasPrice, gasLimit: CFG.lbGasLimit, data: dataB64,
+      chainID: CFG.chainID, version: 2, relayer: CFG.relayer,
+      signature: bytesToHex(sigBytes)
+    };
+
+    lbStatus('', 'Relaying (gasless) and waiting for onchain confirmation…');
+
+    var res = await fetch('/api/relay', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ transaction: plainTx })
+    });
+    var out = await res.json();
+
+    if(!res.ok || out.error){
+      lbStatus('err', lbRelayerErrorMessage(out, res.status));
+      lbSetSubmitting(false);
+      return;
+    }
+
+    // success: real tx hash + explorer link
+    LB.submitted = true;
+    var hash = out.txHash;
+    var url = out.explorerUrl || (CFG.explorer + '/transactions/' + hash);
+    lbStatus('ok',
+      '<span class="st-t">Submitted onchain on MultiversX testnet.</span>' +
+      'Your score is now a real transaction, confirmed onchain.' +
+      '<div class="st-hash"><span class="st-lbl">Tx</span>' +
+      '<a href="' + url + '" target="_blank" rel="noopener">' + hash + '</a></div>'
+    );
+    var label = $('lbSubmitLabel'); if(label) label.textContent = 'Submitted';
+    var btn = $('lbSubmitBtn'); if(btn) btn.disabled = true;
+
+    // poll the live board until the new entry lands (don't break on first read)
+    (async function(){
+      for(var i=0;i<9;i++){
+        await new Promise(function(r){ setTimeout(r, 1500); });
+        await lbLoadLeaderboard();
+      }
+    })();
+
+  } catch(err){
+    console.warn('[onchain] sprint submit failed:', err);
+    if(err && err.message === 'crypto-unavailable'){
+      lbStatus('err', 'The onchain libraries could not load. Your sprint still counts here; the leaderboard submission is just unavailable right now.');
+    } else {
+      lbStatus('err', 'Could not submit onchain right now. Your sprint still counts here. ' + (err && err.message ? '('+err.message+')' : ''));
+    }
+    lbSetSubmitting(false);
+  }
+}
+
+function lbRelayerErrorMessage(out, status){
+  var code = out && out.error;
+  if(code === 'relayer_unavailable'){ return 'The gasless relayer is not switched on yet. Your sprint still counts here; onchain submission goes live once the relayer key is set.'; }
+  if(code === 'relayer_misconfigured'){ return 'The relayer is misconfigured. Flagged for the team. Your sprint still counts here.'; }
+  if(code === 'broadcast_failed'){ return 'The network did not accept the transaction. Testnet can be busy or resetting. Try again in a moment.'; }
+  if(code === 'rate_limited'){ return 'Easy, speedrunner. Too many submissions in a short window. Try again in a minute.'; }
+  return 'Onchain submission is unavailable right now (' + (code || ('HTTP '+status)) + '). Your sprint still counts here.';
+}
+
+/* decode one base64 ScoreEntry: address(32) + handleLen(4 BE) + handle(utf8) +
+   score(u64 BE) + timestamp(u64 BE) — identical layout to the main board */
+function lbDecodeEntry(b64, bech32){
+  var bin = atob(b64);
+  var bytes = new Uint8Array(bin.length);
+  for(var i=0;i<bin.length;i++){ bytes[i] = bin.charCodeAt(i); }
+  if(bytes.length < 32 + 4 + 8 + 8) return null;
+  var off = 0;
+  var pub = bytes.slice(off, off+32); off += 32;
+  var hlen = (bytes[off]<<24) | (bytes[off+1]<<16) | (bytes[off+2]<<8) | bytes[off+3]; off += 4;
+  var handle = new TextDecoder().decode(bytes.slice(off, off+hlen)); off += hlen;
+  var score = 0n; for(var s=0;s<8;s++){ score = (score<<8n) | BigInt(bytes[off+s]); } off += 8;
+  var ts = 0n;    for(var t=0;t<8;t++){ ts = (ts<<8n) | BigInt(bytes[off+t]); } off += 8;
+  var address = ''; try { address = addressFromPubkey(bech32, pub); } catch(e){}
+  return { address: address, handle: handle, score: Number(score), timestamp: Number(ts) };
+}
+
+async function lbLoadLeaderboard(){
+  try {
+    // The contract's getTopScores view sorts ALL players on-chain (insertion sort
+    // + 3 storage reads each); past ~150 players that blows the view gas budget
+    // ("out of gas"), which breaks the board. So read the raw storage once and
+    // sort client-side: no on-chain compute, scales with the player count.
+    // Storage layout: bestScore<addr32> = u64 score, handle<addr32> = utf8 handle.
+    var res = await fetch(CFG.api + '/address/' + LB.contract + '/keys');
+    if(!res.ok) return;
+    var json = await res.json();
+    var pairs = (json && json.data && json.data.pairs) || {};
+    var toHex = function(s){ var h=''; for(var i=0;i<s.length;i++){ h += s.charCodeAt(i).toString(16).padStart(2,'0'); } return h; };
+    var hexUtf8 = function(h){ try { var b=new Uint8Array(h.length/2); for(var i=0;i<b.length;i++){ b[i]=parseInt(h.substr(i*2,2),16); } return new TextDecoder().decode(b); } catch(e){ return ''; } };
+    var PS = toHex('bestScore'), PH = toHex('handle');
+    var LS = PS.length + 64, LH = PH.length + 64;   // mapper prefix + 32-byte address (64 hex chars)
+    var byAddr = {};
+    Object.keys(pairs).forEach(function(k){
+      if(k.length === LS && k.indexOf(PS) === 0){
+        var a = k.slice(PS.length); (byAddr[a] = byAddr[a] || {}).score = parseInt(pairs[k], 16) || 0;
+      } else if(k.length === LH && k.indexOf(PH) === 0){
+        var a2 = k.slice(PH.length); (byAddr[a2] = byAddr[a2] || {}).handle = hexUtf8(pairs[k]);
+      }
+    });
+    var entries = [];
+    Object.keys(byAddr).forEach(function(a){
+      var v = byAddr[a];
+      if(!v || v.score == null || !v.handle) return;
+      entries.push({ address: '', handle: v.handle, score: v.score, timestamp: 0 });
+    });
+    entries.sort(function(a, b){ return b.score - a.score; });
+    lbRenderLeaderboard(entries);
+  } catch(err){
+    console.warn('[onchain] sprint leaderboard read failed:', err);
+  }
+}
+
+function lbEscape(s){
+  return String(s).replace(/[&<>"']/g, function(c){
+    return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c];
+  });
+}
+
+/* deterministic arcade avatar: handle → stable palette color + initial */
+function lbAvatar(handle){
+  var palette = ['#23F7DD','#5B8DEF','#F5B544','#A78BFA','#FF6B9D','#4ADE80'];
+  var h = handle || '?', n = 0;
+  for(var i=0;i<h.length;i++){ n = (n*31 + h.charCodeAt(i)) >>> 0; }
+  var color = palette[n % palette.length];
+  var initial = (h.trim().charAt(0) || '?').toUpperCase();
+  return '<span class="lb-av" style="background:' + color + '">' + lbEscape(initial) + '</span>';
+}
+
+function lbRenderLeaderboard(entries){
+  var rows = $('lbRows'), you = $('lbYou');
+  if(!rows) return;
+  if(you){ you.className = 'lb-you'; you.innerHTML = ''; }
+  if(!entries || entries.length === 0){
+    rows.innerHTML = '<div class="lb-empty">No sprints onchain yet. Submit yours to be first.</div>';
+    return;
+  }
+  // order by score desc so rank = index + 1 (the view returns sorted; this is defensive)
+  entries = entries.slice().sort(function(a,b){ return b.score - a.score; });
+  var myHandle = ($('lbHandle').value || '').trim();
+  // locate the player's own row anywhere in the fetched list, so we can always show their rank
+  var myIdx = -1;
+  if(LB.submitted && myHandle){
+    for(var k=0;k<entries.length;k++){ if(entries[k].handle === myHandle){ myIdx = k; break; } }
+  }
+  var rowHtml = function(e, rank, mine){
+    return '<div class="lb-row' + (mine?' you':'') + '">' +
+      '<span class="lb-rank">' + rank + '</span>' +
+      lbAvatar(e.handle) +
+      '<span class="lb-handle-cell">' + lbEscape(e.handle) + '</span>' +
+      '<span class="lb-score-cell">' + e.score + '</span>' +
+    '</div>';
+  };
+  // render up to the top 100 into the scrollable list (DOM-bounded); the box scrolls
+  var CAP = 100, limit = Math.min(CAP, entries.length);
+  var html = '';
+  for(var i=0;i<limit;i++){ html += rowHtml(entries[i], i + 1, (i === myIdx)); }
+  rows.innerHTML = html;
+  // when the player is below the visible top, keep their rank pinned below the scroll
+  if(you && myIdx >= 8){
+    you.innerHTML = '<div class="lb-you-label">Your rank</div>' + rowHtml(entries[myIdx], myIdx + 1, true);
+    you.className = 'lb-you show';
+  }
+}
+
+/* ---------- share ---------- */
+function sprintShare(){
+  var score = ST.sprint.finalized;   // N_real — confirmed onchain in the 30s (the honest number)
+  var lines = [
+    'I got ' + score + ' real transactions in 30 seconds. Compete against me in the Supernova Sprint!'
+  ];
+  // add the simulated cross-chain line if we have it (clearly labeled)
+  if(simResult){
+    var fin = finalizedByKey(simResult.results);
+    lines.push('');
+    lines.push('Same taps, simulated at each chain’s finality in 30s:');
+    lines.push('MultiversX ' + fin.mvx + ' · Solana ' + fin.sol + ' · Ethereum ' + fin.eth + ' · Bitcoin ' + fin.btc + ' · Tron ' + fin.trx);
+  }
+  lines.push('');
+  lines.push('👉 https://supernova-sprint.xyz');
+  var text = lines.join('\n');
+  // native share on mobile, X web-intent otherwise
+  if(navigator.share){
+    navigator.share({ text: text }).catch(function(){ openXIntent(text); });
+  } else {
+    openXIntent(text);
+  }
+}
+function openXIntent(text){
+  var url = 'https://twitter.com/intent/tweet?text=' + encodeURIComponent(text);
+  window.open(url, '_blank', 'noopener');
+}
+
+/* ============================================================================
+   wire-up
+   ============================================================================ */
+(function init(){
+  // contract explorer link in the footer (the active tap-counter for the mode)
+  updateContractLink();
+
+  // tap interactions: pointer (covers mouse + touch), plus spacebar
+  var btn = $('tapBtn');
+  btn.addEventListener('pointerdown', function(ev){
+    ev.preventDefault();
+    onTap(ev.clientX, ev.clientY);
+  });
+  btn.addEventListener('contextmenu', function(e){ e.preventDefault(); });
+
+  document.addEventListener('keydown', function(ev){
+    if(ev.code === 'Space' || ev.key === ' '){
+      // don't hijack space while typing in an input (e.g. the leaderboard handle)
+      var t = ev.target;
+      if(t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
+      ev.preventDefault();
+      var r = btn.getBoundingClientRect();
+      onTap(r.left + r.width/2, r.top + r.height/2);
+      btn.style.transform = 'scale(.95)';
+      setTimeout(function(){ btn.style.transform = ''; }, 90);
+    }
+  });
+
+  // top-level app-mode toggle
+  $('appSprint').addEventListener('click', function(){ setAppMode('sprint'); });
+  $('appUnlimited').addEventListener('click', function(){ setAppMode('unlimited'); });
+
+  // Unlimited sub-toggle (per-tap / bundled)
+  $('modePerTap').addEventListener('click', function(){ setMode('pertap'); });
+  $('modeBundled').addEventListener('click', function(){ setMode('bundled'); });
+
+  // sprint results: leaderboard submit, share, play again, switch to unlimited
+  $('lbSubmitBtn').addEventListener('click', function(){
+    try { localStorage.setItem('mvx_supernova_handle', ($('lbHandle').value||'').trim()); } catch(e){}
+    lbSubmit();
+  });
+  $('resAgainBtn').addEventListener('click', playAgain);
+  $('resShareBtn').addEventListener('click', sprintShare);
+  $('resToUnlimited').addEventListener('click', function(){ resetSprint(); setAppMode('unlimited'); });
+
+  // cross-shard demo toggle (Unlimited)
+  $('shardIntra').addEventListener('click', function(){ setShardMode('intra'); });
+  $('shardCross').addEventListener('click', function(){ setShardMode('cross'); });
+
+  // info button(s) → modal
+  $('infoBtn1').addEventListener('click', openInfo);
+  $('infoBtn2').addEventListener('click', openInfo);
+  var ib3 = $('infoBtn3'); if(ib3) ib3.addEventListener('click', openInfo);
+  $('infoClose').addEventListener('click', closeInfo);
+  $('infoModal').addEventListener('click', function(e){ if(e.target === $('infoModal')) closeInfo(); });
+  document.addEventListener('keydown', function(e){ if(e.key === 'Escape') closeInfo(); });
+
+  // simulation: MvX intra/cross finality toggle (delegated — buttons live in the lane)
+  var lanesEl = $('lanes');
+  if(lanesEl){
+    lanesEl.addEventListener('click', function(e){
+      var btn = e.target.closest ? e.target.closest('.mvx-toggle button') : null;
+      if(!btn) return;
+      onMvxModeToggle(btn.getAttribute('data-mode'));
+    });
+  }
+
+  // tooltip tap-to-toggle for touch devices (hover handles desktop)
+  (function(){
+    var isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+    document.addEventListener('click', function(e){
+      var tip = e.target.closest ? e.target.closest('.tip') : null;
+      var open = document.querySelectorAll('.tip.tip-open');
+      for(var i=0;i<open.length;i++){ if(open[i] !== tip) open[i].classList.remove('tip-open'); }
+      if(tip && isTouch){
+        var willOpen = !tip.classList.contains('tip-open');
+        var r = tip.getBoundingClientRect();
+        tip.classList.toggle('tip-left', r.left > window.innerWidth*0.6);
+        tip.classList.toggle('tip-open', willOpen);
+      }
+    });
+  })();
+
+  // prefill the handle with the player's local best-known handle if any
+  try {
+    var savedHandle = localStorage.getItem('mvx_supernova_handle');
+    if(savedHandle && $('lbHandle')){ $('lbHandle').value = savedHandle; }
+  } catch(e){}
+
+  // initial view = sprint (default), idle
+  initSprintRing();
+  applyAppModeView();
+
+  // warm the ephemeral key in the background so the first tap is instant.
+  // fail-soft: if it can't init, the first tap shows the degraded state.
+  ensureKey().then(function(ok){ if(!ok) degrade(); });
+
+  // confirm the network is reachable (keeps the fetch that validates the network),
+  // but the header pill stays just "testnet" — the 600ms round time lives in the
+  // comparison's MvX spec line, not as a bare headline next to the API-confirm beat.
+  (async function(){
+    try {
+      var r = await fetch(CFG.api + '/network/config');
+      if(r.ok){ await r.json(); /* network confirmed; pill stays "testnet" */ }
+    } catch(e){ /* leave the static label */ }
+  })();
+
+  refreshGlobal();
+  setInterval(refreshGlobal, CFG.globalRefreshMs);
+})();
+</script>
+</body>
+</html>
