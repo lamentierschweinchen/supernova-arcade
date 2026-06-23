@@ -1,3 +1,5 @@
+import { getSk, savePassport, setHandle as savePassportHandle } from "/passport.js";
+
 /* ============================================================================
    arcade-core.js — shared gasless client for Supernova Arcade cabinets.
 
@@ -239,7 +241,7 @@ export function createArcadeClient(gameKey) {
       }
       state.libs = libs;
       try {
-        const saved = sessionStorage.getItem(SK_KEY);
+        const saved = getSk(); // the shared PASSPORT key (localStorage), one per player across all games
         if (saved) {
           const priv = hexToBytes(saved);
           const pub = await libs.ed.getPublicKeyAsync(priv);
@@ -253,11 +255,7 @@ export function createArcadeClient(gameKey) {
       if (!state.key) {
         try {
           state.key = await generateEphemeral(libs);
-          try {
-            sessionStorage.setItem(SK_KEY, bytesToHex(state.key.priv));
-          } catch (_e) {
-            /* private mode / storage full — fine, key stays in memory */
-          }
+          savePassport(bytesToHex(state.key.priv), state.key.address); // mint the passport once; every game reuses it
         } catch (e) {
           console.warn("[arcade] key gen failed:", e);
           state.available = false;
@@ -289,60 +287,64 @@ export function createArcadeClient(gameKey) {
     const ok = await ensureKey();
     if (!ok) throw { code: "unavailable", message: "crypto unavailable" };
 
+    // remember the player's name in their passport, so the same name follows them across games
+    if (funcName === "setHandle" && argsHex[0]) {
+      try { savePassportHandle(new TextDecoder().decode(hexToBytes(argsHex[0]))); } catch (_e) {}
+    }
+
     const libs = state.libs,
       key = state.key;
-    const nonce = state.nonce++; // claim this nonce now
     const dataStr = argsHex.length ? funcName + "@" + argsHex.join("@") : funcName;
     const dataB64 = btoa(dataStr);
     const gasLimit = gasLimitOverride || game.gasLimit;
 
-    const txForSign = {
-      nonce,
-      value: "0",
-      receiver: game.contract,
-      sender: key.address,
-      gasPrice: net.gasPrice,
-      gasLimit,
-      dataB64,
-      chainID: net.chainID,
-      version: 2,
-      relayer: net.relayer,
-    };
-    const sigBytes = await libs.ed.signAsync(
-      new TextEncoder().encode(signingString(txForSign)),
-      key.priv,
-    );
-    const plainTx = {
-      nonce,
-      value: "0",
-      receiver: game.contract,
-      sender: key.address,
-      senderUsername: undefined,
-      receiverUsername: undefined,
-      gasPrice: net.gasPrice,
-      gasLimit,
-      data: dataB64,
-      chainID: net.chainID,
-      version: 2,
-      relayer: net.relayer,
-      signature: bytesToHex(sigBytes),
-    };
+    // Up to 2 attempts. The passport key is shared across every game, so a second
+    // tab can claim the same nonce. On a relay rejection we re-sync the nonce from
+    // the network and retry once. Single-tab play (the norm) never hits the retry.
+    let lastErr = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const nonce = state.nonce++; // claim this nonce now
+      const txForSign = {
+        nonce, value: "0", receiver: game.contract, sender: key.address,
+        gasPrice: net.gasPrice, gasLimit, dataB64, chainID: net.chainID, version: 2, relayer: net.relayer,
+      };
+      const sigBytes = await libs.ed.signAsync(
+        new TextEncoder().encode(signingString(txForSign)),
+        key.priv,
+      );
+      const plainTx = {
+        nonce, value: "0", receiver: game.contract, sender: key.address,
+        senderUsername: undefined, receiverUsername: undefined,
+        gasPrice: net.gasPrice, gasLimit, data: dataB64, chainID: net.chainID, version: 2,
+        relayer: net.relayer, signature: bytesToHex(sigBytes),
+      };
 
-    let res, out;
+      let res, out;
+      try {
+        res = await fetch("/api/relay", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ transaction: plainTx }),
+        });
+        out = await res.json();
+      } catch (e) {
+        throw { code: "network", message: "could not reach the relayer" };
+      }
+      if (res.ok && !out.error) {
+        return { txHash: out.txHash, explorerUrl: out.explorerUrl || net.explorer + "/transactions/" + out.txHash };
+      }
+      lastErr = { code: out.error || "relay_error", message: out.message || "", status: res.status };
+      if (attempt === 0) await resyncNonce(); // likely a cross-tab nonce race — re-sync and retry once
+    }
+    throw lastErr;
+  }
+
+  /* re-fetch the network nonce for the shared passport key (recovers a nonce race). */
+  async function resyncNonce() {
     try {
-      res = await fetch("/api/relay", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ transaction: plainTx }),
-      });
-      out = await res.json();
-    } catch (e) {
-      throw { code: "network", message: "could not reach the relayer" };
-    }
-    if (!res.ok || out.error) {
-      throw { code: out.error || "relay_error", message: out.message || "", status: res.status };
-    }
-    return { txHash: out.txHash, explorerUrl: out.explorerUrl || net.explorer + "/transactions/" + out.txHash };
+      const r = await fetch(net.api + "/accounts/" + state.key.address);
+      if (r.ok) { const j = await r.json(); state.nonce = j.nonce || 0; }
+    } catch (_e) { /* keep the in-memory nonce */ }
   }
 
   /* read a contract view. Returns the raw returnData (array of base64 strings),
