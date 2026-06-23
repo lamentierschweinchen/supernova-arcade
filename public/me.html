@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Your profile · Supernova Arcade</title>
+<meta name="description" content="Your Supernova Arcade passport: your arcade points across every game, your rank, and your name, all read straight from the chain." />
+<meta property="og:type" content="website" />
+<meta property="og:title" content="Your profile · Supernova Arcade" />
+<meta property="og:description" content="One passport across every game. Your arcade points, your rank, all onchain." />
+<meta property="og:image" content="https://supernova-arcade.xyz/supernova-arcade-og.png" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:image" content="https://supernova-arcade.xyz/supernova-arcade-og.png" />
+<link rel="icon" href="/favicon.svg" />
+<link rel="stylesheet" href="/arcade-shell.css" />
+<!--
+  /me — the player profile. Presentation only; reads the passport (address +
+  handle) and the SAME onchain point sources the hub Leaderboard aggregates, so
+  the total here matches the board exactly. No onchain logic, no key grinding
+  (read-only queries). Identity = passport.js. Points model = the hub board's
+  (cumulative arcade points). Per-game points come from the board's sources;
+  the getTopPoints accumulators read 0 until that contract upgrade ships (same
+  as the board). House rules: solid headlines, glow earned (the total only),
+  onchain one word, US English, no em dashes.
+-->
+<style>
+  body{ --c:#23F7DD; }
+  .wrap{ max-width:600px; }
+  .ptag{ font-family:var(--mono);font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--c);
+    background:color-mix(in srgb,var(--c) 13%,transparent);border:1px solid color-mix(in srgb,var(--c) 30%,transparent);padding:4px 9px;border-radius:999px; }
+
+  /* identity hero */
+  .me-hero{ display:flex;align-items:center;gap:16px;margin-bottom:16px; }
+  .idico{ flex:0 0 auto;width:66px;height:66px;border-radius:16px;padding:9px;display:grid;grid-template-columns:repeat(5,1fr);grid-template-rows:repeat(5,1fr);gap:2px;
+    background:linear-gradient(180deg,#11151d,#0a0d12);border:1px solid color-mix(in srgb,var(--c) 34%,#222835);
+    box-shadow:0 0 20px color-mix(in srgb,var(--c) 18%,transparent),inset 0 1px 0 rgba(255,255,255,.05); }
+  .idico i{ border-radius:2px;background:#0e131b; }
+  .idico i.on{ background:var(--c);box-shadow:0 0 5px color-mix(in srgb,var(--c) 70%,transparent); }
+  .me-id{ min-width:0; }
+  .me-name{ font-size:clamp(24px,6.5vw,32px);font-weight:900;letter-spacing:-.02em;line-height:1.04;color:var(--text);overflow:hidden;text-overflow:ellipsis; }
+  .me-addr{ margin-top:5px;font-family:var(--mono);font-size:11.5px;letter-spacing:.02em;color:var(--text-faint); }
+  .me-addr .set{ color:var(--c); }
+
+  /* the total — the one earned-glow moment */
+  .me-total{ position:relative;overflow:hidden;border:1px solid var(--border);border-radius:18px;margin-bottom:14px;
+    background:radial-gradient(120% 130% at 50% -10%,color-mix(in srgb,var(--c) 9%,transparent),transparent 58%),linear-gradient(180deg,#0b0f15,#080b10);
+    box-shadow:0 16px 40px rgba(0,0,0,.4); }
+  .me-total::after{ content:"";position:absolute;inset:0;pointer-events:none;opacity:.26;background:repeating-linear-gradient(0deg,rgba(0,0,0,0) 0 3px,rgba(0,0,0,.2) 3px 4px); }
+  .me-total .inner{ position:relative;z-index:1;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 14px;padding:18px 20px; }
+  @media(max-width:430px){ .ptag{ display:none; } }
+  .me-total .lbl{ font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--text-faint); }
+  .me-total .v{ font-family:var(--mono);font-weight:800;font-variant-numeric:tabular-nums;font-size:clamp(34px,10vw,48px);line-height:1;color:var(--c);text-shadow:0 0 24px color-mix(in srgb,var(--c) 42%,transparent); }
+  .me-total .rank{ text-align:right;flex:0 0 auto; }
+  .me-total .rank .r{ font-family:var(--mono);font-weight:800;font-variant-numeric:tabular-nums;font-size:22px;color:var(--text); }
+  .me-total .rank .of{ font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--text-faint);margin-top:3px; }
+
+  /* per-game points */
+  .pg-h{ font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--text-faint);margin:18px 2px 10px; }
+  .pg-list{ list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:9px; }
+  .pg{ display:flex;align-items:center;gap:12px;border:1px solid var(--border);border-radius:13px;padding:13px 15px;
+    background:linear-gradient(150deg,color-mix(in srgb,var(--gc) 6%,transparent),rgba(14,17,23,.5) 72%);text-decoration:none;
+    transition:border-color .15s,transform .15s; }
+  .pg:hover{ border-color:color-mix(in srgb,var(--gc) 45%,transparent);transform:translateY(-1px); }
+  .pg .bar{ width:3px;align-self:stretch;border-radius:3px;background:var(--gc);box-shadow:0 0 8px var(--gc);flex:0 0 auto; }
+  .pg .nm{ flex:1;min-width:0;font-weight:600;font-size:15px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+  .pg .pts{ font-family:var(--mono);font-weight:700;font-variant-numeric:tabular-nums;font-size:15px;color:var(--gc);flex:0 0 auto; }
+  .pg .pts.zero{ color:var(--text-faint); }
+  .pg .go{ flex:0 0 auto;color:var(--text-faint);font-size:16px;transition:transform .15s,color .15s; }
+  .pg:hover .go{ color:var(--gc);transform:translateX(2px); }
+
+  .me-empty{ border:1px solid var(--border);border-radius:16px;padding:22px 18px;text-align:center;background:rgba(14,17,23,.5); }
+  .me-empty .t{ font-size:16px;font-weight:600;color:var(--text);margin-bottom:6px; }
+  .me-empty .s{ font-size:13.5px;color:var(--text-dim);line-height:1.5;margin-bottom:16px; }
+  .cta-row{ display:flex;gap:10px;flex-wrap:wrap;justify-content:center; }
+  .cta{ font-family:var(--mono);font-size:12.5px;letter-spacing:.03em;text-decoration:none;border-radius:11px;padding:11px 18px; }
+  .cta.primary{ color:#04140f;background:var(--c);border-bottom:3px solid color-mix(in srgb,var(--c) 55%,black);box-shadow:0 0 18px color-mix(in srgb,var(--c) 28%,transparent); }
+  .cta.ghost{ color:var(--text);border:1px solid var(--border);background:rgba(14,17,23,.6); }
+</style>
+<script defer src="/_vercel/insights/script.js"></script>
+</head>
+<body>
+<canvas id="galaxy" aria-hidden="true"></canvas>
+<div class="scan"></div><div class="vignette"></div><div class="floor"></div>
+<div class="brk tl"></div><div class="brk tr"></div><div class="brk bl"></div><div class="brk br"></div>
+<div class="wrap">
+  <header class="abar">
+    <a class="back" href="/"><span aria-hidden="true">&larr;</span> Arcade</a>
+    <span class="lockup"><img src="/mvx-wordmark.svg" alt="MultiversX" /><span class="ptag">Passport</span></span>
+  </header>
+
+  <div id="meView">
+    <div class="me-empty"><div class="t">Reading your passport&hellip;</div><div class="s">One identity across every game, read straight from the chain.</div></div>
+  </div>
+
+  <footer class="afoot" style="margin-top:20px;"><span class="sn">Supernova · live on testnet</span> · one passport, every game · <a href="/">the Leaderboard</a></footer>
+</div>
+
+<script type="module">
+  import { createArcadeClient, GAMES } from "/arcade-core.js";
+  import { mountGalaxy } from "/arcade-galaxy.js";
+  import { getAddress, getHandle, hasPassport } from "/passport.js";
+  import { bech32 } from "https://esm.sh/@scure/base@1.1.6"; // same lib arcade-core uses, for address matching
+
+  try { mountGalaxy({ intensity: 0.5, canvas: "#galaxy", ambient: true }); } catch (e) {}
+
+  // SAME point sources the hub Leaderboard aggregates → /me total matches the board.
+  const SPRINT_LEADERBOARD = "erd1qqqqqqqqqqqqqpgqh9wpfl0mt337h68z8cuv6w6mkfucqv5tppuqsxz6sp";
+  const SRC = [
+    { game: "Tug of War",       view: "getTopPullers",  address: GAMES.tugofwar.contract, args: ["0a"], weight: 1, c: "#23F7DD", route: "/tug-of-war" },
+    { game: "Supernova Canvas", view: "getTopPainters", address: GAMES.canvas.contract,   args: ["0a"], weight: 1, c: "#A78BFA", route: "/canvas" },
+    { game: "Supernova Sprint", view: "getTopPoints",   address: SPRINT_LEADERBOARD,       args: [],     weight: 1, c: "#23F7DD", route: "/onchain" },
+    { game: "Degen Dash",       view: "getTopPoints",   address: GAMES.degendash.contract, args: [],     weight: 1, c: "#FFD23F", route: "/degen-dash" },
+    { game: "Clawback",         view: "getTopPoints",   address: GAMES.clawback.contract,  args: [],     weight: 1, c: "#FF6B9D", route: "/clawback" },
+    { game: "The Button",       view: "getTopPoints",   address: GAMES.button.contract,    args: [],     weight: 1, c: "#5B8DEF", route: "/button" },
+  ].filter((s) => s.address && !/^erd1qqqqqqqqqqqqqqqqqqqqqqqqqqqq/.test(s.address));
+
+  const client = createArcadeClient("canvas"); // throwaway query/decode client
+  // bare /me = your passport; /me?addr=erd1... = a shareable read-only profile of any player
+  const qAddr = new URLSearchParams(location.search).get("addr");
+  const isSelf = !qAddr;
+  const myAddr = qAddr || getAddress();
+  let myHandle = isSelf ? getHandle() : null; // a shared profile picks up the name from the boards
+  const view = document.getElementById("meView");
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const fmt = (n) => Number(n).toLocaleString("en-US");
+  const short = (a) => (a ? a.slice(0, 8) + "…" + a.slice(-4) : "");
+  // decodeLeaderboard returns bech32 only if the crypto libs are loaded (they are not on a
+  // read-only profile), else 32-byte pubkey hex. Match in BOTH formats, no key grinding.
+  const addrToHex = (a) => { try { if (!a) return ""; const w = bech32.decode(a, 256).words; return Array.from(bech32.fromWords(w)).map((b) => b.toString(16).padStart(2, "0")).join(""); } catch (e) { return ""; } };
+  const myHex = addrToHex(myAddr);
+
+  // deterministic 5x5 mirrored identicon from the address
+  function identicon(seed) {
+    let h = 2166136261 >>> 0;
+    for (let i = 0; i < seed.length; i++) { h ^= seed.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
+    const rng = () => ((h = (Math.imul(h, 1664525) + 1013904223) >>> 0) / 4294967296);
+    let cells = "";
+    for (let y = 0; y < 5; y++) { const a = rng() > 0.5, b = rng() > 0.5, c = rng() > 0.5; [a, b, c, b, a].forEach((on) => { cells += `<i class="${on ? "on" : ""}"></i>`; }); }
+    return cells;
+  }
+
+  async function readSrc(s) {
+    try {
+      const rd = await client.query(s.view, s.args, s.address);
+      return rd && rd.length ? client.decodeLeaderboard(rd) : [];
+    } catch (e) { return []; }
+  }
+
+  function noPassport() {
+    view.innerHTML = `<div class="me-empty">
+      <div class="t">No passport yet</div>
+      <div class="s">Your passport is created the first time you tap. Play any game, and your points start stacking up here.</div>
+      <div class="cta-row"><a class="cta primary" href="/">Play the arcade</a></div></div>`;
+  }
+
+  async function load() {
+    if (!myAddr || (isSelf && !hasPassport())) { noPassport(); return; }
+    const results = await Promise.all(SRC.map((s) => readSrc(s).then((es) => ({ s, es }))));
+
+    const totals = new Map(); // address -> points (full board, for rank)
+    const mine = []; // per-game { ...s, pts }
+    let myTotal = 0;
+    for (const { s, es } of results) {
+      let myPts = 0;
+      for (const e of es) {
+        if (!e || !e.address || !e.score) continue;
+        const pts = Math.round(e.score * s.weight);
+        totals.set(e.address, (totals.get(e.address) || 0) + pts);
+        const ea = String(e.address).toLowerCase();
+        if (ea === myAddr.toLowerCase() || (myHex && ea === myHex)) { myPts = pts; if (!myHandle && e.handle) myHandle = e.handle; }
+      }
+      mine.push({ ...s, pts: myPts });
+      myTotal += myPts;
+    }
+    const players = totals.size;
+    const myRank = myTotal > 0 ? [...totals.values()].filter((t) => t > myTotal).length + 1 : null;
+
+    const name = myHandle && myHandle.length ? esc(myHandle) : "Player";
+    const addrLine = (myHandle && myHandle.length) || !isSelf
+      ? short(myAddr)
+      : `${short(myAddr)} · <span class="set">add a name on any game's board</span>`;
+
+    const rankBlock = myRank
+      ? `<div class="rank"><div class="r">#${myRank}</div><div class="of">of ${fmt(players)} player${players === 1 ? "" : "s"}</div></div>`
+      : `<div class="rank"><div class="of">play to<br/>get ranked</div></div>`;
+
+    const games = mine.map((g) => {
+      const z = g.pts > 0 ? "" : " zero";
+      return `<a class="pg" style="--gc:${g.c}" href="${g.route}">`
+        + `<span class="bar"></span>`
+        + `<span class="nm">${esc(g.game)}</span>`
+        + `<span class="pts${z}">${g.pts > 0 ? fmt(g.pts) : "0"} pts</span>`
+        + `<span class="go" aria-hidden="true">&rarr;</span></a>`;
+    }).join("");
+
+    view.innerHTML = `
+      <div class="me-hero">
+        <div class="idico" aria-hidden="true">${identicon(myAddr)}</div>
+        <div class="me-id"><h1 class="me-name">${name}</h1><div class="me-addr">${addrLine}</div></div>
+      </div>
+      <div class="me-total"><div class="inner">
+        <div><div class="lbl">Arcade points</div><div class="v">${fmt(myTotal)}</div></div>
+        ${rankBlock}
+      </div></div>
+      <p class="pg-h">Points by game</p>
+      <ul class="pg-list">${games}</ul>`;
+  }
+
+  load();
+</script>
+</body>
+</html>
