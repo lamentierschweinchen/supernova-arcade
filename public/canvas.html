@@ -404,7 +404,7 @@
         if (!client.deployed) {
           S.named = true;
           $("nameRow").classList.add("hidden");
-          setStatus("ok", "Name saved here. It goes onchain with the board once the cabinet is live.");
+          setStatus("ok", "Name saved here. It goes onchain with the board once the game is live.");
           return;
         }
         try {
@@ -430,7 +430,7 @@
         drawBoard();
         render();
         if (!client.deployed) {
-          setStatus("warn", "Local preview. Paint freely; placements go onchain as a shared board once the cabinet is live.");
+          setStatus("warn", "Local preview. Paint freely; placements go onchain as a shared board once the game is live.");
         } else {
           setStatus("ok", "One tap, no wallet. Each pixel is a real transaction, gasless.");
           client.ensureKey().then((ok) => {

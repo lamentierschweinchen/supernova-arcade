@@ -336,7 +336,7 @@
         if (!name) return;
         if (!client.deployed) {
           S.named = true; $("nameRow").classList.add("hidden");
-          setStatus("ok", "Name saved here. It goes onchain with the board once the cabinet is live.");
+          setStatus("ok", "Name saved here. It goes onchain with the board once the game is live.");
           return;
         }
         try {
@@ -352,7 +352,7 @@
 
       (async function () {
         if (!client.deployed) {
-          setStatus("warn", "Local preview. Play now; your reactions go onchain once the cabinet is live.");
+          setStatus("warn", "Local preview. Play now; your reactions go onchain once the game is live.");
         } else {
           setStatus("ok", "One tap, no wallet. Every on-time reaction is a real transaction.");
           client.ensureKey().then((ok) => { if (!ok) setStatus("warn", "Onchain layer unavailable right now. Your reactions still show here."); });

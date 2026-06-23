@@ -443,7 +443,7 @@
       async function saveName() {
         const name = $("nameInput").value.trim();
         if (!name) return;
-        if (!client.deployed) { S.named = true; $("nameRow").classList.add("hidden"); setStatus("ok", "Name saved here. It goes onchain with the board once the cabinet is live."); return; }
+        if (!client.deployed) { S.named = true; $("nameRow").classList.add("hidden"); setStatus("ok", "Name saved here. It goes onchain with the board once the game is live."); return; }
         try {
           await client.sendAction("setHandle", [client.strToHex(name)]);
           S.named = true; $("nameRow").classList.add("hidden");
@@ -456,7 +456,7 @@
 
       (async function () {
         if (!client.deployed) {
-          setStatus("warn", "Local preview. A ghost presser keeps the button alive; press to reset the timer. Presses go onchain once the cabinet is live.");
+          setStatus("warn", "Local preview. A ghost presser keeps the button alive; press to reset the timer. Presses go onchain once the game is live.");
         } else {
           setStatus("ok", "One tap, no wallet. Every press is a real transaction that resets the shared timer.");
           client.ensureKey().then((ok) => { if (!ok) setStatus("warn", "Onchain layer unavailable right now. Your presses still show here."); });
