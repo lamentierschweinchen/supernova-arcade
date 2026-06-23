@@ -476,7 +476,7 @@ function setMode(on, label) {
   $("centerText").innerHTML = on
     ? `Run the track for <b>${Math.round(cfg.roundLengthMs / 1000)}s</b>. Switch lanes for the mint wins, dodge the red hazards. Each grab is a real gasless tx.`
     : `Run the track. Switch lanes for the mint wins, dodge the red hazards. It never stops and it speeds up.`;
-  setStatus("", on ? "Onchain. Every grab is a real gasless transaction." : "Practice mode. Scores and NOVA go onchain once the cabinet is live.");
+  setStatus("", on ? "Onchain. Every grab is a real gasless transaction." : "Practice mode. Scores and NOVA go onchain once the game is live.");
 }
 
 // ---------- start ----------
@@ -768,7 +768,7 @@ function reveal(final, claimable, practice, dead, ended = true) {
   if (onchain && ended && final > 0) { $("claim").classList.add("show"); $("handle").focus({ preventScroll: true }); }
   else if (onchain && ended && final === 0) setStatus("", "Score 0 this run. Grab a coin to land on the board.");
   else if (onchain && !ended) setStatus("err", "Couldn't finalize onchain in time. Your score shows but didn't record. Run again to land on the board.");
-  else if (!onchain) setStatus("", "Practice run. Scores and NOVA go onchain once the cabinet is live.");
+  else if (!onchain) setStatus("", "Practice run. Scores and NOVA go onchain once the game is live.");
 }
 
 async function claimNova(amount) {

@@ -812,7 +812,7 @@ function reveal(final, claimable, practice, ended = true) {
   // a board spot only opens when the score is actually recorded onchain (round ended)
   if (onchain && ended && final > 0) { $("claim").classList.add("show"); $("handle").focus({ preventScroll: true }); }
   else if (onchain && !ended) setStatus("err", "Couldn't finalize onchain in time. Your balance shows, but the score didn't record. Play again to land on the board.");
-  else if (!onchain) setStatus("", "Practice round. Scores and NOVA go onchain once the cabinet is live.");
+  else if (!onchain) setStatus("", "Practice round. Scores and NOVA go onchain once the game is live.");
 }
 
 async function claimNova(amount) {
