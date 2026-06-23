@@ -25,9 +25,10 @@
         aspect-ratio: 1 / 1;
         border-radius: 14px;
         overflow: hidden;
-        border: 1px solid var(--border-soft);
+        border: 1px solid color-mix(in srgb, var(--c) 24%, var(--border));
         background: #0a0d13;
         touch-action: manipulation;
+        box-shadow: 0 0 0 1px color-mix(in srgb, var(--c) 12%, transparent), 0 14px 34px rgba(0, 0, 0, 0.45);
       }
       #board {
         width: 100%;

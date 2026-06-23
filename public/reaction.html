@@ -68,10 +68,10 @@
       .pad.pad-miss .pad-main { color: #ff8c8c; }
 
       .padline { display: flex; gap: 10px; margin-top: 12px; }
-      .padline .pl { flex: 1; text-align: center; background: var(--panel-2); border: 1px solid var(--line); border-radius: 12px; padding: 10px; }
+      .padline .pl { flex: 1; position: relative; text-align: center; background: linear-gradient(180deg, #0e131b, #0a0d12); border: 1px solid var(--line); border-radius: 12px; padding: 10px; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 6px 16px rgba(0, 0, 0, 0.3); }
       .padline .pl .v { font-variant-numeric: tabular-nums; font-size: 20px; font-weight: 800; }
       .padline .pl .k { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted-2); margin-top: 2px; }
-      .padline .pl .v.cyan { color: var(--mvx-cyan); }
+      .padline .pl .v.cyan { color: var(--mvx-cyan); text-shadow: 0 0 14px rgba(35, 247, 221, 0.35); }
       .screen .play { width: 100%; display: flex; flex-direction: column; gap: 12px; align-items: stretch; }
     </style>
       <!-- Vercel Web Analytics -->
