@@ -573,6 +573,14 @@ body{
   .bulbs i,.tx-stream i{animation:none;}
   .tx-stream i{opacity:.22;}
 }
+.why{display:flex;align-items:center;gap:12px;margin:16px 0;border:1px solid rgba(35,247,221,.24);border-radius:13px;background:linear-gradient(150deg,rgba(35,247,221,.07),rgba(14,17,23,.5) 72%);padding:11px 13px;text-decoration:none;transition:border-color .15s,transform .15s;}
+.why:hover{border-color:rgba(35,247,221,.48);transform:translateY(-1px);}
+.why .why-ic{flex:0 0 auto;width:30px;height:30px;border-radius:9px;display:grid;place-items:center;color:#23F7DD;border:1px solid rgba(35,247,221,.3);background:rgba(35,247,221,.08);}
+.why .why-ic svg{width:16px;height:16px;display:block;}
+.why .why-tx{flex:1;min-width:0;font-size:12.5px;line-height:1.45;color:#9BA3B4;}
+.why .why-k{display:block;font-family:'JetBrains Mono','SFMono-Regular',ui-monospace,monospace;font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:#23F7DD;margin-bottom:2px;}
+.why .why-go{flex:0 0 auto;align-self:center;color:#23F7DD;font-size:18px;line-height:1;opacity:.8;transition:transform .15s,opacity .15s;}
+.why:hover .why-go{transform:translateX(3px);opacity:1;}
 </style>
     <!-- Vercel Web Analytics -->
     <script defer src="/_vercel/insights/script.js"></script>
@@ -698,6 +706,12 @@ body{
 
     <div class="status" id="status"></div>
   </section>
+
+  <a class="why" href="/why#speed">
+    <span class="why-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.5c.6.6 1 1.5 1 2.5h6c0-1 .4-1.9 1-2.5A6 6 0 0 0 12 3Z"/></svg></span>
+    <span class="why-tx"><span class="why-k">Why it works</span>Your whole 30-second burst finalizes in under a second, while other chains are still confirming tap one.</span>
+    <span class="why-go" aria-hidden="true">&rarr;</span>
+  </a>
 
   <!-- SPRINT RESULTS (shown after a sprint locks) -->
   <section class="results" id="results">
