@@ -334,6 +334,41 @@ h1,h2,h3,p{text-wrap:balance;}
   <!-- game grid (rendered from CABINETS) -->
   <div class="bank" id="grid"></div>
 
+  <!-- player board: who is best across every cabinet (aggregated from each game's onchain leaderboard) -->
+  <style>
+    .players{margin:34px auto 0;max-width:680px;border:1px solid var(--border);border-radius:18px;overflow:hidden;position:relative;
+      background:radial-gradient(120% 100% at 50% -10%,rgba(35,247,221,.06),transparent 55%),rgba(14,17,23,.55);backdrop-filter:blur(5px);
+      box-shadow:0 16px 40px rgba(0,0,0,.38);}
+    .players::after{content:"";position:absolute;inset:0;pointer-events:none;opacity:.22;background:repeating-linear-gradient(0deg,rgba(0,0,0,0) 0 3px,rgba(0,0,0,.18) 3px 4px);}
+    .pl-head{position:relative;z-index:1;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 18px 13px;border-bottom:1px solid rgba(255,255,255,.06);}
+    .pl-marq{display:inline-flex;align-items:center;gap:9px;font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--mint);}
+    .pl-marq .gd{width:7px;height:7px;border-radius:50%;background:var(--mint);box-shadow:0 0 8px var(--mint);}
+    .pl-me{font-family:var(--mono);font-size:11px;letter-spacing:.03em;color:var(--text-faint);white-space:nowrap;transition:color .15s;}
+    .pl-me:hover{color:var(--text);}
+    .pl-list{position:relative;z-index:1;list-style:none;margin:0;padding:6px 12px;}
+    .pl-list li{display:flex;align-items:center;gap:12px;padding:9px 8px;font-size:14.5px;border-radius:9px;}
+    .pl-list li + li{border-top:1px solid rgba(255,255,255,.05);}
+    .pl-rank{width:24px;flex:0 0 auto;text-align:center;font-family:var(--mono);font-weight:700;font-variant-numeric:tabular-nums;color:var(--text-faint);}
+    .pl-list li.top1 .pl-rank{color:#FFD23F;}.pl-list li.top2 .pl-rank{color:#cfd5e1;}.pl-list li.top3 .pl-rank{color:#F5B544;}
+    .pl-who{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);font-weight:500;}
+    .pl-who.you{color:var(--mint);font-weight:700;}
+    .pl-games{font-family:var(--mono);font-size:10.5px;letter-spacing:.02em;color:var(--text-faint);flex:0 0 auto;}
+    .pl-pts{font-family:var(--mono);font-weight:700;font-variant-numeric:tabular-nums;color:var(--text-dim);flex:0 0 auto;min-width:52px;text-align:right;}
+    .pl-list li.top1 .pl-pts{color:var(--mint);text-shadow:0 0 16px rgba(35,247,221,.35);}
+    .pl-list li.me-row{background:rgba(35,247,221,.07);}
+    .pl-empty{justify-content:center;color:var(--text-faint);font-size:13px;}
+    .pl-note{position:relative;z-index:1;font-family:var(--mono);font-size:10px;letter-spacing:.02em;color:var(--text-faint);line-height:1.65;padding:2px 18px 15px;}
+    @media(max-width:460px){.pl-games{display:none;}}
+  </style>
+  <section class="players" id="players">
+    <div class="pl-head">
+      <span class="pl-marq"><span class="gd"></span>Top players · across every cabinet</span>
+      <a class="pl-me" href="/me">Your profile &rarr;</a>
+    </div>
+    <ol class="pl-list" id="playerBoard"><li class="pl-empty">Reading the boards&hellip;</li></ol>
+    <p class="pl-note">Points by rank in each game, summed. Winning a cabinet counts most.</p>
+  </section>
+
   <!-- featured community builds -->
   <div class="feat">
     <span class="f-lab">Featured community builds</span>
@@ -717,6 +752,71 @@ if (BUILD_KIT_URL) {
 document.getElementById("featAdd").addEventListener("click", () => {
   document.getElementById("build").scrollIntoView({ behavior: "smooth", block: "start" });
 });
+
+/* ===========================================================================
+   THE PLAYER BOARD — who is best ACROSS every cabinet. Reads each game's own
+   onchain leaderboard (via the throwaway query client), awards top-heavy points
+   by rank, and sums per passport address. This is the "who's the best" layer;
+   the odometer above stays the "how much activity" layer (untouched).
+   Reaction is skipped (contract undeployed). POINTS curve + aggregation are
+   tunable — coordinate the curve with the coordinator.
+   =========================================================================== */
+const PB_POINTS = [100, 70, 50, 35, 25, 18, 13, 9, 6, 4]; // points for ranks 1..10 in a game
+const SPRINT_LEADERBOARD = "erd1qqqqqqqqqqqqqpgqh9wpfl0mt337h68z8cuv6w6mkfucqv5tppuqsxz6sp"; // /onchain Sprint board
+const PB_SOURCES = [
+  { view: "getTopScores",   address: SPRINT_LEADERBOARD },
+  { view: "getTopPullers",  address: GAMES.tugofwar.contract },
+  { view: "getTopPainters", address: GAMES.canvas.contract },
+  { view: "getTopPressers", address: GAMES.button.contract },
+  { view: "getLeaderboard", address: GAMES.clawback.contract },
+  { view: "getLeaderboard", address: GAMES.degendash.contract },
+].filter((s) => s.address && !/^erd1qqqqqqqqqqqqqqqqqqqqqqqqqqqq/.test(s.address)); // drop the all-zero placeholder
+
+const playerBoardEl = document.getElementById("playerBoard");
+
+function pbEscape(s) { return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+function pbShort(a) { return a ? a.slice(0, 6) + "…" + a.slice(-4) : "player"; }
+
+async function pbRead(src) {
+  try {
+    const rd = await client.query(src.view, ["0a"], src.address); // top 10
+    return rd && rd.length ? client.decodeLeaderboard(rd) : [];
+  } catch (e) { return []; }
+}
+
+async function refreshPlayers() {
+  const boards = await Promise.all(PB_SOURCES.map(pbRead));
+  const agg = new Map(); // address -> { handle, pts, games }
+  for (const entries of boards) {
+    entries.slice(0, PB_POINTS.length).forEach((e, i) => {
+      if (!e || !e.address) return;
+      const cur = agg.get(e.address) || { handle: "", pts: 0, games: 0 };
+      cur.pts += PB_POINTS[i];
+      cur.games += 1;
+      if (!cur.handle && e.handle) cur.handle = e.handle;
+      agg.set(e.address, cur);
+    });
+  }
+  const ranked = [...agg.entries()]
+    .map(([address, v]) => ({ address, ...v }))
+    .sort((a, b) => b.pts - a.pts)
+    .slice(0, 10);
+  if (!ranked.length) { playerBoardEl.innerHTML = '<li class="pl-empty">No ranked players yet. Be the first.</li>'; return; }
+  const me = client.address;
+  playerBoardEl.innerHTML = ranked.map((p, i) => {
+    const you = p.address === me;
+    const name = p.handle && p.handle.length ? p.handle : pbShort(p.address);
+    const top = i === 0 ? "top1" : i === 1 ? "top2" : i === 2 ? "top3" : "";
+    const cls = [top, you ? "me-row" : ""].filter(Boolean).join(" ");
+    return `<li${cls ? ' class="' + cls + '"' : ""}>`
+      + `<span class="pl-rank">${i + 1}</span>`
+      + `<span class="pl-who ${you ? "you" : ""}">${pbEscape(name)}${you ? " (you)" : ""}</span>`
+      + `<span class="pl-games">${p.games} game${p.games > 1 ? "s" : ""}</span>`
+      + `<span class="pl-pts">${p.pts.toLocaleString("en-US")}</span></li>`;
+  }).join("");
+}
+refreshPlayers();
+setInterval(refreshPlayers, 15000); // the player board moves slowly; poll lightly
 </script>
 </body>
 </html>
