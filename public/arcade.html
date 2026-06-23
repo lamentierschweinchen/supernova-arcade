@@ -317,10 +317,10 @@ h1,h2,h3,p{text-wrap:balance;}
     <span class="kicker">The Supernova Arcade</span>
     <div class="bulbs" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
     <h1 class="sign">SUPERNOVA ARCADE</h1>
-    <p class="tagline">A neon arcade <b>inside the live network</b>. Pick a cabinet and play. Every move is a <b>real transaction onchain</b>. No wallet, no gas, no install.</p>
+    <p class="tagline">A neon arcade you play <b>on MultiversX</b>. One tap, no wallet, no gas, and every move is a <b>real transaction onchain</b>. Pick a game and play.</p>
 
     <div class="scoreboard" id="scoreboard">
-      <span class="sb-label">Onchain actions · all cabinets</span>
+      <span class="sb-label">Onchain actions · all games</span>
       <div class="odometer" id="odometer" role="status" aria-live="polite" aria-label="Total onchain actions across the Arcade">
         <span class="dgt">·</span><span class="dgt">·</span><span class="dgt">·</span>
       </div>
@@ -329,7 +329,7 @@ h1,h2,h3,p{text-wrap:balance;}
   </section>
 
   <!-- section label -->
-  <div class="seclab"><span class="ar">&#9656;</span> Pick your cabinet <span class="s-n" id="gameCount">one shared onchain backend</span></div>
+  <div class="seclab"><span class="ar">&#9656;</span> Pick your game <span class="s-n" id="gameCount">one shared onchain backend</span></div>
 
   <!-- game grid (rendered from CABINETS) -->
   <div class="bank" id="grid"></div>
@@ -347,7 +347,7 @@ h1,h2,h3,p{text-wrap:balance;}
   <!-- build your own -->
   <section class="build" id="build">
     <h2>Bring your own game</h2>
-    <p class="b-sub">Take any simple game and put it onchain: every move a real transaction, one tap, no wallet. Fork the open template (the Sprint stack) or roll your own. Meet the bar below and your game gets a permanent cabinet right here.</p>
+    <p class="b-sub">Take any simple game and put it onchain: every move a real transaction, one tap, no wallet. Fork the open template (the Sprint stack) or roll your own. Meet the bar below and your game gets a permanent spot right here.</p>
     <div class="reqs">
       <div class="req"><span class="rq-n">01</span><span class="rq-t"><b>One-tap gasless play.</b> An ephemeral key in the browser, transactions relayed for free. No wallet, no install.</span></div>
       <div class="req"><span class="rq-n">02</span><span class="rq-t"><b>An onchain score or shared state.</b> A leaderboard or a shared tally the hub can read.</span></div>
@@ -510,7 +510,7 @@ grid.innerHTML = CABINETS.map(cabinetHTML).join("") + byoHTML();
 
 /* "N games and counting" */
 document.getElementById("gameCount").innerHTML =
-  "<b>" + CABINETS.length + " games</b> and counting · one shared onchain backend";
+  "<b>" + CABINETS.length + " games</b> and counting · all real, all onchain";
 
 /* ===========================================================================
    THE LIVING COUNTER — sum every cabinet's onchain action count, ~2s tick.
