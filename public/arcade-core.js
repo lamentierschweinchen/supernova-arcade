@@ -84,7 +84,7 @@ export const GAMES = {
     // the hub odometer sums its getGlobalActions once deployed. Collect-the-good run
     // game; the high-frequency tx is `collect`. SET contract AFTER DEPLOY.
     label: "Degen Dash",
-    contract: "erd1qqqqqqqqqqqqqpgqt4560zpw4yhdm0tmzj2thxkh9snerm58ppuqp7kyxt", // testnet, shard 0
+    contract: "erd1qqqqqqqqqqqqqpgqs7wzfzuc0wju7kdna4528ntz4hcywdrlppuqtn4h8w", // testnet, shard 0
     gasLimit: 8000000,
   },
 };

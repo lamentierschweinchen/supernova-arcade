@@ -91,7 +91,7 @@ export const CLAWBACK_CONTRACT =
  */
 export const DEGENDASH_CONTRACT =
   process.env.NEXT_PUBLIC_DEGENDASH_CONTRACT ||
-  "erd1qqqqqqqqqqqqqpgqt4560zpw4yhdm0tmzj2thxkh9snerm58ppuqp7kyxt"; // testnet, shard 0
+  "erd1qqqqqqqqqqqqqpgqs7wzfzuc0wju7kdna4528ntz4hcywdrlppuqtn4h8w"; // testnet, shard 0
 
 /** Relayed endpoints for the cabinets. */
 export const PULL_FUNCTION = "pull";
