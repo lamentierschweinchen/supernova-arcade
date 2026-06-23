@@ -151,6 +151,21 @@ h1{font-size:clamp(26px,6vw,34px);font-weight:900;letter-spacing:-.02em;line-hei
 .name-input::placeholder{color:var(--text-faint);}
 .hidden{display:none !important;}
 
+/* ---- per-game "why" element: one reason this is wild, links to its /why chapter.
+   Drops into any cabinet; themes to the game's --c. Copy is coordinator-supplied. ---- */
+.why{display:flex;align-items:center;gap:12px;margin-bottom:14px;
+  border:1px solid color-mix(in srgb,var(--c) 24%,var(--border));border-radius:13px;
+  background:linear-gradient(150deg,color-mix(in srgb,var(--c) 7%,transparent),rgba(14,17,23,.5) 72%);
+  padding:11px 13px;transition:border-color .15s var(--ease),transform .15s var(--ease);backdrop-filter:blur(4px);}
+.why:hover{border-color:color-mix(in srgb,var(--c) 48%,transparent);transform:translateY(-1px);}
+.why .why-ic{flex:0 0 auto;width:30px;height:30px;border-radius:9px;display:grid;place-items:center;color:var(--c);
+  border:1px solid color-mix(in srgb,var(--c) 30%,transparent);background:color-mix(in srgb,var(--c) 8%,transparent);}
+.why .why-ic svg{width:16px;height:16px;display:block;}
+.why .why-tx{flex:1;min-width:0;font-size:12.5px;line-height:1.45;color:var(--text-dim);}
+.why .why-k{display:block;font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--c);margin-bottom:2px;}
+.why .why-go{flex:0 0 auto;align-self:center;color:var(--c);font-size:18px;line-height:1;opacity:.8;transition:transform .15s var(--ease),opacity .15s;}
+.why:hover .why-go{transform:translateX(3px);opacity:1;}
+
 /* ---- footer ---- */
 .afoot{margin-top:8px;font-family:var(--mono);font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--text-faint);text-align:center;line-height:1.7;}
 .afoot .sn{color:var(--c);}
