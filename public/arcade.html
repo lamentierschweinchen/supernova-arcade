@@ -362,11 +362,11 @@ h1,h2,h3,p{text-wrap:balance;}
   </style>
   <section class="players" id="players">
     <div class="pl-head">
-      <span class="pl-marq"><span class="gd"></span>Top players · across every cabinet</span>
+      <span class="pl-marq"><span class="gd"></span>Arcade points · across every cabinet</span>
       <a class="pl-me" href="/me">Your profile &rarr;</a>
     </div>
     <ol class="pl-list" id="playerBoard"><li class="pl-empty">Reading the boards&hellip;</li></ol>
-    <p class="pl-note">Points by rank in each game, summed. Winning a cabinet counts most.</p>
+    <p class="pl-note">Earn points by playing any cabinet. The more you play, the higher you climb.</p>
   </section>
 
   <!-- featured community builds -->
@@ -754,23 +754,28 @@ document.getElementById("featAdd").addEventListener("click", () => {
 });
 
 /* ===========================================================================
-   THE PLAYER BOARD — who is best ACROSS every cabinet. Reads each game's own
-   onchain leaderboard (via the throwaway query client), awards top-heavy points
-   by rank, and sums per passport address. This is the "who's the best" layer;
-   the odometer above stays the "how much activity" layer (untouched).
-   Reaction is skipped (contract undeployed). POINTS curve + aggregation are
-   tunable — coordinate the curve with the coordinator.
+   THE ARCADE POINTS BOARD — total points per player, summed across every
+   cabinet. NOT "who's the best": you earn points by PLAYING. Each game feeds its
+   own points, cumulatively — for Tug and Canvas that is your play count (their
+   leaderboard score already is one play = one point), so they are LIVE here with
+   no contract change. Sprint, Degen Dash, Clawback and The Button each get a
+   per-player points accumulator (cumulative across runs; The Button banks your
+   wait time) and slot in below once that ships. The per-game `weight` keeps any
+   one game from drowning the rest. The odometer above stays the "how much
+   activity" layer; this is "who has played the most." Best single runs stay on
+   each cabinet's own board (best plays, not best players).
    =========================================================================== */
-const PB_POINTS = [100, 70, 50, 35, 25, 18, 13, 9, 6, 4]; // points for ranks 1..10 in a game
 const SPRINT_LEADERBOARD = "erd1qqqqqqqqqqqqqpgqh9wpfl0mt337h68z8cuv6w6mkfucqv5tppuqsxz6sp"; // /onchain Sprint board
 const PB_SOURCES = [
-  { view: "getTopScores",   address: SPRINT_LEADERBOARD },
-  { view: "getTopPullers",  address: GAMES.tugofwar.contract },
-  { view: "getTopPainters", address: GAMES.canvas.contract },
-  { view: "getTopPressers", address: GAMES.button.contract },
-  { view: "getLeaderboard", address: GAMES.clawback.contract },
-  { view: "getLeaderboard", address: GAMES.degendash.contract },
-].filter((s) => s.address && !/^erd1qqqqqqqqqqqqqqqqqqqqqqqqqqqq/.test(s.address)); // drop the all-zero placeholder
+  // LIVE: score already equals your play count (one pull / one pixel = one point).
+  { game: "Tug of War", view: "getTopPullers",  address: GAMES.tugofwar.contract, weight: 1 },
+  { game: "Canvas",     view: "getTopPainters", address: GAMES.canvas.contract,   weight: 1 },
+  // PENDING per-player points accumulators (small in-place contract upgrades), then:
+  //   { game: "Sprint",     view: "getTopEarners", address: SPRINT_LEADERBOARD,      weight: 1 },
+  //   { game: "Degen Dash", view: "getTopEarners", address: GAMES.degendash.contract, weight: 1 },
+  //   { game: "Clawback",   view: "getTopEarners", address: GAMES.clawback.contract,  weight: 1 },
+  //   { game: "The Button", view: "getTopEarners", address: GAMES.button.contract,    weight: 1 },
+].filter((s) => s.address && !/^erd1qqqqqqqqqqqqqqqqqqqqqqqqqqqq/.test(s.address)); // drop placeholders
 
 const playerBoardEl = document.getElementById("playerBoard");
 
@@ -779,29 +784,29 @@ function pbShort(a) { return a ? a.slice(0, 6) + "…" + a.slice(-4) : "player";
 
 async function pbRead(src) {
   try {
-    const rd = await client.query(src.view, ["0a"], src.address); // top 10
+    const rd = await client.query(src.view, ["0a"], src.address); // top of this game's board
     return rd && rd.length ? client.decodeLeaderboard(rd) : [];
   } catch (e) { return []; }
 }
 
 async function refreshPlayers() {
-  const boards = await Promise.all(PB_SOURCES.map(pbRead));
+  const boards = await Promise.all(PB_SOURCES.map((s) => pbRead(s).then((es) => ({ s, es }))));
   const agg = new Map(); // address -> { handle, pts, games }
-  for (const entries of boards) {
-    entries.slice(0, PB_POINTS.length).forEach((e, i) => {
-      if (!e || !e.address) return;
+  for (const { s, es } of boards) {
+    for (const e of es) {
+      if (!e || !e.address || !e.score) continue;
       const cur = agg.get(e.address) || { handle: "", pts: 0, games: 0 };
-      cur.pts += PB_POINTS[i];
+      cur.pts += Math.round(e.score * s.weight); // your cumulative points in this game (× its weight)
       cur.games += 1;
       if (!cur.handle && e.handle) cur.handle = e.handle;
       agg.set(e.address, cur);
-    });
+    }
   }
   const ranked = [...agg.entries()]
     .map(([address, v]) => ({ address, ...v }))
     .sort((a, b) => b.pts - a.pts)
     .slice(0, 10);
-  if (!ranked.length) { playerBoardEl.innerHTML = '<li class="pl-empty">No ranked players yet. Be the first.</li>'; return; }
+  if (!ranked.length) { playerBoardEl.innerHTML = '<li class="pl-empty">No points on the board yet. Go play.</li>'; return; }
   const me = client.address;
   playerBoardEl.innerHTML = ranked.map((p, i) => {
     const you = p.address === me;
