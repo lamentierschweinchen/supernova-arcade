@@ -767,14 +767,18 @@ document.getElementById("featAdd").addEventListener("click", () => {
    =========================================================================== */
 const SPRINT_LEADERBOARD = "erd1qqqqqqqqqqqqqpgqh9wpfl0mt337h68z8cuv6w6mkfucqv5tppuqsxz6sp"; // /onchain Sprint board
 const PB_SOURCES = [
-  // LIVE: score already equals your play count (one pull / one pixel = one point).
-  { game: "Tug of War", view: "getTopPullers",  address: GAMES.tugofwar.contract, weight: 1 },
-  { game: "Canvas",     view: "getTopPainters", address: GAMES.canvas.contract,   weight: 1 },
-  // PENDING per-player points accumulators (small in-place contract upgrades), then:
-  //   { game: "Sprint",     view: "getTopEarners", address: SPRINT_LEADERBOARD,      weight: 1 },
-  //   { game: "Degen Dash", view: "getTopEarners", address: GAMES.degendash.contract, weight: 1 },
-  //   { game: "Clawback",   view: "getTopEarners", address: GAMES.clawback.contract,  weight: 1 },
-  //   { game: "The Button", view: "getTopEarners", address: GAMES.button.contract,    weight: 1 },
+  // Tug + Canvas: the leaderboard score already equals your play count (one pull /
+  // one pixel = one point), so no accumulator needed. These views take a count arg.
+  { game: "Tug of War", view: "getTopPullers",  address: GAMES.tugofwar.contract, args: ["0a"], weight: 1 },
+  { game: "Canvas",     view: "getTopPainters", address: GAMES.canvas.contract,   args: ["0a"], weight: 1 },
+  // The score games bank CUMULATIVE points via getTopPoints (added by an in-place
+  // contract upgrade; the view takes no args, returns every player unsorted):
+  // Sprint = each run's finalized tx count, Degen Dash = each run's stack, Clawback
+  // = each run's kept balance, The Button = each wait you bank.
+  { game: "Sprint",     view: "getTopPoints", address: SPRINT_LEADERBOARD,        args: [], weight: 1 },
+  { game: "Degen Dash", view: "getTopPoints", address: GAMES.degendash.contract,  args: [], weight: 1 },
+  { game: "Clawback",   view: "getTopPoints", address: GAMES.clawback.contract,   args: [], weight: 1 },
+  { game: "The Button", view: "getTopPoints", address: GAMES.button.contract,     args: [], weight: 1 },
 ].filter((s) => s.address && !/^erd1qqqqqqqqqqqqqqqqqqqqqqqqqqqq/.test(s.address)); // drop placeholders
 
 const playerBoardEl = document.getElementById("playerBoard");
@@ -784,7 +788,7 @@ function pbShort(a) { return a ? a.slice(0, 6) + "…" + a.slice(-4) : "player";
 
 async function pbRead(src) {
   try {
-    const rd = await client.query(src.view, ["0a"], src.address); // top of this game's board
+    const rd = await client.query(src.view, src.args || [], src.address); // count-arg views vs no-arg getTopPoints
     return rd && rd.length ? client.decodeLeaderboard(rd) : [];
   } catch (e) { return []; }
 }
