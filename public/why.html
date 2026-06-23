@@ -190,7 +190,7 @@ footer .note b{color:var(--dim);}
       <div class="chap" style="--c:#FF6B9D">
         <span class="tag">Clawback</span>
         <h3>The attacks that drain you elsewhere bounce here</h3>
-        <p>On Ethereum, whoever builds the block can reorder your trade or wrap bots around it. That is where sandwiches and MEV live. On MultiversX the proposer <b>does not choose the order at all</b>: a deterministic random ordering, seeded by the protocol's own randomness and verified in consensus, decides it. No discretion, no front-running seat. Native <b>guardians</b> (onchain 2FA) block drainers even if someone gets your secret phrase.</p>
+        <p>On chains where the block builder freely orders transactions, like Ethereum, they can slide bots around your trade or jump the queue ahead of it. That is where sandwiches and MEV live. MultiversX takes the reordering away: the transactions in a block must follow a <b>deterministic order seeded by protocol randomness, verified in consensus</b>, so a proposer can't reshuffle them to front-run or sandwich you. It doesn't make MEV impossible, but it removes the lever the worst attacks depend on, and sub-second finality leaves almost no window to act in. Native <b>guardians</b> (onchain 2FA) then block drainers even if someone gets your secret phrase.</p>
         <div class="row"><a class="play" href="/clawback">Play Clawback</a><a class="learn" href="https://multiversx.com/on-chain-2fa" target="_blank" rel="noopener">how guardians work &rarr;</a></div>
       </div>
 
