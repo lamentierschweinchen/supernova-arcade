@@ -147,7 +147,7 @@ footer .note b{color:var(--dim);}
     <div class="statline">
       <div class="stat"><span class="v">600ms</span><span class="l">block time</span></div>
       <div class="stat"><span class="v">100&ndash;250ms</span><span class="l">finality</span></div>
-      <div class="stat"><span class="v">100,000+</span><span class="l">tx / second</span></div>
+      <div class="stat"><span class="v">120,000</span><span class="l">peak TPS · 3 shards</span></div>
     </div>
     <p class="body" style="margin-top:18px;font-size:15px;">Supernova is live on the public testnet today, which is the very network this arcade runs on. Every tap you make finalizes on the Supernova clock. <a href="https://multiversx.com/blog/supernova-decoupling-consensus-and-execution" target="_blank" rel="noopener" style="color:var(--mint);text-decoration:none;">Read how it works &rarr;</a></p>
   </section>
@@ -169,7 +169,7 @@ footer .note b{color:var(--dim);}
       <div class="chap" style="--c:#A78BFA">
         <span class="tag">Tug of War &amp; Canvas</span>
         <h3>Thousands at once, no traffic jam</h3>
-        <p>When everyone plays, nothing slows down. MultiversX <b>splits work across shards and runs them in parallel</b>, clearing <b>more than 100,000 transactions per second</b> proven under real load during Battle of Nodes. The wild part: it does this on <b>average computers</b>, not data-center hardware, so the network gets faster and more decentralized at the same time.</p>
+        <p>When everyone plays, nothing slows down. MultiversX <b>splits work across shards and runs them in parallel</b>. On BattleNet, a real fork of mainnet, it hit <b>120,000 transactions per second with just three shards</b>, and it scales as shards are added. The wild part: it does this on <b>average computers</b>, not data-center hardware, so the network gets faster and more decentralized at the same time.</p>
         <div class="row"><a class="play" href="/tug-of-war">Play Tug of War</a><a class="learn" href="https://docs.multiversx.com/technology/adaptive-state-sharding/" target="_blank" rel="noopener">how sharding works &rarr;</a></div>
       </div>
 
@@ -190,7 +190,7 @@ footer .note b{color:var(--dim);}
       <div class="chap" style="--c:#FF6B9D">
         <span class="tag">Clawback</span>
         <h3>The attacks that drain you elsewhere bounce here</h3>
-        <p>On chains where the block builder freely orders transactions, like Ethereum, they can slide bots around your trade or jump the queue ahead of it. That is where sandwiches and MEV live. MultiversX takes the reordering away: the transactions in a block must follow a <b>deterministic order seeded by protocol randomness, verified in consensus</b>, so a proposer can't reshuffle them to front-run or sandwich you. It doesn't make MEV impossible, but it removes the lever the worst attacks depend on, and sub-second finality leaves almost no window to act in. Native <b>guardians</b> (onchain 2FA) then block drainers even if someone gets your secret phrase.</p>
+        <p>On Ethereum and other chains where the block builder freely orders transactions, they can slide bots around your trade or jump the queue ahead of it. That is where sandwiches and MEV live. MultiversX <b>resists it at the protocol level</b>: the order of transactions in a block follows a deterministic rule seeded by protocol randomness, verified in consensus, so a proposer can't reorder them to front-run or sandwich you. Sub-second finality leaves almost no window to try. Native <b>guardians</b> (onchain 2FA) then block drainers even if someone gets your secret phrase.</p>
         <div class="row"><a class="play" href="/clawback">Play Clawback</a><a class="learn" href="https://multiversx.com/on-chain-2fa" target="_blank" rel="noopener">how guardians work &rarr;</a></div>
       </div>
 
