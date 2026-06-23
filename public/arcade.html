@@ -407,6 +407,8 @@ h1,h2,h3,p{text-wrap:balance;}
 "use strict";
 import { createArcadeClient, GAMES } from "/arcade-core.js";
 import { createArcadeScore } from "/arcade-score.js";
+import { getAddress } from "/passport.js";
+import { bech32 } from "https://esm.sh/@scure/base@1.1.6"; // for the "you" highlight address match
 import { mountGalaxy } from "/arcade-galaxy.js";
 
 /* ===========================================================================
@@ -781,6 +783,13 @@ const PB_SOURCES = [
   { game: "The Button", view: "getTopPoints", address: GAMES.button.contract,     args: [], weight: 1 },
 ].filter((s) => s.address && !/^erd1qqqqqqqqqqqqqqqqqqqqqqqqqqqq/.test(s.address)); // drop placeholders
 
+// the current player's passport address, for the "you" highlight (read-only, no key grind).
+// decodeLeaderboard returns bech32 only when the crypto libs are loaded (not on the hub),
+// else 32-byte pubkey hex — so match BOTH forms.
+const meBech = getAddress() || "";
+const meAddr = meBech.toLowerCase();
+const meHex = (() => { try { if (!meBech) return ""; const w = bech32.decode(meBech, 256).words; return Array.from(bech32.fromWords(w)).map((b) => b.toString(16).padStart(2, "0")).join(""); } catch (e) { return ""; } })();
+
 const playerBoardEl = document.getElementById("playerBoard");
 
 function pbEscape(s) { return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
@@ -811,9 +820,9 @@ async function refreshPlayers() {
     .sort((a, b) => b.pts - a.pts)
     .slice(0, 10);
   if (!ranked.length) { playerBoardEl.innerHTML = '<li class="pl-empty">No points on the board yet. Go play.</li>'; return; }
-  const me = client.address;
   playerBoardEl.innerHTML = ranked.map((p, i) => {
-    const you = p.address === me;
+    const ea = String(p.address).toLowerCase();
+    const you = !!ea && (ea === meAddr || (meHex && ea === meHex));
     const name = p.handle && p.handle.length ? p.handle : pbShort(p.address);
     const top = i === 0 ? "top1" : i === 1 ? "top2" : i === 2 ? "top3" : "";
     const cls = [top, you ? "me-row" : ""].filter(Boolean).join(" ");
