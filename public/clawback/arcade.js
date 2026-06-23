@@ -1,3 +1,5 @@
+import { getSk, savePassport, setHandle as savePassportHandle } from "/passport.js";
+
 // arcade.js — the reusable browser client for a Supernova Arcade game.
 //
 // Drop this in, point it at your contract + relayer (see arcade.config.js), and
@@ -67,6 +69,11 @@ export function createArcade(config) {
     for (let i = 0; i < b.length; i++) h += b[i].toString(16).padStart(2, "0");
     return h;
   }
+  function hexToBytes(h) {
+    const a = new Uint8Array(h.length / 2);
+    for (let i = 0; i < a.length; i++) a[i] = parseInt(h.substr(i * 2, 2), 16);
+    return a;
+  }
   function utf8ToHex(s) {
     return bytesToHex(enc.encode(s));
   }
@@ -135,7 +142,18 @@ export function createArcade(config) {
       const libs = await loadLibs();
       if (!libs) return false;
       try {
-        state.key = await generateEphemeral(libs);
+        const saved = getSk(); // shared PASSPORT key (localStorage) — one identity across all games
+        if (saved) {
+          const priv = hexToBytes(saved);
+          const pub = await libs.ed.getPublicKeyAsync(priv);
+          if (shardOfPubkey(pub) === cfg.relayerShard) {
+            state.key = { priv, pub, address: addressFromPubkey(libs.bech32, pub) };
+          }
+        }
+        if (!state.key) {
+          state.key = await generateEphemeral(libs);
+          savePassport(bytesToHex(state.key.priv), state.key.address); // mint the passport once; every game reuses it
+        }
       } catch (err) {
         console.warn("[arcade] key gen failed:", err);
         state.available = false;
@@ -252,6 +270,7 @@ export function createArcade(config) {
     return send("claim", "claim", cfg.gas.claim);
   }
   function setHandle(handle) {
+    savePassportHandle(handle); // the same name follows the player across every game
     return send("setHandle", `setHandle@${utf8ToHex(handle)}`, cfg.gas.setHandle);
   }
 

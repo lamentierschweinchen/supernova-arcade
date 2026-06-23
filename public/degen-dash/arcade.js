@@ -1,3 +1,5 @@
+import { getSk, savePassport, setHandle as savePassportHandle } from "/passport.js";
+
 // arcade.js — the reusable browser client for DEGEN DASH, a Supernova Arcade game.
 //
 // Drop this in, point it at your contract + relayer (see arcade.config.js), and
@@ -146,7 +148,7 @@ export function createArcade(config) {
       if (!libs) return false;
       // reuse a saved key in this tab (keeps your board row + cooldown across reload)
       try {
-        const saved = sessionStorage.getItem(SK_KEY);
+        const saved = getSk(); // shared PASSPORT key (localStorage) — one identity across all games
         if (saved) {
           const priv = hexToBytes(saved);
           const pub = await libs.ed.getPublicKeyAsync(priv);
@@ -160,11 +162,7 @@ export function createArcade(config) {
       if (!state.key) {
         try {
           state.key = await generateEphemeral(libs);
-          try {
-            sessionStorage.setItem(SK_KEY, bytesToHex(state.key.priv));
-          } catch (_e) {
-            /* private mode / storage full — fine, key stays in memory */
-          }
+          savePassport(bytesToHex(state.key.priv), state.key.address); // mint the passport once; every game reuses it
         } catch (err) {
           console.warn("[degendash] key gen failed:", err);
           state.available = false;
@@ -283,6 +281,7 @@ export function createArcade(config) {
     return send("claim", "claim", cfg.gas.claim);
   }
   function setHandle(handle) {
+    savePassportHandle(handle); // the same name follows the player across every game
     return send("setHandle", `setHandle@${utf8ToHex(handle)}`, cfg.gas.setHandle);
   }
 
