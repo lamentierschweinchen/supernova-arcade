@@ -189,6 +189,7 @@
         cooldownUntil: 0,
         feed: [],
         named: false,
+        pending: new Map(), // index -> { color, t }: locally-placed pixels not yet seen onchain
       };
 
       // ---------- palette ----------
@@ -274,8 +275,9 @@
         sel.classList.remove("pop"); void sel.offsetWidth; sel.classList.add("pop");
         setTimeout(() => sel.classList.remove("pop"), 320);
 
-        // optimistic local paint
+        // optimistic local paint — sticks regardless of tx state (see poll reconcile)
         S.board[index] = S.color;
+        S.pending.set(index, { color: S.color, t: Date.now() });
         S.yourPixels++;
         drawCell(index);
         $("coord").textContent = `(${index % GRID}, ${Math.floor(index / GRID)}) · color ${S.color}`;
@@ -285,7 +287,7 @@
         if (client.deployed) {
           try {
             const { txHash } = await client.sendAction("placePixel", [client.u32ToHex(index), client.u8ToHex(S.color)]);
-            const entry = { hash: txHash, state: "pending" };
+            const entry = { hash: txHash, state: "pending", index };
             S.feed.unshift(entry);
             if (S.feed.length > 8) S.feed.length = 8;
             renderFeed();
@@ -319,6 +321,7 @@
           }
           if (st === "fail" || st === "invalid") {
             entry.state = "failed";
+            S.pending.delete(entry.index); // a failed write reverts to chain state on the next poll
             renderFeed();
             return;
           }
@@ -381,6 +384,15 @@
         if (board && board.length) {
           const bytes = client.b64ToBytes(board[0]);
           if (bytes.length === NUM_PIXELS) {
+            // Keep locally-placed pixels visible until the chain catches up, so a
+            // placement never flickers away while its tx is still finalizing. Drop a
+            // pending pixel once the chain shows that exact color (confirmed), or after
+            // a safety timeout (covers a failed or overwritten write).
+            const now = Date.now();
+            for (const [i, p] of S.pending) {
+              if (bytes[i] === p.color || now - p.t > 20000) S.pending.delete(i);
+              else bytes[i] = p.color;
+            }
             S.board = bytes;
             drawBoard();
           }
