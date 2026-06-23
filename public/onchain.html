@@ -154,7 +154,9 @@ body{
 
 /* counters strip */
 .counters{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
-.counter{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:15px 16px;}
+.counter{position:relative;overflow:hidden;border-radius:16px;padding:15px 16px;background:linear-gradient(180deg,#0c1016,#080b10);border:1px solid rgba(35,247,221,.16);box-shadow:inset 0 1px 0 rgba(255,255,255,.04),0 10px 26px rgba(0,0,0,.32);}
+.counter::after{content:"";position:absolute;inset:0;pointer-events:none;opacity:.2;background:repeating-linear-gradient(0deg,rgba(0,0,0,0) 0 3px,rgba(0,0,0,.18) 3px 4px);}
+.counter > *{position:relative;z-index:1;}
 .counter .cl{font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--text-faint);margin-bottom:7px;display:flex;align-items:center;gap:6px;}
 .counter .cn{font-family:var(--mono);font-weight:900;font-size:30px;line-height:1;font-variant-numeric:tabular-nums;}
 .counter .cn.sent{color:var(--text);}
@@ -165,7 +167,11 @@ body{
 .counter.global .cn .g-mint{color:var(--mint);}
 
 /* the tap zone */
-.tap-card{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:22px 20px 24px;display:flex;flex-direction:column;align-items:center;gap:14px;touch-action:none;-webkit-user-select:none;user-select:none;}
+.tap-card{position:relative;border-radius:20px;padding:24px 20px 26px;display:flex;flex-direction:column;align-items:center;gap:14px;touch-action:none;-webkit-user-select:none;user-select:none;
+  background:radial-gradient(130% 120% at 50% 0%,rgba(35,247,221,.08),#070a0e 62%),#060809;
+  border:1px solid rgba(35,247,221,.28);box-shadow:0 0 0 1px rgba(35,247,221,.10),inset 0 0 42px rgba(0,0,0,.72),0 22px 48px rgba(0,0,0,.5);}
+.tap-card::after{content:"";position:absolute;inset:0;border-radius:20px;pointer-events:none;z-index:5;opacity:.3;background:repeating-linear-gradient(0deg,rgba(0,0,0,0) 0 2px,rgba(0,0,0,.22) 2px 3px);}
+.tap-card.danger{border-color:rgba(255,107,157,.4);}
 .tap-btn{
   position:relative;width:200px;height:200px;border-radius:50%;cursor:pointer;border:none;
   background:radial-gradient(circle at 50% 38%, #12303a, #0c1820 70%);
@@ -201,7 +207,7 @@ body{
 .status a{color:var(--mint);text-decoration:none;font-family:var(--mono);font-size:11px;word-break:break-all;}
 
 /* recent transactions feed */
-.feed{background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:16px 16px 8px;}
+.feed{background:linear-gradient(180deg,#0c1016,#080b10);border:1px solid rgba(35,247,221,.14);border-radius:18px;padding:16px 16px 8px;box-shadow:inset 0 1px 0 rgba(255,255,255,.04),0 10px 26px rgba(0,0,0,.3);}
 .feed h2{font-size:12px;font-weight:600;letter-spacing:.02em;color:var(--text-dim);margin-bottom:4px;display:flex;align-items:center;justify-content:space-between;}
 .feed h2 .legend{font-family:var(--mono);font-size:9.5px;font-weight:500;color:var(--text-faint);text-transform:none;letter-spacing:0;}
 .feed-note{font-size:10.5px;line-height:1.45;color:var(--text-faint);margin:0 0 8px;}
@@ -281,6 +287,8 @@ body{
 .results.show{display:flex;}
 .res-card{background:linear-gradient(180deg,var(--surface-2),var(--surface));border:1px solid var(--border);border-radius:20px;padding:24px 20px;text-align:center;position:relative;overflow:hidden;}
 .res-card::before{content:"";position:absolute;top:-60px;right:-40px;width:170px;height:170px;border-radius:50%;background:radial-gradient(circle,rgba(35,247,221,.12),transparent 65%);pointer-events:none;}
+.res-card::after{content:"";position:absolute;inset:0;pointer-events:none;opacity:.18;background:repeating-linear-gradient(0deg,rgba(0,0,0,0) 0 3px,rgba(0,0,0,.18) 3px 4px);}
+.res-card > *{position:relative;z-index:1;}
 .res-kicker{font-family:var(--mono);font-size:10px;letter-spacing:.10em;text-transform:uppercase;color:var(--text-faint);margin-bottom:10px;}
 .res-score{font-family:var(--mono);font-weight:900;font-size:72px;line-height:.95;color:var(--mint);text-shadow:0 0 30px rgba(35,247,221,.4);font-variant-numeric:tabular-nums;}
 .res-score-sub{font-size:13px;color:var(--text-dim);margin-top:8px;}
@@ -298,11 +306,11 @@ body{
 .res-actions{display:flex;flex-direction:column;gap:10px;}
 .res-btn-row{display:flex;gap:10px;}
 .btn{flex:1;font-family:inherit;font-size:14px;font-weight:600;border-radius:12px;padding:13px 16px;cursor:pointer;border:1px solid var(--border);transition:transform .08s var(--ease-out),background .18s,border-color .18s;display:inline-flex;align-items:center;justify-content:center;gap:8px;}
-.btn:active{transform:scale(.97);}
-.btn-primary{background:var(--mint);color:#04221d;border-color:var(--mint);}
+.btn:active{transform:translateY(2px) scale(.995);}
+.btn-primary{background:var(--mint);color:#04221d;border-color:var(--mint);border-bottom:3px solid #0e9c8c;box-shadow:0 0 0 1px rgba(35,247,221,.4),0 0 20px rgba(35,247,221,.26),0 6px 14px rgba(0,0,0,.4);}
 .btn-primary:hover{background:#3ffbe4;}
 .btn-primary:disabled{opacity:.55;cursor:not-allowed;}
-.btn-ghost{background:var(--surface-2);color:var(--text);}
+.btn-ghost{background:var(--surface-2);color:var(--text);border-bottom:3px solid #11151d;}
 .btn-ghost:hover{border-color:var(--mint);color:var(--mint);}
 .btn .spin{margin-right:0;}
 .res-switch{text-align:center;font-size:12px;}
@@ -310,7 +318,7 @@ body{
 .res-switch a:hover{color:var(--mint);border-bottom-color:var(--mint);}
 
 /* leaderboard submit card */
-.lb-card{background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:18px 16px;}
+.lb-card{background:linear-gradient(180deg,#0c1016,#080b10);border:1px solid rgba(35,247,221,.14);border-radius:18px;padding:18px 16px;box-shadow:inset 0 1px 0 rgba(255,255,255,.04),0 10px 26px rgba(0,0,0,.3);}
 .lb-card-head{display:flex;align-items:center;gap:8px;margin-bottom:6px;}
 .lb-card-head .lc-t{font-size:13px;font-weight:600;color:var(--text);}
 .lb-card-head .lc-net{margin-left:auto;font-family:var(--mono);font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:var(--text-faint);background:var(--surface-2);border:1px solid var(--border);border-radius:999px;padding:3px 8px;}
