@@ -340,7 +340,7 @@ const galaxy = mountGalaxy({ intensity: 0.4, focusShard: 0 });
 // mode coins come from this seeded schedule within the round; in PRACTICE mode coins
 // are generated locally and the run is endless. goodPermil high => coins are wins; the
 // hazards (dodge-or-die) are the client-side challenge.
-const DEFAULTS = { roundLengthMs: 60_000, catchWindowMs: 8_000, items: 115, goodPermil: 990, rampPermil: 500, lateWindowShrinkPermil: 0 };
+const DEFAULTS = { roundLengthMs: 180_000, catchWindowMs: 8_000, items: 340, goodPermil: 990, rampPermil: 500, lateWindowShrinkPermil: 0 };
 
 // coin types (wins). name + icon. Topical, MvX-neutral.
 const COIN_TYPES = [
@@ -715,10 +715,12 @@ async function endRoundFlow(dead) {
   await finalizeOnchain(dead);
 }
 async function finalizeOnchain(dead) {
-  showCenter(`<div class="spin"></div><p>${dead ? "Wrecked!" : "Run over."} Locking your score onchain…</p>`);
+  showCenter(`<div class="spin"></div><p>${dead ? "Wrecked!" : "Run over."} Saving your run onchain…</p>`);
+  // endRound finalizes immediately (the contract records on death — no round-timer
+  // wait); the retry only guards a relay/indexer hiccup, so it lands in ~one confirm.
   let ended = false;
-  for (let i = 0; i < 16 && !ended; i++) {
-    try { await arcade.endRound(G.roundId); } catch (err) { /* round not over yet / relay hiccup — retry */ }
+  for (let i = 0; i < 12 && !ended; i++) {
+    try { await arcade.endRound(G.roundId); } catch (err) { /* relay hiccup — retry */ }
     await wait(1500);
     const r = await arcade.getRound().catch(() => null);
     if (r && r.ended) ended = true;
