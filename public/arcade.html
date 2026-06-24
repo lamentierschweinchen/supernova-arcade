@@ -143,6 +143,8 @@ h1,h2,h3,p{text-wrap:balance;}
 @keyframes flip{0%{transform:translateY(-7px);filter:brightness(1.6);}100%{transform:translateY(0);filter:brightness(1);}}
 .comma{font-family:var(--mono);font-weight:800;font-size:clamp(26px,6.6vw,46px);color:var(--mint);align-self:flex-end;padding:0 1px 7px;opacity:.85;}
 .sb-foot{font-family:var(--mono);font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-faint);margin-top:8px;}
+.hub-why{display:inline-flex;align-items:center;gap:7px;margin-top:18px;font-size:13px;font-weight:600;color:var(--mint);text-decoration:none;border:1px solid rgba(35,247,221,.28);padding:9px 18px;border-radius:999px;transition:border-color .2s,box-shadow .25s;}
+.hub-why:hover{border-color:rgba(35,247,221,.6);box-shadow:0 0 18px rgba(35,247,221,.18);}
 .sb-foot b{color:var(--mint);}
 
 /* ---------- section label ---------- */
@@ -320,15 +322,16 @@ h1,h2,h3,p{text-wrap:balance;}
     <span class="kicker">The Supernova Arcade</span>
     <div class="bulbs" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
     <h1 class="sign">SUPERNOVA ARCADE</h1>
-    <p class="tagline">A neon arcade you play <b>on MultiversX</b>. One tap, no wallet, no gas, and every move is a <b>real transaction onchain</b>. Pick a game and play.</p>
+    <p class="tagline">A <b>MultiversX</b> arcade. One tap, no wallet, no gas, every move onchain.</p>
 
     <div class="scoreboard" id="scoreboard">
       <span class="sb-label">Onchain actions · all games</span>
       <div class="odometer" id="odometer" role="status" aria-live="polite" aria-label="Total onchain actions across the Arcade">
         <span class="dgt">·</span><span class="dgt">·</span><span class="dgt">·</span>
       </div>
-      <div class="sb-foot">MultiversX testnet · <b>climbing as people play</b></div>
+      <div class="sb-foot">Live on <b>MultiversX testnet</b></div>
     </div>
+    <a class="hub-why" href="/why">See why it's all real <span aria-hidden="true">&rarr;</span></a>
   </section>
 
   <!-- section label -->
@@ -382,7 +385,7 @@ h1,h2,h3,p{text-wrap:balance;}
     <span class="f-lab">Featured community builds</span>
     <div class="f-row">
       <div class="f-slot"><span class="fp-ic">★</span><span><span class="fp-t">Your game here</span> <span class="fp-b">first slots open</span></span></div>
-      <div class="f-slot"><span class="fp-ic">◆</span><span><span class="fp-t">Your game here</span> <span class="fp-b">jam winners featured</span></span></div>
+      <div class="f-slot"><span class="fp-ic">◆</span><span><span class="fp-t">Jam winners</span> <span class="fp-b">get featured</span></span></div>
       <div class="f-add" id="featAdd">+ submit yours</div>
     </div>
   </div>
@@ -564,7 +567,7 @@ grid.innerHTML = CABINETS.map(cabinetHTML).join("") + byoHTML();
 
 /* "N games and counting" */
 document.getElementById("gameCount").innerHTML =
-  "<b>" + CABINETS.length + " games</b> and counting · all real, all onchain";
+  "<b>" + CABINETS.length + " games</b> · choose any and compete";
 
 /* ===========================================================================
    THE LIVING COUNTER — sum every cabinet's onchain action count, ~2s tick.
