@@ -189,7 +189,7 @@
   .float.save { color: var(--green); } .float.loss { color: var(--coral); }
   @keyframes rise { from { opacity: 1; transform: translateY(0) scale(1); } to { opacity: 0; transform: translateY(-34px) scale(1.2); } }
 
-  .arena .center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 22px; gap: 12px; }
+  .arena .center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: safe center; text-align: center; padding: 18px 14px; gap: 12px; overflow-y: auto; }
   .arena .center.hide { display: none; }
   .arena .center p { color: var(--text-dim); font-size: 13px; margin: 0; max-width: 330px; line-height: 1.5; }
   .arena .center .legend { display: flex; gap: 16px; font-size: 12px; }
@@ -219,7 +219,7 @@
   .claim.show { display: flex; }
   .claim input { flex: 1; background: #06070A; border: 1px solid var(--border); border-radius: 10px; color: var(--text); padding: 11px 12px; font-size: 15px; outline: none; }
   .claim input:focus { border-color: #79e6d8; }
-  .row { display: flex; gap: 8px; justify-content: center; }
+  .row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
   /* plain centered status line (override the shell status box) */
   .status { border: none; background: none; padding: 0; min-height: 17px; display: block; font-size: 12.5px; text-align: center; }
   .status.ok { color: var(--mint); } .status.err { color: var(--coral); }
