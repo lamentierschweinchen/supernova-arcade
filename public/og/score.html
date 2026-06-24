@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>OG · Arcade score</title>
+<!-- 1200x630 SHARE card: a player's score, big and loud, per game.
+     Render: /og/score.html?g=<id>&s=<score>   (and &r=<rank> for the /me card).
+     The coordinator injects the score/rank (read from the query, with a sample
+     default so the card is complete in preview). No tech framing here — the proof
+     lives on /why. The score and the game's art carry it.
+     Built on /og/game.html (same frame, galaxy, lit CRT tile, signature art). -->
+<style>
+@font-face{font-family:'Roobert PRO';src:url('/fonts/RoobertPRO-Medium.otf') format('opentype');font-weight:500;font-display:block;}
+@font-face{font-family:'Roobert PRO';src:url('/fonts/RoobertPRO-SemiBold.otf') format('opentype');font-weight:600;font-display:block;}
+@font-face{font-family:'Roobert PRO';src:url('/fonts/RoobertPRO-Heavy.otf') format('opentype');font-weight:900;font-display:block;}
+@font-face{font-family:'JetBrains Mono';src:url('/fonts/JetBrainsMono.woff2') format('woff2');font-weight:100 800;font-display:block;}
+:root{--mint:#23F7DD;--amber:#F5B544;--coral:#FF6B9D;--blue:#5B8DEF;--lavender:#A78BFA;--green:#4ADE80;--yellow:#FFD23F;
+  --text:#F4F6FA;--dim:#9BA3B4;--faint:#6B7385;--mono:'JetBrains Mono','SFMono-Regular',ui-monospace,monospace;--c:#23F7DD;}
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{width:1200px;height:630px;overflow:hidden;background:#040506;}
+body{font-family:'Roobert PRO',system-ui,sans-serif;color:var(--text);position:relative;}
+#galaxy{position:fixed;inset:0;z-index:0;}
+.vignette{position:fixed;inset:0;z-index:1;background:radial-gradient(130% 120% at 64% 50%,transparent 42%,rgba(2,3,4,.78) 100%);}
+.frame{position:absolute;inset:0;z-index:3;display:flex;flex-direction:column;padding:46px 60px 42px;}
+.top{display:flex;align-items:center;justify-content:space-between;}
+.kick{display:flex;align-items:center;gap:13px;}
+.kick img{height:23px;display:block;opacity:.92;}
+.kick .k{font-family:var(--mono);font-size:13px;letter-spacing:.22em;text-transform:uppercase;color:var(--faint);border-left:1px solid #2a3140;padding-left:13px;}
+.shard{font-family:var(--mono);font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:var(--c);border:1px solid color-mix(in srgb,var(--c) 35%,transparent);background:color-mix(in srgb,var(--c) 10%,transparent);padding:7px 15px;border-radius:999px;}
+.mid{flex:1;display:flex;align-items:center;gap:56px;}
+/* the lit CRT tile (a cabinet screen) — the game's identity */
+.crt{flex:0 0 auto;width:300px;height:300px;border-radius:14px;position:relative;overflow:hidden;
+  background:radial-gradient(120% 130% at 50% 0%,color-mix(in srgb,var(--c) 16%,#050608),#040506);
+  border:2px solid #04060a;box-shadow:inset 0 0 34px rgba(0,0,0,.85),0 0 0 1px color-mix(in srgb,var(--c) 32%,transparent),0 0 40px color-mix(in srgb,var(--c) 22%,transparent);}
+.crt::after{content:"";position:absolute;inset:0;opacity:.45;background:repeating-linear-gradient(0deg,rgba(0,0,0,0) 0 3px,rgba(0,0,0,.26) 3px 4px);}
+.crt::before{content:"";position:absolute;top:13px;left:50%;transform:translateX(-50%);width:62%;height:5px;z-index:2;
+  background-image:radial-gradient(circle,var(--c) 1.4px,transparent 1.9px);background-size:16px 5px;background-repeat:repeat-x;filter:drop-shadow(0 0 4px var(--c));opacity:.6;}
+.gx{position:absolute;inset:0;display:grid;place-items:center;}
+/* the score block — the loud hero */
+.info{min-width:0;flex:1;}
+.gname{font-weight:600;font-size:30px;letter-spacing:.01em;color:var(--text);opacity:.92;}
+.score{margin-top:2px;font-family:var(--mono);font-weight:800;font-size:158px;line-height:.84;letter-spacing:-.035em;color:var(--c);
+  font-variant-numeric:tabular-nums;white-space:nowrap;text-shadow:0 0 40px color-mix(in srgb,var(--c) 62%,transparent),0 0 92px color-mix(in srgb,var(--c) 34%,transparent);}
+.unit{margin-top:16px;font-family:var(--mono);font-size:23px;font-weight:500;letter-spacing:.13em;text-transform:uppercase;color:var(--dim);}
+.rank{display:inline-flex;align-items:center;gap:9px;margin-top:20px;font-family:var(--mono);font-size:21px;font-weight:700;color:var(--c);
+  border:1px solid color-mix(in srgb,var(--c) 38%,transparent);background:color-mix(in srgb,var(--c) 12%,transparent);padding:9px 17px;border-radius:999px;}
+.rank .medal{width:13px;height:13px;border-radius:50%;background:linear-gradient(145deg,#FFE680,#F2B23A);box-shadow:0 0 8px rgba(245,181,68,.6);}
+.bot{display:flex;align-items:center;justify-content:space-between;}
+.route{font-family:var(--mono);font-size:16px;letter-spacing:.04em;color:var(--text);}
+.route b{color:var(--c);}
+.cta{font-family:var(--mono);font-size:15px;letter-spacing:.08em;text-transform:uppercase;color:var(--c);}
+
+/* signature art (scaled emblems, from game.html) */
+.ring{width:120px;height:120px;border-radius:50%;border:3px solid var(--c);box-shadow:0 0 26px color-mix(in srgb,var(--c) 55%,transparent);display:grid;place-items:center;}
+.ring svg{width:62px;height:48px;}
+.ring svg path{fill:var(--c);}
+.txd{position:absolute;width:7px;height:7px;border-radius:50%;background:var(--c);box-shadow:0 0 9px var(--c);}
+.rope{position:relative;width:74%;height:3px;background:color-mix(in srgb,var(--c) 32%,transparent);border-radius:3px;}
+.rope i{position:absolute;top:50%;left:58%;width:22px;height:22px;border-radius:50%;background:var(--c);box-shadow:0 0 16px var(--c);transform:translate(-50%,-50%);}
+.pixg{display:grid;grid-template-columns:repeat(6,20px);grid-auto-rows:20px;gap:5px;}
+.pixg i{width:20px;height:20px;border-radius:3px;background:color-mix(in srgb,var(--c) 18%,transparent);}
+.bbtn{width:96px;height:96px;border-radius:50%;background:radial-gradient(circle at 45% 35%,#fff,var(--c) 66%);box-shadow:0 0 30px color-mix(in srgb,var(--c) 60%,transparent);position:relative;}
+.bbtn::after{content:"";position:absolute;inset:-16px;border-radius:50%;border:3px solid color-mix(in srgb,var(--c) 45%,transparent);}
+.cardf{position:absolute;font-family:var(--mono);font-weight:700;font-size:24px;padding:7px 13px;border-radius:8px;}
+/* reaction: a flashing reflex target */
+.rxr{width:118px;height:118px;border-radius:50%;border:3px solid color-mix(in srgb,var(--c) 45%,transparent);display:grid;place-items:center;}
+.rxr i{width:42px;height:42px;border-radius:50%;background:var(--c);box-shadow:0 0 28px var(--c);}
+</style>
+</head>
+<body>
+<canvas id="galaxy" aria-hidden="true"></canvas>
+<div class="vignette"></div>
+<div class="frame">
+  <div class="top">
+    <span class="kick"><img src="/mvx-wordmark.svg" alt="MultiversX" /><span class="k">Supernova Arcade</span></span>
+    <span class="shard" id="shard">shard 1</span>
+  </div>
+  <div class="mid">
+    <div class="crt"><div class="gx" id="art"></div></div>
+    <div class="info">
+      <div class="gname" id="gname">Game</div>
+      <div class="score" id="score">0</div>
+      <div class="unit" id="unit">points</div>
+      <div class="rank" id="rank" style="display:none"><span class="medal"></span><span id="rankt">Rank #1</span></div>
+    </div>
+  </div>
+  <div class="bot">
+    <span class="route">supernova-arcade.xyz<b id="route"></b></span>
+    <span class="cta">Your turn &rarr;</span>
+  </div>
+</div>
+<script type="module">
+  import { mountGalaxy } from "/arcade-galaxy.js";
+  // unit text is derived from the coordinator's per-game share copy (the number's noun).
+  const GAMES = {
+    sprint:    { name:"Supernova Sprint", c:"#23F7DD", shard:"shard 1", art:"ring", route:"/sprint",      unit:"taps in 30 seconds" },
+    tugofwar:  { name:"Tug of War",       c:"#23F7DD", shard:"shard 1", art:"rope", route:"/tug-of-war",  unit:"pulls" },
+    canvas:    { name:"Supernova Canvas", c:"#A78BFA", shard:"shard 1", art:"pix",  route:"/canvas",      unit:"pixels placed" },
+    button:    { name:"The Button",       c:"#5B8DEF", shard:"shard 2", art:"btn",  route:"/button",      unit:"my best" },
+    clawback:  { name:"Clawback",         c:"#FF6B9D", shard:"shard 2", art:"card", route:"/clawback",    unit:"NOVA kept" },
+    degendash: { name:"Degen Dash",       c:"#FFD23F", shard:"shard 0", art:"dash", route:"/degen-dash", unit:"score" },
+    reaction:  { name:"Reaction Arcade",  c:"#F5B544", shard:"shard 0", art:"rx",   route:"/reaction",    unit:"reactions landed" },
+    me:        { name:"Supernova Arcade", c:"#23F7DD", shard:"the arcade", art:"ring", route:"/me",       unit:"arcade points", isMe:true },
+  };
+  const SI = { "shard 0":0, "shard 1":1, "shard 2":2, "the arcade":1 };
+  const q = new URLSearchParams(location.search);
+  const id = q.get("g") || "sprint";
+  const g = GAMES[id] || GAMES.sprint;
+  const score = q.get("s") || "1,234";        // coordinator injects ?s=<score>
+  const rank = q.get("r") || "1";             // coordinator injects ?r=<rank> (me card)
+
+  document.documentElement.style.setProperty("--c", g.c);
+  document.getElementById("gname").textContent = g.name;
+  document.getElementById("score").textContent = score;
+  document.getElementById("unit").textContent = g.unit;
+  document.getElementById("shard").textContent = g.shard;
+  document.getElementById("route").textContent = g.route;
+  if (g.isMe) {
+    const r = document.getElementById("rank");
+    r.style.display = "inline-flex";
+    document.getElementById("rankt").textContent = "Ranked #" + rank;
+  }
+  // long scores shrink so they never clip the card
+  const sc = document.getElementById("score");
+  const len = String(score).length;
+  if (len > 6) sc.style.fontSize = (158 - (len - 6) * 17) + "px";
+
+  const X = '<svg viewBox="0 0 192 148"><path d="M106.4,74L192,28L177.6,0.2L99.2,32.1c-2,0.8-4.3,0.8-6.3,0L14.5,0.2L0.1,28l85.6,46l-85.6,46l14.4,27.8l78.4-31.9c2-0.8,4.3-0.8,6.3,0l78.4,31.9l14.4-27.8L106.4,74z"/></svg>';
+  const px = (on) => { let s=""; for(let i=0;i<24;i++){ const lit=on.includes(i); s+=`<i style="${lit?`background:var(--c);box-shadow:0 0 10px var(--c)`:''}"></i>`; } return `<div class="pixg">${s}</div>`; };
+  const ART = {
+    ring: `<div class="ring">${X}</div><span class="txd" style="left:38%;top:74%"></span><span class="txd" style="left:60%;top:80%"></span><span class="txd" style="left:50%;top:66%"></span>`,
+    rope: `<div class="rope"><i></i></div>`,
+    pix:  px([2,3,8,9,10,14,15,20]),
+    btn:  `<div class="bbtn"></div>`,
+    card: `<span class="cardf" style="left:24%;top:26%;color:var(--coral);background:rgba(255,107,157,.16)">-12</span><span class="cardf" style="left:56%;top:54%;color:var(--green);background:rgba(74,222,128,.16)">+6</span>`,
+    dash: `<span class="cardf" style="left:22%;top:28%;color:var(--mint);background:rgba(35,247,221,.16)">+18</span><span class="cardf" style="left:56%;top:56%;color:var(--coral);background:rgba(255,107,157,.16)">&#9760;</span>`,
+    rx:   `<div class="rxr"><i></i></div>`,
+  };
+  document.getElementById("art").innerHTML = ART[g.art] || ART.ring;
+  try { mountGalaxy({ intensity: 1, focusShard: SI[g.shard] ?? 1, canvas: "#galaxy", ambient: true }); } catch (e) {}
+</script>
+</body>
+</html>
