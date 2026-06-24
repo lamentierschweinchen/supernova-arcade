@@ -69,7 +69,7 @@ export const GAMES = {
   },
   reaction: {
     label: "Reaction Arcade",
-    contract: UNDEPLOYED_PLACEHOLDER, // set to NEXT_PUBLIC_REACTION_CONTRACT address
+    contract: "erd1qqqqqqqqqqqqqpgqfhn8axyds26pz6lue7akns6de9f0qaakppuqjxjact", // testnet, shard 0
     gasLimit: 8000000,
   },
   clawback: {

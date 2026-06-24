@@ -69,7 +69,8 @@ export const BUTTON_CONTRACT =
  * deploy. See marketing/games/onchain/reaction-contract.
  */
 export const REACTION_CONTRACT =
-  process.env.NEXT_PUBLIC_REACTION_CONTRACT || UNDEPLOYED_PLACEHOLDER;
+  process.env.NEXT_PUBLIC_REACTION_CONTRACT ||
+  "erd1qqqqqqqqqqqqqpgqfhn8axyds26pz6lue7akns6de9f0qaakppuqjxjact"; // testnet, shard 0
 
 /**
  * THE CLAWBACK contract (shard 0). Set NEXT_PUBLIC_CLAWBACK_CONTRACT after deploy.
