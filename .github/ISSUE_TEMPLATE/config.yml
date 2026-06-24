@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Play the arcade
+    url: https://supernova-arcade.xyz
+    about: Try the games first.
+  - name: Read the build kit
+    url: https://github.com/lamentierschweinchen/supernova-arcade#readme
+    about: How to build and submit your own game.

@@ -745,15 +745,18 @@ if (demoMode) {
   console.info("[arcade] score-demo: synthetic activity feeding the score.");
 }
 
-/* build-kit / submit CTAs (the kit page is not published yet → scroll to the
-   on-page section; set BUILD_KIT_URL once it ships). */
-const BUILD_KIT_URL = ""; // e.g. a hosted ARCADE-SPEC / template repo URL
-if (BUILD_KIT_URL) {
-  document.getElementById("buildKitBtn").setAttribute("href", BUILD_KIT_URL);
-}
-document.getElementById("featAdd").addEventListener("click", () => {
-  document.getElementById("build").scrollIntoView({ behavior: "smooth", block: "start" });
-});
+/* build-kit + submit CTAs. They point at the GitHub repo and go live the moment
+   the repo is public (the issue templates ship in .github/ISSUE_TEMPLATE). */
+const REPO_URL = "https://github.com/lamentierschweinchen/supernova-arcade";
+const BUILD_KIT_URL = REPO_URL + "#readme"; // the build kit + ARCADE-SPEC
+const SUBMIT_URL = REPO_URL + "/issues/new?template=game-submission.yml";
+const buildKitBtn = document.getElementById("buildKitBtn");
+buildKitBtn.setAttribute("href", BUILD_KIT_URL);
+buildKitBtn.setAttribute("target", "_blank");
+buildKitBtn.setAttribute("rel", "noopener");
+const featAdd = document.getElementById("featAdd");
+featAdd.style.cursor = "pointer";
+featAdd.addEventListener("click", () => window.open(SUBMIT_URL, "_blank", "noopener"));
 
 /* ===========================================================================
    THE ARCADE POINTS BOARD — total points per player, summed across every
@@ -836,5 +839,5 @@ async function refreshPlayers() {
 refreshPlayers();
 setInterval(refreshPlayers, 15000); // the player board moves slowly; poll lightly
 </script>
-<p style="position:relative;z-index:3;margin:22px auto 16px;text-align:center;font-family:&#39;JetBrains Mono&#39;,ui-monospace,monospace;font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:#6B7385;line-height:1.6;">Built with &#10084;&#65039; on MultiversX &middot; <a href="https://github.com/lamentierschweinchen" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;text-underline-offset:2px;">GitHub</a></p></body>
+<p style="position:relative;z-index:3;margin:22px auto 16px;text-align:center;font-family:&#39;JetBrains Mono&#39;,ui-monospace,monospace;font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:#6B7385;line-height:1.6;">Built with &#10084;&#65039; on MultiversX &middot; <a href="https://github.com/lamentierschweinchen" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;text-underline-offset:2px;">GitHub</a> &middot; <a href="https://github.com/lamentierschweinchen/supernova-arcade/issues/new?template=bug-report.yml" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;text-underline-offset:2px;">Report a bug</a></p></body>
 </html>

@@ -1,0 +1,68 @@
+name: Submit a game
+description: Submit your onchain game to be featured in the Supernova Arcade
+title: "[Game] "
+labels: ["game-submission"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for building on MultiversX. Before you submit, make sure your game clears the bar (see the build kit / ARCADE-SPEC):
+        **one-tap gasless play**, an **onchain score that is the player's real transaction count**, and it emits the standard **`arcadeAction`** event.
+        Accepted games get wired into the shared relayer, the hub grid, and the leaderboard, and earn a permanent cabinet.
+  - type: input
+    id: name
+    attributes:
+      label: Game name
+      placeholder: e.g. Nova Taps
+    validations:
+      required: true
+  - type: input
+    id: repo
+    attributes:
+      label: Your repo
+      description: A public repo (a fork of the template, or your own) with the contract + client.
+      placeholder: https://github.com/you/your-game
+    validations:
+      required: true
+  - type: input
+    id: contract
+    attributes:
+      label: Testnet contract address (shard 0)
+      placeholder: erd1qqqq...
+    validations:
+      required: true
+  - type: input
+    id: functions
+    attributes:
+      label: The function(s) players call
+      description: The endpoint(s) the gasless relayer needs to allow. One tap = one call.
+      placeholder: e.g. recordTap, setHandle
+    validations:
+      required: true
+  - type: input
+    id: demo
+    attributes:
+      label: Live demo or video
+      description: A hosted URL we can play, or a short screen recording.
+    validations:
+      required: true
+  - type: textarea
+    id: pitch
+    attributes:
+      label: One-line pitch + what it proves
+      description: What is the game, and which MultiversX edge does it show off (speed, throughput, cheap onchain state, gasless, no front-running)?
+    validations:
+      required: true
+  - type: checkboxes
+    id: bar
+    attributes:
+      label: It clears the bar
+      options:
+        - label: One-tap, gasless, no wallet (an ephemeral browser key, transactions relayed for free)
+          required: true
+        - label: The score is the player's real onchain transaction count, recorded on the chain so anyone can verify it
+          required: true
+        - label: It emits the standard `arcadeAction(game, player, actions, new_total)` event
+          required: true
+        - label: It works on mobile and I have tested it on testnet
+          required: true

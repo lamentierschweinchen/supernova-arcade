@@ -1,0 +1,43 @@
+name: Report a bug
+description: Something in the arcade is not working
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: "Thanks for helping. The more specific you are, the faster it gets fixed."
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where
+      options:
+        - The hub
+        - Sprint
+        - Tug of War
+        - Canvas
+        - The Button
+        - Clawback
+        - Degen Dash
+        - Reaction
+        - My profile (/me)
+        - Why it works (/why)
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What did you do, what went wrong, and what did you expect instead?
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Browser / device
+      placeholder: e.g. iPhone Safari, Chrome on Windows
+  - type: input
+    id: tx
+    attributes:
+      label: Transaction hash (if a transaction failed)
+      placeholder: optional, helps us trace it onchain
