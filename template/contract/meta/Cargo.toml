@@ -1,0 +1,12 @@
+[package]
+name = "arcade-game-meta"
+version = "0.1.0"
+authors = ["MultiversX"]
+edition = "2021"
+publish = false
+
+[dependencies.arcade-game]
+path = ".."
+
+[dependencies.multiversx-sc-meta-lib]
+version = "0.59.0"

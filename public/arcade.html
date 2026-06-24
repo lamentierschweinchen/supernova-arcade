@@ -748,7 +748,7 @@ if (demoMode) {
 /* build-kit + submit CTAs. They point at the GitHub repo and go live the moment
    the repo is public (the issue templates ship in .github/ISSUE_TEMPLATE). */
 const REPO_URL = "https://github.com/lamentierschweinchen/supernova-arcade";
-const BUILD_KIT_URL = REPO_URL + "#readme"; // the build kit + ARCADE-SPEC
+const BUILD_KIT_URL = REPO_URL + "/tree/main/template"; // the forkable build kit + ARCADE-SPEC
 const SUBMIT_URL = REPO_URL + "/issues/new?template=game-submission.yml";
 const buildKitBtn = document.getElementById("buildKitBtn");
 buildKitBtn.setAttribute("href", BUILD_KIT_URL);

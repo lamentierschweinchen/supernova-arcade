@@ -1,0 +1,16 @@
+# secrets — never commit a relayer key
+.env
+*.pem
+.wallets/
+
+# node
+node_modules/
+
+# rust / contract build artifacts
+contract/target/
+contract/meta/target/
+contract/wasm/target/
+contract/scripts/deploy-info.testnet.json
+
+# os
+.DS_Store

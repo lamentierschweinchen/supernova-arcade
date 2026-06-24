@@ -1,0 +1,387 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Nova Taps — Supernova Arcade template</title>
+<!--
+  Nova Taps — the minimal example game for the Supernova Arcade template.
+
+  A 15-second tap sprint. Every tap is a REAL gasless transaction (recordAction)
+  signed by an ephemeral in-browser key and relayed for free. Your score is the
+  uncheatable count the CONTRACT computes — the taps that actually land in the
+  window — not a number the browser reports. The global counter and the
+  leaderboard are read straight from the chain on a ~2s tick (onchain reads are
+  legible at ~2s; never poll per frame).
+
+  Fork this file: swap the gameplay for your own, keep the three integration
+  points marked `[ARCADE]` below. See ../README.md.
+-->
+<style>
+  :root {
+    --bg: #0a0e14;
+    --surface: #121823;
+    --surface-2: #1a2230;
+    --line: #25303f;
+    --text: #eaf1f8;
+    --muted: #8aa0b4;
+    --mint: #23f7dd;
+    --mint-dim: #12b9a6;
+    --gold: #ffd66b;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: radial-gradient(1200px 700px at 50% -10%, #16202e 0%, var(--bg) 60%);
+    color: var(--text);
+    font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 20px 16px 48px; gap: 18px;
+    min-height: 100%;
+  }
+  .wrap { width: 100%; max-width: 460px; display: flex; flex-direction: column; gap: 16px; }
+  header { text-align: center; }
+  h1 { margin: 0; font-size: 26px; letter-spacing: -0.02em; }
+  h1 .nova { color: var(--mint); }
+  .sub { color: var(--muted); font-size: 13.5px; margin-top: 4px; }
+
+  /* arena */
+  .arena {
+    background: linear-gradient(180deg, var(--surface-2), var(--surface));
+    border: 1px solid var(--line); border-radius: 20px;
+    padding: 22px; text-align: center; position: relative; overflow: hidden;
+  }
+  .timer { font-variant-numeric: tabular-nums; font-size: 14px; color: var(--muted); height: 18px; }
+  .timer b { color: var(--text); }
+  .tapbtn {
+    --size: 220px;
+    width: var(--size); height: var(--size); border-radius: 50%;
+    margin: 14px auto; border: none; cursor: pointer; position: relative;
+    background:
+      radial-gradient(circle at 50% 38%, #2afff0 0%, var(--mint) 32%, var(--mint-dim) 70%, #0c7e72 100%);
+    color: #04201d; font-weight: 800; font-size: 22px; letter-spacing: 0.02em;
+    box-shadow: 0 0 0 6px rgba(35,247,221,0.10), 0 18px 50px -18px rgba(35,247,221,0.55);
+    transition: transform 0.05s ease, box-shadow 0.2s ease;
+    user-select: none; touch-action: manipulation;
+  }
+  .tapbtn:active { transform: scale(0.95); }
+  .tapbtn:disabled { filter: grayscale(0.5) brightness(0.7); cursor: default; box-shadow: none; }
+  .tapbtn .big { display: block; font-size: 46px; line-height: 1; margin-bottom: 2px; }
+  .tapcount { font-size: 13px; opacity: 0.85; }
+
+  .float { position: absolute; pointer-events: none; font-weight: 800; color: var(--mint);
+    font-size: 22px; animation: rise 0.7s ease-out forwards; }
+  @keyframes rise { from { opacity: 1; transform: translateY(0) scale(1); }
+    to { opacity: 0; transform: translateY(-46px) scale(1.3); } }
+
+  .runline { color: var(--muted); font-size: 13px; min-height: 18px; }
+  .runline b { color: var(--mint); }
+
+  /* claim */
+  .claim { display: none; gap: 8px; margin-top: 12px; }
+  .claim.show { display: flex; }
+  .claim input {
+    flex: 1; background: var(--bg); border: 1px solid var(--line); border-radius: 10px;
+    color: var(--text); padding: 11px 12px; font-size: 15px; outline: none;
+  }
+  .claim input:focus { border-color: var(--mint-dim); }
+  .btn {
+    background: var(--mint); color: #04201d; border: none; border-radius: 10px;
+    padding: 11px 16px; font-weight: 700; font-size: 15px; cursor: pointer; white-space: nowrap;
+  }
+  .btn:disabled { opacity: 0.55; cursor: default; }
+  .status { font-size: 13px; min-height: 18px; margin-top: 8px; }
+  .status.ok { color: var(--mint); }
+  .status.err { color: #ff9a8a; }
+  .status a { color: var(--mint); }
+
+  /* panels */
+  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 16px; }
+  .panel h2 { margin: 0 0 10px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: 700; }
+  .global { text-align: center; }
+  .global .num { font-size: 38px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+  .global .num .g { color: var(--mint); }
+  .global .lbl { color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+
+  .lb-row { display: grid; grid-template-columns: 28px 1fr auto; align-items: center; gap: 10px;
+    padding: 8px 6px; border-radius: 8px; font-size: 14.5px; }
+  .lb-row + .lb-row { border-top: 1px solid var(--line); }
+  .lb-row .rank { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .lb-row .handle { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lb-row .score { font-weight: 700; font-variant-numeric: tabular-nums; color: var(--mint); }
+  .lb-row.you { background: rgba(35,247,221,0.08); }
+  .lb-row.you .handle::after { content: " you"; color: var(--mint); font-size: 11px; }
+  .lb-empty { color: var(--muted); font-size: 13.5px; text-align: center; padding: 12px 0; }
+
+  /* feed */
+  .feed { font-size: 12.5px; }
+  .feed-item { display: flex; justify-content: space-between; gap: 10px; padding: 5px 0; color: var(--muted); }
+  .feed-item a { color: var(--mint); text-decoration: none; font-variant-numeric: tabular-nums; }
+  .feed-item .st-final { color: var(--mint); }
+  .feed-item .st-pending { color: var(--gold); }
+
+  .foot { color: var(--muted); font-size: 11.5px; text-align: center; line-height: 1.6; }
+  .foot b { color: #aebccb; font-weight: 600; }
+  .tick { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--mint);
+    margin-right: 5px; vertical-align: middle; animation: pulse 2s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { opacity: 0.35; } 50% { opacity: 1; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1><span class="nova">Nova</span> Taps</h1>
+    <div class="sub">Tap for 15 seconds. Every tap is a real onchain transaction.</div>
+  </header>
+
+  <section class="arena">
+    <div class="timer" id="timer">Tap the core to start</div>
+    <button class="tapbtn" id="tapBtn">
+      <span class="big" id="tapBig">▲</span>
+      <span class="tapcount" id="tapCount">0 taps</span>
+    </button>
+    <div class="runline" id="runline">No wallet. No install. Just tap.</div>
+
+    <div class="claim" id="claim">
+      <input id="handle" maxlength="32" placeholder="Pick a handle" autocomplete="off" />
+      <button class="btn" id="claimBtn">Claim spot</button>
+    </div>
+    <div class="status" id="status"></div>
+  </section>
+
+  <section class="panel global">
+    <h2><span class="tick"></span>Global onchain actions</h2>
+    <div class="num"><span class="g" id="globalNum">—</span></div>
+    <div class="lbl">across everyone playing, read live from the chain</div>
+  </section>
+
+  <section class="panel">
+    <h2><span class="tick"></span>Leaderboard — top 10</h2>
+    <div id="lbRows"><div class="lb-empty">Reading the chain…</div></div>
+  </section>
+
+  <section class="panel feed" id="feedPanel" style="display:none">
+    <h2>Your last transactions</h2>
+    <div id="feed"></div>
+  </section>
+
+  <div class="foot">
+    Onchain reads tick every ~2s. <b>Supernova is scheduled to activate on MultiversX.</b><br />
+    A testnet experiment — your taps are real transactions; the board can reset with testnet.
+  </div>
+</div>
+
+<script type="module">
+import { createArcade } from "./arcade.js";
+import { ARCADE_CONFIG } from "./arcade.config.js";
+
+// [ARCADE] 1/3 — create the client from your config.
+const arcade = createArcade(ARCADE_CONFIG);
+
+const $ = (id) => document.getElementById(id);
+const ROUND_MS = 15_000;
+
+const ui = {
+  phase: "idle", // idle | running | done
+  taps: 0,
+  endsAt: 0,
+  rafId: null,
+  feed: [], // { hash, state }
+};
+
+// warm up the ephemeral key as soon as the page loads, so the first tap is instant
+arcade.ready().then((ok) => {
+  if (!ok) setStatus("err", "Onchain play is unavailable right now — taps still work, they just won't land on the board.");
+});
+
+// ---------- the tap ----------
+$("tapBtn").addEventListener("click", onTap);
+
+function onTap(e) {
+  if (ui.phase === "done") return;
+  if (ui.phase === "idle") startRound();
+
+  ui.taps++;
+  $("tapCount").textContent = ui.taps + (ui.taps === 1 ? " tap" : " taps");
+  floatPlusOne(e);
+
+  // [ARCADE] 2/3 — fire ONE real onchain action per tap (uncheatable: 1 tap = 1 tx). Fire-and-
+  // forget: never await in the tap handler, so tapping stays instant. The local
+  // nonce increments inside the client, so rapid taps never wait on the network.
+  arcade
+    .recordAction()
+    .then((r) => trackTx(r.txHash))
+    .catch((err) => onActionError(err));
+}
+
+function startRound() {
+  ui.phase = "running";
+  ui.taps = 0;
+  ui.endsAt = performance.now() + ROUND_MS;
+  $("claim").classList.remove("show");
+  setStatus("", "");
+  $("runline").innerHTML = "Go! Every tap is a <b>real transaction</b>.";
+  tickTimer();
+}
+
+function tickTimer() {
+  const left = Math.max(0, ui.endsAt - performance.now());
+  $("timer").innerHTML = "Time left <b>" + (left / 1000).toFixed(1) + "s</b>";
+  if (left <= 0) return endRound();
+  ui.rafId = requestAnimationFrame(tickTimer);
+}
+
+async function endRound() {
+  ui.phase = "done";
+  cancelAnimationFrame(ui.rafId);
+  $("tapBtn").disabled = true;
+  $("timer").innerHTML = "Round over";
+  $("runline").innerHTML =
+    "You fired <b>" + ui.taps + "</b> taps. Your score is how many <b>land onchain</b> — settling now.";
+
+  // the contract computes the score (best in-window session). Read it back as txs
+  // confirm; it climbs toward your tap count as the chain catches up (~2s legibility).
+  pollMyScore();
+
+  // offer to claim a handle (the contract requires a real score first)
+  $("claim").classList.add("show");
+  $("handle").focus();
+}
+
+// ---------- claim a handle ----------
+$("claimBtn").addEventListener("click", claimHandle);
+$("handle").addEventListener("keydown", (e) => { if (e.key === "Enter") claimHandle(); });
+
+async function claimHandle() {
+  const handle = ($("handle").value || "").trim();
+  if (!handle) { setStatus("err", "Type a handle first."); return; }
+  if (new TextEncoder().encode(handle).length > 32) { setStatus("err", "Keep it under 32 characters."); return; }
+
+  $("claimBtn").disabled = true;
+  setStatus("", "Putting your handle onchain…");
+  try {
+    localStorage.setItem("nova_taps_handle", handle);
+    // [ARCADE] 3/3 — attach a handle to your onchain score (one gasless tx).
+    const r = await arcade.setHandle(handle);
+    setStatus("ok", 'On the board. <a href="' + r.explorerUrl + '" target="_blank" rel="noopener">View tx ↗</a>');
+    refreshBoard();
+  } catch (err) {
+    $("claimBtn").disabled = false;
+    setStatus("err", friendlyError(err, "Could not set your handle right now."));
+  }
+}
+
+// ---------- reads on a ~2s tick ----------
+async function refreshBoard() {
+  const [global, board] = await Promise.all([arcade.getGlobalActions(), arcade.getLeaderboard(10)]);
+  if (global != null) $("globalNum").textContent = global.toLocaleString("en-US");
+  renderLeaderboard(board);
+}
+setInterval(refreshBoard, 2000);
+refreshBoard();
+
+function renderLeaderboard(entries) {
+  const box = $("lbRows");
+  if (!entries || entries.length === 0) {
+    box.innerHTML = '<div class="lb-empty">No scores yet. Be the first.</div>';
+    return;
+  }
+  const me = arcade.address;
+  box.innerHTML = entries
+    .map((e, i) => {
+      const mine = me && e.address === me ? " you" : "";
+      const name = e.handle ? escapeHtml(e.handle) : shortAddr(e.address);
+      return (
+        '<div class="lb-row' + mine + '"><span class="rank">' + (i + 1) + '</span>' +
+        '<span class="handle">' + name + '</span>' +
+        '<span class="score">' + e.score + "</span></div>"
+      );
+    })
+    .join("");
+}
+
+// poll the player's own onchain score for a few ticks after a round
+async function pollMyScore() {
+  for (let i = 0; i < 8; i++) {
+    await wait(2000);
+    const me = await arcade.getPlayerEntry();
+    if (me && me.score > 0) {
+      $("runline").innerHTML = "Onchain score: <b>" + me.score + "</b> of " + ui.taps + " taps landed.";
+    }
+    refreshBoard();
+  }
+}
+
+// ---------- tx feed ----------
+async function trackTx(hash) {
+  ui.feed.unshift({ hash, state: "pending" });
+  if (ui.feed.length > 5) ui.feed.length = 5;
+  renderFeed();
+  // confirm in the background (the public API runs a beat behind true finality)
+  for (let i = 0; i < 12; i++) {
+    await wait(1500);
+    const s = await arcade.getTxStatus(hash);
+    if (s === "success") { setFeedState(hash, "final"); return; }
+    if (s === "fail" || s === "invalid") { setFeedState(hash, "failed"); return; }
+  }
+}
+function setFeedState(hash, state) {
+  const it = ui.feed.find((f) => f.hash === hash);
+  if (it) { it.state = state; renderFeed(); }
+}
+function renderFeed() {
+  if (!ui.feed.length) return;
+  $("feedPanel").style.display = "block";
+  $("feed").innerHTML = ui.feed
+    .map((f) => {
+      const short = f.hash.slice(0, 8) + "…" + f.hash.slice(-6);
+      const cls = f.state === "final" ? "st-final" : f.state === "failed" ? "" : "st-pending";
+      const label = f.state === "final" ? "✓ onchain" : f.state === "failed" ? "failed" : "pending";
+      return (
+        '<div class="feed-item"><a href="' + arcade.explorerTx(f.hash) + '" target="_blank" rel="noopener">' +
+        short + '</a><span class="' + cls + '">' + label + "</span></div>"
+      );
+    })
+    .join("");
+}
+
+// ---------- helpers ----------
+function onActionError(err) {
+  // fail soft: the run continues locally even if the relayer is down. There is no
+  // rate limit — the score is the count of real transactions, so tap as fast as you
+  // can (bots welcome; they just add more real onchain activity).
+  if (err && (err.code === "relayer_unavailable" || err.code === "unavailable")) {
+    setStatus("err", "Gasless relayer isn't switched on yet — taps still count here, they just won't land on the board.");
+  }
+}
+function friendlyError(err, fallback) {
+  if (!err) return fallback;
+  if (err.code === "relayer_unavailable" || err.code === "unavailable")
+    return "The gasless relayer isn't switched on yet.";
+  if (err.code === "play first") return "Play a round first, then claim a handle.";
+  return fallback + (err.message ? " (" + escapeHtml(err.message) + ")" : "");
+}
+function floatPlusOne(e) {
+  const f = document.createElement("span");
+  f.className = "float";
+  f.textContent = "+1";
+  const r = $("tapBtn").getBoundingClientRect();
+  const host = $("tapBtn").parentElement;
+  const hr = host.getBoundingClientRect();
+  f.style.left = (r.left - hr.left + r.width / 2 - 8) + "px";
+  f.style.top = (r.top - hr.top + 30) + "px";
+  host.appendChild(f);
+  setTimeout(() => f.remove(), 700);
+}
+function setStatus(kind, html) { const el = $("status"); el.className = "status " + kind; el.innerHTML = html; }
+function shortAddr(a) { return a ? a.slice(0, 6) + "…" + a.slice(-4) : "anon"; }
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+function wait(ms) { return new Promise((r) => setTimeout(r, ms)); }
+
+// prefill a saved handle
+try { const s = localStorage.getItem("nova_taps_handle"); if (s) $("handle").value = s; } catch {}
+</script>
+</body>
+</html>

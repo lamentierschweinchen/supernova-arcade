@@ -1,0 +1,27 @@
+{
+  "name": "supernova-arcade-template",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Open template for shipping a simple, real-onchain game on MultiversX in a day: ephemeral-key gasless play, a cheat-resistant leaderboard contract, a validating relayer, and the standard Arcade action event.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.6.0"
+  },
+  "scripts": {
+    "dev": "node --env-file=.env relayer/server.js",
+    "serve": "node relayer/server.js",
+    "verify:signing": "node scripts/verify-signing.mjs",
+    "verify:relayer": "node scripts/verify-relayer.mjs",
+    "build:contract": "cd contract && sc-meta all build",
+    "test:contract": "cd contract && cargo test",
+    "proxy:contract": "cd contract && sc-meta all proxy",
+    "deploy:contract": "cd contract && ./scripts/deploy-testnet.sh"
+  },
+  "dependencies": {
+    "@multiversx/sdk-core": "^15.4.1"
+  },
+  "devDependencies": {
+    "@noble/ed25519": "^2.1.0",
+    "@scure/base": "^1.1.6"
+  }
+}

@@ -1,0 +1,5 @@
+# Generate the type-safe proxy used by the tests, interactors, and any
+# cross-contract caller. Regenerate after changing an endpoint signature:
+#   sc-meta all proxy
+[[proxy]]
+path = "src/arcade_game_proxy.rs"
