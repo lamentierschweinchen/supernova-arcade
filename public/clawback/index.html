@@ -861,7 +861,7 @@ setInterval(refreshBoard, 2000);
 
 function renderLeaderboard(entries) {
   const box = $("lbRows");
-  if (!onchain) { box.innerHTML = '<div class="lb-empty">Live once the cabinet is deployed.</div>'; return; }
+  if (!onchain) { box.innerHTML = '<div class="lb-empty">Live once the game is deployed.</div>'; return; }
   if (!entries || entries.length === 0) { box.innerHTML = '<div class="lb-empty">No scores yet. Be the first to hold the line.</div>'; return; }
   const me = arcade.address;
   box.innerHTML = entries.map((e, i) => {

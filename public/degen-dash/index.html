@@ -307,7 +307,7 @@
     <input class="name-input" id="handle" maxlength="32" placeholder="Pick a handle for the board" autocomplete="off" />
     <button class="btn" id="claimBtn" style="width:auto">Claim spot</button>
   </div>
-  <div class="status" id="status" style="margin-bottom:14px"><span class="dot"></span><span id="statusText">Booting the cabinet…</span></div>
+  <div class="status" id="status" style="margin-bottom:14px"><span class="dot"></span><span id="statusText">Booting the game…</span></div>
 
   <section class="card global">
     <div class="card-title"><span class="gd"></span>Global onchain actions</div>
@@ -813,7 +813,7 @@ async function refreshBoard() {
 setInterval(refreshBoard, 2000);
 function renderLeaderboard(entries) {
   const box = $("lbRows");
-  if (!onchain) { box.innerHTML = '<li class="empty">Live once the cabinet is deployed.</li>'; return; }
+  if (!onchain) { box.innerHTML = '<li class="empty">Live once the game is deployed.</li>'; return; }
   if (!entries || entries.length === 0) { box.innerHTML = '<li class="empty">No runs yet. Be the first to stack a score.</li>'; return; }
   const me = arcade.address;
   box.innerHTML = entries.map((e, i) => {
