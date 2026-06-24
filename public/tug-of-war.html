@@ -17,8 +17,18 @@
     <link rel="stylesheet" href="/arcade-shell.css" />
     <style>
       /* Tug-of-War surfaces. Neon-arcade shell (Roobert, galaxy, cabinet/screen)
-         comes from /arcade-shell.css. Faction accents: Nova = mint, Flare = amber. */
+         comes from /arcade-shell.css. Faction accents: Supa = mint, Nova = amber.
+         The game is a short 45s match: pick a team, a 3-2-1 countdown, pull, then
+         a winner moment. You lock to one team until the next round starts. */
       .screen .play { width: 100%; display: flex; flex-direction: column; gap: 12px; align-items: stretch; }
+
+      /* ── match header ── */
+      .match-head { display: flex; align-items: center; justify-content: space-between; width: 100%; }
+      .timer { font-family: var(--mono); font-variant-numeric: tabular-nums; font-weight: 700; font-size: 16px; color: var(--text); }
+      .timer.low { color: var(--amber); }
+      .timebar { position: relative; width: 100%; height: 4px; border-radius: 4px; background: var(--surface-2); overflow: hidden; }
+      .timebar > i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; background: linear-gradient(90deg, var(--mint), var(--amber)); transition: width 0.25s linear; }
+
       /* ── rope ── */
       .rope-wrap {
         position: relative;
@@ -101,6 +111,14 @@
       .side-name.a { left: 12px; color: #79e6d8; }
       .side-name.b { right: 12px; color: #c79a44; }
 
+      /* ── team roster strip (distinct players this round) ── */
+      .roster { display: flex; align-items: center; justify-content: space-between; width: 100%; font-size: 11.5px; }
+      .roster .ros { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; letter-spacing: 0.02em; }
+      .roster .ros .dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+      .roster .ros.a { color: #79e6d8; } .roster .ros.a .dot { background: var(--mint); box-shadow: 0 0 8px rgba(35,247,221,0.6); }
+      .roster .ros.b { color: #c79a44; } .roster .ros.b .dot { background: var(--amber); box-shadow: 0 0 8px rgba(245,181,68,0.6); }
+      .roster .ros .n { font-family: var(--mono); font-variant-numeric: tabular-nums; font-weight: 800; }
+
       /* ── side picker ── */
       .sides { display: flex; gap: 10px; margin: 12px 0; }
       .side-btn {
@@ -111,7 +129,7 @@
         text-align: center;
         border: 1.5px solid var(--border);
         background: var(--surface-2);
-        transition: border-color 0.15s, background 0.15s, transform 0.06s;
+        transition: border-color 0.15s, background 0.15s, transform 0.06s, opacity 0.15s;
         user-select: none;
       }
       .side-btn:active { transform: scale(0.98); }
@@ -121,10 +139,61 @@
       .side-btn.b .nm { color: var(--amber); }
       .side-btn.sel.a { border-color: var(--mint); background: rgba(35,247,221,0.1); box-shadow: 0 0 18px rgba(35,247,221,0.18); }
       .side-btn.sel.b { border-color: var(--amber); background: rgba(245,181,68,0.1); box-shadow: 0 0 18px rgba(245,181,68,0.18); }
+      /* locked: the team you did NOT join dims out and stops responding */
+      .side-btn.locked { opacity: 0.34; pointer-events: none; filter: grayscale(0.5); }
+      .side-btn .lk { display: none; font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-faint); margin-top: 3px; }
+      .side-btn.locked.sel .lk { display: block; color: inherit; opacity: 0.8; }
 
-      .timer { font-family: var(--mono); font-variant-numeric: tabular-nums; font-weight: 700; font-size: 16px; color: var(--text); }
       .pull-btn.a { background: var(--mint); color: #04221F; box-shadow: 0 0 0 1px rgba(35,247,221,0.22), 0 6px 16px rgba(0,0,0,0.35); border-bottom: 3px solid #0e9c8c; }
       .pull-btn.b { background: var(--amber); color: #2a1c02; box-shadow: 0 0 0 1px rgba(245,181,68,0.22), 0 6px 16px rgba(0,0,0,0.35); border-bottom: 3px solid #b9842a; }
+
+      /* ── countdown + winner overlay over the screen ── */
+      .overlay {
+        position: absolute;
+        inset: 0;
+        z-index: 5;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        text-align: center;
+        padding: 18px;
+        background: radial-gradient(120% 100% at 50% 40%, rgba(6,7,10,0.78), rgba(4,5,6,0.94));
+        backdrop-filter: blur(3px);
+      }
+      .overlay .ov-k { font-family: var(--mono); font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--text-faint); }
+      .cd-num {
+        font-family: var(--mono);
+        font-variant-numeric: tabular-nums;
+        font-weight: 800;
+        font-size: clamp(64px, 22vw, 104px);
+        line-height: 1;
+        color: var(--c);
+        text-shadow: 0 0 28px color-mix(in srgb, var(--c) 55%, transparent);
+        animation: cd-pop 0.55s var(--ease);
+      }
+      .cd-num.go { color: var(--mint); text-shadow: 0 0 32px rgba(35,247,221,0.6); }
+      @keyframes cd-pop { 0% { transform: scale(1.5); opacity: 0; } 35% { transform: scale(1); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
+      @media (prefers-reduced-motion: reduce) { .cd-num { animation: none; } }
+
+      .win-title {
+        font-size: clamp(30px, 9vw, 44px);
+        font-weight: 900;
+        letter-spacing: -0.02em;
+        line-height: 1;
+        animation: win-pop 0.5s var(--ease);
+      }
+      .win-title.a { color: var(--mint); text-shadow: 0 0 26px rgba(35,247,221,0.5); }
+      .win-title.b { color: var(--amber); text-shadow: 0 0 26px rgba(245,181,68,0.5); }
+      .win-title.tie { color: var(--text); }
+      @keyframes win-pop { 0% { transform: scale(0.7); opacity: 0; } 60% { transform: scale(1.05); } 100% { transform: scale(1); opacity: 1; } }
+      @media (prefers-reduced-motion: reduce) { .win-title { animation: none; } }
+      .win-score { font-family: var(--mono); font-variant-numeric: tabular-nums; font-weight: 800; font-size: 22px; color: var(--text); }
+      .win-score .a { color: var(--mint); } .win-score .b { color: var(--amber); }
+      .win-sub { font-size: 12px; color: var(--text-dim); max-width: 240px; line-height: 1.45; }
+      .win-cta { margin-top: 4px; width: auto; min-width: 200px; padding: 12px 22px; }
+
       .result {
         text-align: center;
         font-weight: 600;
@@ -154,17 +223,18 @@
       </header>
 
       <h1>Tug-of-War</h1>
-      <p class="sub">Pick a side. Every tap is a <b>real onchain transaction</b> pulling the rope your way. The tally is shared and onchain; it settles in about two seconds.</p>
+      <p class="sub">Pick a team. Every tap is a <b>real onchain transaction</b> pulling the rope your way. The tally is shared and onchain; it settles in about two seconds. Each round runs 45 seconds.</p>
       <div class="onetap"><span class="ic"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M13 2 3 14h7l-1 8 10-12h-7z" stroke="#23F7DD" stroke-width="1.6" stroke-linejoin="round"/></svg></span><span class="t"><b>No wallet, just play.</b> A key is created in your browser and we cover the gas.</span></div>
 
       <div class="cabinet">
-        <div class="cab-marquee">Tug-of-War · pick a side, pull the rope</div>
+        <div class="cab-marquee">Tug-of-War · pick a team, pull the rope</div>
         <div class="screen">
           <div class="play">
-            <div class="row" style="justify-content: space-between; width: 100%">
+            <div class="match-head">
               <span class="readout">Round <span id="roundId">1</span></span>
-              <span class="timer" id="timer">2:00</span>
+              <span class="timer" id="timer">0:45</span>
             </div>
+            <div class="timebar"><i id="timebar" style="width:100%"></i></div>
             <div class="rope-wrap">
               <div class="zone a"></div>
               <div class="zone b"></div>
@@ -172,23 +242,32 @@
               <div class="center-mark"></div>
               <div class="side-tally a" id="tallyA">0</div>
               <div class="side-tally b" id="tallyB">0</div>
-              <div class="side-name a">Nova</div>
-              <div class="side-name b">Flare</div>
+              <div class="side-name a">Supa</div>
+              <div class="side-name b">Nova</div>
               <div class="knot" id="knot"><svg class="xmark" viewBox="0 0 192 148" aria-hidden="true"><path d="M106.4,74L192,28L177.6,0.2L99.2,32.1c-2,0.8-4.3,0.8-6.3,0L14.5,0.2L0.1,28l85.6,46l-85.6,46l14.4,27.8l78.4-31.9c2-0.8,4.3-0.8,6.3,0l78.4,31.9l14.4-27.8L106.4,74z"/></svg></div>
             </div>
+            <div class="roster">
+              <span class="ros a"><span class="dot"></span>Supa: <span class="n" id="rosterA">0</span> players</span>
+              <span class="ros b"><span class="n" id="rosterB">0</span> players :Nova<span class="dot"></span></span>
+            </div>
             <div class="sides">
-              <div class="side-btn a" id="sideA" role="button" tabindex="0">
+              <div class="side-btn a" id="sideA" role="button" tabindex="0" aria-label="Join team Supa">
+                <div class="tag">Team</div>
+                <div class="nm">Supa</div>
+                <div class="lk">Your team</div>
+              </div>
+              <div class="side-btn b" id="sideB" role="button" tabindex="0" aria-label="Join team Nova">
                 <div class="tag">Team</div>
                 <div class="nm">Nova</div>
-              </div>
-              <div class="side-btn b" id="sideB" role="button" tabindex="0">
-                <div class="tag">Team</div>
-                <div class="nm">Flare</div>
+                <div class="lk">Your team</div>
               </div>
             </div>
-            <button class="btn pull-btn a" id="pullBtn" disabled>Pick a side to pull</button>
+            <button class="btn pull-btn a" id="pullBtn" disabled>Pick a team to start</button>
             <div class="result hidden" id="result"></div>
           </div>
+
+          <!-- countdown / winner moment overlay (covers the screen, sits above .play) -->
+          <div class="overlay hidden" id="overlay"></div>
         </div>
       </div>
 
@@ -201,7 +280,7 @@
       <div class="stats">
         <div class="stat"><div class="num" id="yourPulls">0</div><div class="lbl">Your pulls</div></div>
         <div class="stat"><div class="num on" id="globalActions">0</div><div class="lbl">Onchain pulls</div></div>
-        <div class="stat"><div class="num" id="players">0</div><div class="lbl">Pullers</div></div>
+        <div class="stat"><div class="num" id="players">0</div><div class="lbl">In this round</div></div>
       </div>
 
       <div class="status" id="status"><span class="dot"></span><span id="statusText">Warming up…</span></div>
@@ -226,7 +305,7 @@
         <ul class="feed" id="feed"></ul>
       </div>
 
-      <footer class="afoot"><span class="sn">Supernova · live on testnet</span> · 600ms rounds on MultiversX · gasless, no wallet · the shared tally is read straight from the chain</footer>
+      <footer class="afoot"><span class="sn">Supernova · live on testnet</span> · 45s rounds on MultiversX · gasless, no wallet · the shared tally is read straight from the chain</footer>
     </div>
 
     <script type="module">
@@ -238,19 +317,27 @@
       const galaxy = mountGalaxy({ intensity: 0.5, focusShard: 1 });
       const $ = (id) => document.getElementById(id);
       const fmt = (n) => (n == null ? "···" : Number(n).toLocaleString("en-US"));
-      const ROUND_MS = 120000; // mirrors ROUND_DURATION_MS
-      const COLORS = ["Nova", "Flare"];
+      const ROUND_MS = 45000; // mirrors the contract's 45s ROUND_DURATION_MS (overridden by getRound)
+      // side 0 = Supa (A, left, mint), side 1 = Nova (B, right, amber)
+      const COLORS = ["Supa", "Nova"];
 
       // unified view state
       const S = {
-        side: null, // 0 = Nova(A), 1 = Flare(B)
-        onchain: { roundId: 1, a: 0, b: 0, start: Date.now(), global: 0, players: 0 },
+        side: null, // 0 = Supa(A), 1 = Nova(B) — your locked team for THIS round
+        locked: false, // true once you've joined a team this round
+        durationMs: ROUND_MS, // round length read from getRound (fallback 45s)
+        onchain: { roundId: 1, a: 0, b: 0, start: Date.now(), global: 0, players: 0, playersA: 0, playersB: 0 },
         opt: { a: 0, b: 0 }, // optimistic deltas since last poll (deployed mode)
-        local: { roundId: 1, a: 0, b: 0, start: Date.now(), lastResult: null }, // not-deployed preview
+        local: { roundId: 1, a: 0, b: 0, start: Date.now(), lastResult: null, playersA: 0, playersB: 0 }, // not-deployed preview
         yourPulls: 0,
         lastResult: null, // { roundId, winner, a, b }
         feed: [],
         named: false,
+        // match-state machine: 'idle' (pick + start) | 'countdown' | 'live' | 'ended'
+        phase: "idle",
+        seenRound: null, // last round_id we've reacted to (detect a fresh round)
+        countdownUntil: 0, // timestamp the 3-2-1-GO overlay ends
+        endedForRound: null, // round_id whose winner moment is showing
       };
 
       // ---------- rendering ----------
@@ -263,6 +350,8 @@
             start: S.onchain.start,
             global: S.onchain.global + S.opt.a + S.opt.b,
             players: S.onchain.players,
+            playersA: S.onchain.playersA,
+            playersB: S.onchain.playersB,
             lastResult: S.lastResult,
           };
         }
@@ -272,7 +361,9 @@
           b: S.local.b,
           start: S.local.start,
           global: S.local.a + S.local.b,
-          players: S.local.a + S.local.b > 0 ? 2 : 0,
+          players: S.local.playersA + S.local.playersB,
+          playersA: S.local.playersA,
+          playersB: S.local.playersB,
           lastResult: S.local.lastResult,
         };
       }
@@ -284,19 +375,26 @@
         $("tallyB").textContent = fmt(v.b);
         $("globalActions").textContent = fmt(v.global);
         $("players").textContent = fmt(v.players);
+        $("rosterA").textContent = fmt(v.playersA);
+        $("rosterB").textContent = fmt(v.playersB);
         $("yourPulls").textContent = fmt(S.yourPulls);
 
         const total = v.a + v.b;
         const pct = total === 0 ? 50 : (v.b / total) * 100;
         $("knot").style.left = Math.max(9, Math.min(91, pct)) + "%";
 
-        // timer
-        const remaining = Math.max(0, v.start + ROUND_MS - Date.now());
+        // timer + progress bar (contract round length)
+        const remaining = Math.max(0, v.start + S.durationMs - Date.now());
         const mm = Math.floor(remaining / 60000);
         const ss = Math.floor((remaining % 60000) / 1000);
-        $("timer").textContent = mm + ":" + String(ss).padStart(2, "0");
+        const tEl = $("timer");
+        tEl.textContent = mm + ":" + String(ss).padStart(2, "0");
+        tEl.classList.toggle("low", remaining <= 10000 && remaining > 0);
+        const frac = Math.max(0, Math.min(1, remaining / S.durationMs));
+        $("timebar").style.width = (frac * 100).toFixed(1) + "%";
 
-        // last result banner
+        // small persistent last-result banner (lives under the rope; the big
+        // winner moment is the overlay)
         const r = v.lastResult;
         const rEl = $("result");
         if (r && r.roundId > 0) {
@@ -354,22 +452,171 @@
         return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
       }
 
-      // ---------- pulling ----------
+      // ---------- match-state: pick / lock / countdown / winner ----------
+
+      // join a team. Once joined you're LOCKED to it until a new round starts.
       function pickSide(side) {
+        if (S.locked && S.side !== side) return; // can't switch mid-round
         S.side = side;
+        if (!S.locked) {
+          S.locked = true;
+          lockTeamUI();
+        }
         $("sideA").classList.toggle("sel", side === 0);
         $("sideB").classList.toggle("sel", side === 1);
-        const btn = $("pullBtn");
-        btn.disabled = false;
-        btn.className = "btn pull-btn " + (side === 0 ? "a" : "b");
-        btn.textContent = "PULL FOR " + COLORS[side].toUpperCase();
+        // joining a team starts the match: a 3-2-1 countdown, then PULL goes live
+        if (S.phase === "idle") startCountdown();
+        else syncPullButton();
       }
 
+      // dim + disable the team you did NOT join for the rest of this round
+      function lockTeamUI() {
+        const other = S.side === 0 ? "sideB" : "sideA";
+        const mine = S.side === 0 ? "sideA" : "sideB";
+        $(other).classList.add("locked");
+        $(other).classList.remove("sel");
+        $(mine).classList.remove("locked");
+        $(mine).classList.add("sel");
+      }
+
+      // re-enable both teams for a brand-new round (you can pick again)
+      function unlockTeamUI() {
+        S.locked = false;
+        S.side = null;
+        $("sideA").classList.remove("locked", "sel");
+        $("sideB").classList.remove("locked", "sel");
+        const btn = $("pullBtn");
+        btn.disabled = true;
+        btn.className = "btn pull-btn a";
+        btn.textContent = "Pick a team to start";
+      }
+
+      function syncPullButton() {
+        const btn = $("pullBtn");
+        if (S.side == null) {
+          btn.disabled = true;
+          btn.className = "btn pull-btn a";
+          btn.textContent = "Pick a team to start";
+          return;
+        }
+        const live = S.phase === "live";
+        btn.disabled = !live;
+        btn.className = "btn pull-btn " + (S.side === 0 ? "a" : "b");
+        btn.textContent = live ? "PULL FOR " + COLORS[S.side].toUpperCase() : "Get ready…";
+      }
+
+      // 3-2-1-GO flourish before play feels live. The contract round is already
+      // running; this is purely client-side UX so a join lands with a beat.
+      function startCountdown() {
+        S.phase = "countdown";
+        S.countdownUntil = Date.now() + 3600; // ~3s of digits + a short GO
+        syncPullButton();
+        renderOverlay();
+      }
+
+      function renderOverlay() {
+        const ov = $("overlay");
+        // winner moment takes priority over everything else
+        if (S.phase === "ended") {
+          const r = view().lastResult || S.lastResult;
+          if (!r) { ov.classList.add("hidden"); return; }
+          const w = r.winner;
+          const cls = w === 0 ? "a" : w === 1 ? "b" : "tie";
+          const title = w === 2 ? "It's a tie!" : `${COLORS[w]} wins!`;
+          const hi = Math.max(r.a, r.b), lo = Math.min(r.a, r.b);
+          const score = w === 2
+            ? `<span class="a">${fmt(r.a)}</span> – <span class="b">${fmt(r.b)}</span>`
+            : `<span class="${cls}">${fmt(hi)}</span> – ${fmt(lo)}`;
+          const youWon = S.side != null && S.side === w;
+          const sub = w === 2
+            ? "Dead even. Line up for the next round."
+            : youWon
+              ? "Your team took it. Stay in for the next round."
+              : "Tough round. Join up and pull it back next time.";
+          ov.innerHTML =
+            `<span class="ov-k">Round ${r.roundId} · final</span>` +
+            `<div class="win-title ${cls}">${title}</div>` +
+            `<div class="win-score">${score}</div>` +
+            `<div class="win-sub">${sub}</div>` +
+            `<button class="btn win-cta" id="againBtn">Play the next round</button>`;
+          ov.classList.remove("hidden");
+          const again = $("againBtn");
+          if (again) again.addEventListener("click", dismissWinner, { once: true });
+          return;
+        }
+
+        if (S.phase === "countdown") {
+          const left = S.countdownUntil - Date.now();
+          let label, go = false;
+          if (left <= 600) { label = "GO"; go = true; }
+          else if (left <= 1600) label = "1";
+          else if (left <= 2600) label = "2";
+          else label = "3";
+          ov.innerHTML =
+            `<span class="ov-k">Team ${COLORS[S.side]} · get ready</span>` +
+            `<div class="cd-num ${go ? "go" : ""}" data-n="${label}">${label}</div>`;
+          ov.classList.remove("hidden");
+          if (left <= 0) endCountdown();
+          return;
+        }
+
+        ov.classList.add("hidden");
+      }
+
+      function endCountdown() {
+        if (S.phase !== "countdown") return;
+        S.phase = "live";
+        $("overlay").classList.add("hidden");
+        syncPullButton();
+      }
+
+      // player dismissed (or auto-dismissed) the winner moment → ready for next round
+      function dismissWinner() {
+        if (S.phase !== "ended") return;
+        S.phase = "idle";
+        S.endedForRound = null;
+        $("overlay").classList.add("hidden");
+        unlockTeamUI();
+      }
+
+      // detect round transitions from the polled round_id (deployed) or local timer
+      function reconcilePhase() {
+        const v = view();
+        const rid = v.roundId;
+
+        // first sight of a round: prime the marker without a winner moment
+        if (S.seenRound == null) {
+          S.seenRound = rid;
+          return;
+        }
+
+        // a NEW round started (round_id advanced) → show the just-finished winner,
+        // then reset so the player picks a team again
+        if (rid !== S.seenRound) {
+          S.seenRound = rid;
+          S.opt.a = 0; S.opt.b = 0;
+          const last = v.lastResult || S.lastResult;
+          // only celebrate if we have a result AND the player was actually in the match
+          if (last && S.side != null && S.endedForRound !== last.roundId) {
+            S.endedForRound = last.roundId;
+            S.phase = "ended";
+            renderOverlay();
+          } else {
+            // player was idle/spectating: just roll into the fresh round cleanly
+            if (S.phase !== "ended") {
+              S.phase = "idle";
+              unlockTeamUI();
+            }
+          }
+        }
+      }
+
+      // ---------- pulling ----------
       async function pull() {
-        if (S.side == null) return;
+        if (S.side == null || S.phase !== "live") return;
         const side = S.side;
         S.yourPulls++;
-        galaxy.pulse(side === 0 ? 1 : 0); // Nova→mint shard, Flare→amber shard
+        galaxy.pulse(side === 0 ? 1 : 0); // Supa→mint shard, Nova→amber shard
 
         // knot jolts toward your side
         const knot = $("knot");
@@ -400,6 +647,11 @@
           // local preview: your taps move your side; the practice bot answers
           if (side === 0) S.local.a++;
           else S.local.b++;
+          if (S.local.playersA + S.local.playersB === 0) {
+            // you join your side, the practice bot fills the other
+            if (side === 0) { S.local.playersA = 1; S.local.playersB = 1; }
+            else { S.local.playersB = 1; S.local.playersA = 1; }
+          }
           render();
           maybeShowNameRow();
         }
@@ -439,7 +691,9 @@
       async function poll() {
         if (!client.deployed) {
           tickLocalRound();
+          reconcilePhase();
           render();
+          renderOverlay();
           return;
         }
         const round = await client.query("getRound", []);
@@ -448,6 +702,8 @@
           S.onchain.a = client.decodeU64(round[1]);
           S.onchain.b = client.decodeU64(round[2]);
           S.onchain.start = client.decodeU64(round[3]) || S.onchain.start;
+          const dur = client.decodeU64(round[4]);
+          if (dur > 0) S.durationMs = dur; // contract is the source of truth (45000)
           S.opt.a = 0;
           S.opt.b = 0; // onchain caught up
         }
@@ -455,18 +711,20 @@
         if (g && g.length) S.onchain.global = client.decodeU64(g[0]);
         const last = await client.query("getLastResult", []);
         if (last && last.length) S.lastResult = decodeRoundResult(last[0]);
+        // NEW: distinct players per team this round (graceful default 0 until upgrade lands)
+        const rp = await client.query("getRoundPlayers", []);
+        if (rp && rp.length >= 2) {
+          S.onchain.playersA = client.decodeU64(rp[0]);
+          S.onchain.playersB = client.decodeU64(rp[1]);
+        }
         const top = await client.query("getTopPullers", ["08"]); // top 8
         if (top) renderLeaderboard(client.decodeLeaderboard(top));
-        const me = client.addressHex();
-        if (me) {
-          const entry = await client.query("getPlayerEntry", [me]);
-          if (entry && entry.length) {
-            S.onchain.players = S.onchain.players; // players via count below
-          }
-        }
         const pc = await client.query("getPlayerCount", []);
         if (pc && pc.length) S.onchain.players = client.decodeU64(pc[0]);
+        else S.onchain.players = S.onchain.playersA + S.onchain.playersB;
+        reconcilePhase();
         render();
+        renderOverlay();
       }
 
       function decodeRoundResult(b64) {
@@ -481,23 +739,31 @@
       }
 
       // local-preview round: a practice bot answers on the opposing side and the
-      // round rolls on the same 2-min timer the contract uses.
+      // round rolls on the same 45s timer the contract uses.
       function tickLocalRound() {
         if (client.deployed) return;
         const now = Date.now();
-        // practice bot: mild pulls on the side you did NOT pick (or Flare by default)
-        const botSide = S.side === 1 ? 0 : 1;
-        const botPulls = 1 + Math.floor(Math.random() * 3);
-        if (botSide === 0) S.local.a += botPulls;
-        else S.local.b += botPulls;
-        if (now >= S.local.start + ROUND_MS) {
+        // practice bot only pulls once the match is live and you've joined a side
+        if (S.phase === "live" && S.side != null) {
+          const botSide = S.side === 1 ? 0 : 1;
+          const botPulls = 1 + Math.floor(Math.random() * 3);
+          if (botSide === 0) S.local.a += botPulls;
+          else S.local.b += botPulls;
+          if (S.local.playersA + S.local.playersB === 0) { S.local.playersA = 1; S.local.playersB = 1; }
+        }
+        if (now >= S.local.start + S.durationMs) {
           const a = S.local.a,
             b = S.local.b;
-          S.local.lastResult = { roundId: S.local.roundId, winner: a > b ? 0 : b > a ? 1 : 2, a, b };
+          // only finalize a round that actually had play
+          if (a + b > 0) {
+            S.local.lastResult = { roundId: S.local.roundId, winner: a > b ? 0 : b > a ? 1 : 2, a, b };
+          }
           S.local.roundId++;
           S.local.start = now;
           S.local.a = 0;
           S.local.b = 0;
+          S.local.playersA = 0;
+          S.local.playersB = 0;
         }
       }
 
@@ -527,13 +793,15 @@
       // ---------- wire up ----------
       $("sideA").addEventListener("click", () => pickSide(0));
       $("sideB").addEventListener("click", () => pickSide(1));
+      $("sideA").addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pickSide(0); } });
+      $("sideB").addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pickSide(1); } });
       $("pullBtn").addEventListener("click", pull);
       $("nameBtn").addEventListener("click", saveName);
 
       // boot
       (async function () {
         if (!client.deployed) {
-          setStatus("warn", "Local preview. Pick a side and pull; a practice bot answers. Pulls go onchain once the game is live.");
+          setStatus("warn", "Local preview. Pick a team and pull; a practice bot answers. Pulls go onchain once the game is live.");
         } else {
           setStatus("ok", "One tap, no wallet. Each pull is a real transaction, gasless.");
           client.ensureKey().then((ok) => {
@@ -541,12 +809,18 @@
           });
         }
         render();
+        renderOverlay();
         poll();
         setInterval(poll, 2000);
-        setInterval(render, 250); // smooth timer + knot
+        // smooth timer + knot + drive the countdown / winner overlay
+        setInterval(() => {
+          if (S.phase === "countdown") renderOverlay();
+          render();
+        }, 200);
       })();
     </script>
   <p style="position:relative;z-index:3;margin:22px auto 16px;text-align:center;font-family:&#39;JetBrains Mono&#39;,ui-monospace,monospace;font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:#6B7385;line-height:1.6;">Built with &#10084;&#65039; on MultiversX &middot; <a href="https://github.com/lamentierschweinchen/supernova-arcade" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;text-underline-offset:2px;">GitHub</a> &middot; <a href="https://github.com/lamentierschweinchen/supernova-arcade/issues/new?template=bug-report.yml" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;text-underline-offset:2px;">Report a bug</a></p>
   <script src="/arcade-lock.js"></script>
-  <script type="module" src="/arcade-share.js"></script></body>
+  <script type="module" src="/arcade-share.js"></script>
+  <script src="/arcade-info.js"></script></body>
 </html>
