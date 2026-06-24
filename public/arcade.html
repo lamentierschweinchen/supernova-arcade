@@ -724,7 +724,13 @@ refresh();
 setInterval(refresh, 2000);
 
 /* ---------- speaker toggle: muted by default; first click is the user gesture
-   that boots Tone.js and starts the score. ---------- */
+   that boots Tone.js and starts the score. The on/off choice is shared with every
+   game via the `arcade_sound_on` localStorage key (see /arcade-sound.js), so sound
+   carries between the hub and the cabinets. Audio can't auto-start without a gesture,
+   so a saved "on" paints the toggle on at load and RESUMES on the first gesture. --- */
+const SOUND_KEY = "arcade_sound_on";
+function readSoundPref() { try { return localStorage.getItem(SOUND_KEY) === "1"; } catch (e) { return false; } }
+function writeSoundPref(on) { try { localStorage.setItem(SOUND_KEY, on ? "1" : "0"); } catch (e) {} }
 const soundToggle = document.getElementById("soundToggle");
 const soundLabel = soundToggle.querySelector(".st-label");
 const waveEl = soundToggle.querySelector(".st-wave");
@@ -739,13 +745,31 @@ function paintSound(nowOn) {
 soundToggle.addEventListener("click", async () => {
   soundToggle.classList.add("loading");
   try {
-    paintSound(await score.toggle());
+    const nowOn = await score.toggle();
+    writeSoundPref(nowOn);
+    paintSound(nowOn);
   } catch (e) {
     console.warn("[arcade] sound toggle failed", e);
   } finally {
     soundToggle.classList.remove("loading");
   }
 });
+
+// reflect the saved choice on load; resume audio on the first gesture if it was on.
+paintSound(readSoundPref());
+(function armSoundResume() {
+  let armed = true;
+  const fire = async () => {
+    document.removeEventListener("pointerdown", fire, true);
+    document.removeEventListener("keydown", fire, true);
+    if (!armed) return;
+    armed = false;
+    if (!readSoundPref() || score.isStarted()) return;
+    try { paintSound(await score.setOn(true)); } catch (e) { console.warn("[arcade] sound resume failed", e); }
+  };
+  document.addEventListener("pointerdown", fire, true);
+  document.addEventListener("keydown", fire, true);
+})();
 
 /* ?score-demo (or ?mock): feed the score a synthetic activity stream so it can
    be heard/verified without waiting on live taps. (Live feed is skipped above.) */
