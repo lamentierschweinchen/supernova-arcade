@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
 <title>Clawback · Supernova Arcade</title>
 <meta name="description" content="Defend your wallet from the attacks that drain crypto. Brutal in ETH mode, easy with a MultiversX Guardian. A real onchain game, gasless and no wallet." />
 <meta property="og:type" content="website" />
@@ -532,6 +532,11 @@ function beginRound({ seed, startMs, roundId }) {
   // = calmer). Visuals/difficulty only; the contract's settle window is unchanged.
   const baseFall = Math.max(1500, Math.min(2000, cfg.settleWindowMs - 2500));
   G.visibleFall = Math.round(baseFall * mode.fallScale);
+  // the round ends WITH the stream, not at the fixed contract timer — no dead tail.
+  // (the last card settles ~visibleFall after its spawn; the grace lets any in-flight
+  // recall tx land before end_round. always <= the contract round length.)
+  const lastSpawn = G.schedule.length ? G.schedule[G.schedule.length - 1].spawnMs : cfg.roundLengthMs;
+  G.roundEndMs = Math.min(cfg.roundLengthMs, lastSpawn + G.visibleFall + 2500);
   G.arenaH = $("arena").clientHeight || 384;
   G.settleLineY = G.arenaH - 40 - 58;
   G.nextIdx = 0; G.savedCount = 0; G.lostCount = 0; G.savedAmt = 0; G.forfeitAmt = 0; G.forfeitCount = 0; G.spawnSeq = 0;
@@ -558,7 +563,7 @@ function beginRound({ seed, startMs, roundId }) {
 // ---------- the loop ----------
 function tick() {
   const elapsed = now() - G.startMs;
-  if (elapsed >= cfg.roundLengthMs) return endRoundFlow();
+  if (elapsed >= G.roundEndMs) return endRoundFlow();
 
   while (G.nextIdx < G.schedule.length && G.schedule[G.nextIdx].spawnMs <= elapsed) {
     activate(G.schedule[G.nextIdx], elapsed); G.nextIdx++;
@@ -576,9 +581,9 @@ function tick() {
     }
   }
   renderBalance();
-  const left = Math.max(0, cfg.roundLengthMs - elapsed);
+  const left = Math.max(0, G.roundEndMs - elapsed);
   $("timeStat").textContent = (left / 1000).toFixed(1) + "s";
-  $("rtimerFill").style.transform = `scaleX(${(left / cfg.roundLengthMs).toFixed(3)})`;
+  $("rtimerFill").style.transform = `scaleX(${(left / G.roundEndMs).toFixed(3)})`;
   G.raf = requestAnimationFrame(tick);
 }
 
@@ -917,5 +922,6 @@ detectMode();
 refreshBoard();
 </script>
 <p style="position:relative;z-index:3;margin:22px auto 16px;text-align:center;font-family:&#39;JetBrains Mono&#39;,ui-monospace,monospace;font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:#6B7385;line-height:1.6;">Built with &#10084;&#65039; on MultiversX &middot; <a href="https://github.com/lamentierschweinchen/supernova-arcade" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;text-underline-offset:2px;">GitHub</a> &middot; <a href="https://github.com/lamentierschweinchen/supernova-arcade/issues/new?template=bug-report.yml" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;text-underline-offset:2px;">Report a bug</a></p>
+<script src="/arcade-lock.js"></script>
 <script type="module" src="/arcade-share.js"></script></body>
 </html>

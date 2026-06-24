@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
 <title>Degen Dash · Supernova Arcade</title>
 <meta name="description" content="An onchain endless lane runner. Run the track, grab the wins, dodge the rugs, jump and duck the hazards. Every grab is a real gasless transaction on MultiversX, no wallet. A fun game on a valueless token." />
 <link rel="icon" href="/favicon.svg" />
@@ -76,7 +76,7 @@
   /* ============================ THE LANE-RUNNER ARENA ============================ */
   .arena { position: relative; height: 392px; border-radius: 12px; overflow: hidden;
     background: radial-gradient(120% 70% at 50% 12%, rgba(35,247,221,0.07), transparent 46%), linear-gradient(180deg, #05070d 0%, #070a12 46%, #0a0e17 74%, #0c1119 100%);
-    touch-action: pan-y; user-select: none; -webkit-user-select: none; cursor: pointer; }
+    touch-action: none; user-select: none; -webkit-user-select: none; cursor: pointer; }
   .tracksvg { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; }
   .horizonglow { position: absolute; left: 0; right: 0; top: 0; height: 46%; z-index: 1; pointer-events: none;
     background: radial-gradient(60% 80% at 50% 18%, color-mix(in srgb, var(--c) 14%, transparent), transparent 70%); }
@@ -512,6 +512,11 @@ function beginRound({ seed, startMs, roundId, totalGood }) {
   G.rng = makeRng(seed ^ 0x51ed270b9e3779b9n);
   G.schedule = onchain ? buildSchedule(seed, cfg) : [];
   G.totalGood = totalGood || (onchain ? G.schedule.reduce((s, o) => s + (o.good ? o.amount : 0), 0) : 0);
+  // onchain: end when the coin stream is spent (+ travel + grace for the last grab tx),
+  // not at the fixed timer — no coinless dead tail. Practice mode stays endless.
+  G.roundEndMs = onchain && G.schedule.length
+    ? Math.min(cfg.roundLengthMs, G.schedule[G.schedule.length - 1].spawnMs + 2300 + 2500)
+    : cfg.roundLengthMs;
   measure();
   buildEffects();
   G.astroLane = 1; G.astroX = G.laneNearX[1]; G.astroTargetX = G.laneNearX[1];
@@ -542,8 +547,9 @@ function rampUpdate(elapsed) {
 
 // ---------- the loop ----------
 function tick() {
+  if (G.phase !== "playing") return; // dead or ending: stop instantly — no ghost collecting, no clock
   const elapsed = now() - G.startMs;
-  if (!G.endless && elapsed >= cfg.roundLengthMs) return endRoundFlow(false);
+  if (!G.endless && elapsed >= G.roundEndMs) return endRoundFlow(false);
   rampUpdate(elapsed);
 
   // spawn coins
@@ -578,7 +584,7 @@ function tick() {
   renderScore();
   $("timeStat").textContent = (elapsed / 1000).toFixed(1) + "s";
   if (G.endless) $("rtimerFill").style.transform = `scaleX(${Math.min(1, elapsed / RAMP_FULL_MS).toFixed(3)})`;
-  else $("rtimerFill").style.transform = `scaleX(${Math.max(0, 1 - elapsed / cfg.roundLengthMs).toFixed(3)})`;
+  else $("rtimerFill").style.transform = `scaleX(${Math.max(0, 1 - elapsed / G.roundEndMs).toFixed(3)})`;
   G.raf = requestAnimationFrame(tick);
 }
 
@@ -931,5 +937,6 @@ detectMode();
 refreshBoard();
 </script>
 <p style="position:relative;z-index:3;margin:22px auto 16px;text-align:center;font-family:&#39;JetBrains Mono&#39;,ui-monospace,monospace;font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:#6B7385;line-height:1.6;">Built with &#10084;&#65039; on MultiversX &middot; <a href="https://github.com/lamentierschweinchen/supernova-arcade" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;text-underline-offset:2px;">GitHub</a> &middot; <a href="https://github.com/lamentierschweinchen/supernova-arcade/issues/new?template=bug-report.yml" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;text-underline-offset:2px;">Report a bug</a></p>
+<script src="/arcade-lock.js"></script>
 <script type="module" src="/arcade-share.js"></script></body>
 </html>
