@@ -247,6 +247,26 @@
   .tick { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--mint); box-shadow: 0 0 7px var(--mint); margin-right: 6px; vertical-align: middle; animation: pulse 2s ease-in-out infinite; }
   @keyframes pulse { 0%,100% { opacity: 0.35; } 50% { opacity: 1; } }
   .screen .play { width: 100%; display: flex; flex-direction: column; gap: 12px; align-items: stretch; }
+
+  /* === RESULT STATE: expand arena out of the fixed-height play box === */
+  /* :has(.final) only fires when result is showing; spinner/start never have .final */
+  #arena:has(#center .final) { height: auto; overflow: visible; }
+  #arena:has(#center .final) #center {
+    position: relative; inset: auto; width: 100%; overflow-y: visible;
+    background: linear-gradient(180deg, #0c101a, #090c12); border-radius: 14px;
+    justify-content: flex-start; padding: 22px 16px 20px; gap: 14px;
+  }
+  /* Verdict: own class so .final b {font-size:40px} never bleeds in */
+  /* Coordinator: rename second <div class="final"> to <div class="verdict"> in reveal() */
+  .verdict { font-size: 13px; color: var(--text-dim); max-width: 300px; line-height: 1.55; }
+  .verdict b { font-size: 14px; }
+  /* Buttons: stack vertically — Claim primary, Share ghost at bottom */
+  #arena:has(#center .final) .row { flex-direction: column; align-items: stretch; margin-top: 2px; }
+  #arena:has(#center .final) .row .btn { width: 100%; }
+  #arena #againBtn { order: 1; }
+  #arena #claimNovaBtn { order: 2; }
+  #arena #shareBtn { order: 10; background: transparent; color: var(--text-dim);
+    border: 1px solid var(--border); border-bottom: 2px solid var(--border); box-shadow: none; }
 </style>
     <!-- Vercel Web Analytics -->
     <script defer src="/_vercel/insights/script.js"></script>
@@ -806,7 +826,7 @@ function reveal(final, claimable, practice, ended = true) {
       `<div class="tr save"><span class="ico">✦</span><span class="lab">${savedHead}<em>${savedSub}</em></span><b>${fmt(saved)}</b></div>` +
       `<div class="tr gain"><span class="ico">▲</span><span class="lab">Inflows kept${G.forfeitCount ? `<em>${G.forfeitCount} cancelled by mistake</em>` : ""}</span><b>+${fmt(gained)}</b></div>` +
     `</div>` +
-    `<div class="final" style="font-size:12px;color:var(--text-dim);max-width:300px">${verdict}</div>` +
+    `<div class="verdict">${verdict}</div>` +
     `<div class="row" style="margin-top:2px"><button class="btn" id="againBtn">Play again</button><button class="btn" id="shareBtn">Share</button>`;
   if (onchain && claimable > 0) html += `<button class="btn gold" id="claimNovaBtn">Claim ${fmt(claimable)} NOVA</button>`;
   html += `</div>`;

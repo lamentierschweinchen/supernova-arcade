@@ -189,7 +189,23 @@
   .legendbar .g { color: var(--mint); } .legendbar .r { color: var(--coral); }
 
   @media (prefers-reduced-motion: reduce) { .item.big.good .tok { animation: none; } }
-  @media (max-width: 430px) { .arena { height: 366px; } }
+  @media (max-width: 430px) { .arena:not(:has(#center .final)) { height: 366px; } }
+
+  /* === RESULT STATE: expand arena out of fixed-height play box === */
+  #arena:has(#center .final) { height: auto; overflow: visible; }
+  #arena:has(#center .final) .center {
+    position: relative; inset: auto; width: 100%; overflow-y: visible;
+    background: linear-gradient(180deg, #070a12, #050710);
+    backdrop-filter: none; -webkit-backdrop-filter: none;
+    border-radius: 12px; justify-content: flex-start; padding: 22px 16px 20px; gap: 14px;
+  }
+  /* Buttons: stack vertically, Share ghost at bottom */
+  #arena:has(#center .final) .row { flex-direction: column; align-items: stretch; margin-top: 2px; }
+  #arena:has(#center .final) .row .btn { width: 100%; min-width: 0; flex: none; }
+  #arena #againBtn { order: 1; }
+  #arena #claimNovaBtn { order: 2; }
+  #arena #shareBtn { order: 10; background: transparent; color: var(--text-dim);
+    border: 1px solid var(--border); border-bottom: 2px solid var(--border); box-shadow: none; }
 </style>
 <!-- Vercel Web Analytics -->
 <script defer src="/_vercel/insights/script.js"></script>
