@@ -220,6 +220,9 @@ h1,h2,h3,p{text-wrap:balance;}
 @keyframes bring{0%{transform:scale(.6);opacity:.8}100%{transform:scale(1.2);opacity:0}}
 .fall{position:absolute;font-family:var(--mono);font-size:11px;font-weight:700;padding:2px 5px;border-radius:4px;animation:fall 2.6s linear infinite;}
 @keyframes fall{0%{transform:translateY(-30px);opacity:0}15%{opacity:1}85%{opacity:1}100%{transform:translateY(36px);opacity:0}}
+.rxring{width:46px;height:46px;border-radius:50%;border:2px solid color-mix(in srgb,var(--c) 40%,transparent);box-shadow:inset 0 0 10px color-mix(in srgb,var(--c) 18%,transparent);}
+.rxcore{position:absolute;width:17px;height:17px;border-radius:50%;background:var(--c);box-shadow:0 0 16px var(--c);animation:rxflash 1.6s ease-in-out infinite;}
+@keyframes rxflash{0%,55%{opacity:.12;transform:scale(.58)}62%,80%{opacity:1;transform:scale(1)}88%,100%{opacity:.12;transform:scale(.58)}}
 .byo-plus{width:42px;height:42px;border-radius:12px;border:1.5px dashed color-mix(in srgb,var(--c) 60%,transparent);display:grid;place-items:center;color:var(--c);font-size:26px;font-weight:300;}
 
 /* ---------- featured community strip ---------- */
@@ -506,6 +509,8 @@ function artHTML(kind) {
         + '<span class="fall" style="left:28%;color:var(--mint);background:rgba(35,247,221,.16);animation-delay:0s">+18</span>'
         + '<span class="fall" style="left:62%;color:var(--coral);background:rgba(255,107,157,.16);animation-delay:1s">&#9760; -7</span>'
         + '<span class="fall" style="left:46%;color:var(--lavender);background:rgba(167,139,250,.16);animation-delay:1.8s">+9</span></span>';
+    case "reaction":
+      return '<span class="gx"><span class="rxring"></span><span class="rxcore"></span></span>';
     default:
       return '<span class="gx"><span class="ring"></span></span>';
   }

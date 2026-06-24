@@ -35,32 +35,32 @@
       .pad-main { font-size: 30px; font-weight: 800; letter-spacing: 0.01em; line-height: 1.05; }
       .pad-sub { font-size: 13px; margin-top: 8px; color: var(--muted); letter-spacing: 0.02em; }
 
-      /* idle — ready to start */
-      .pad.pad-idle { background: radial-gradient(120% 100% at 50% 0%, rgba(35, 240, 199, 0.08), transparent 60%), var(--panel-2); }
-      .pad.pad-idle .pad-x path { fill: var(--mvx-cyan); }
+      /* idle — ready to start (amber, shard 0) */
+      .pad.pad-idle { background: radial-gradient(120% 100% at 50% 0%, rgba(245, 181, 68, 0.08), transparent 60%), var(--panel-2); }
+      .pad.pad-idle .pad-x path { fill: var(--c); }
       .pad.pad-idle .pad-main { color: var(--core-white); }
 
-      /* waiting — hold, do not tap */
-      .pad.pad-wait { background: linear-gradient(170deg, #0a1830, #0a1226); border-color: rgba(91, 141, 239, 0.25); }
-      .pad.pad-wait .pad-x { opacity: 0.35; }
-      .pad.pad-wait .pad-x path { fill: #4b5d80; }
-      .pad.pad-wait .pad-main { color: #7f93b8; }
+      /* waiting — hold, do not tap (dimmed neutral, distinct from the hot GO) */
+      .pad.pad-wait { background: linear-gradient(170deg, #15171c, #0f1115); border-color: rgba(120, 124, 134, 0.22); }
+      .pad.pad-wait .pad-x { opacity: 0.3; }
+      .pad.pad-wait .pad-x path { fill: #565b66; }
+      .pad.pad-wait .pad-main { color: #868b96; }
 
-      /* GO — tap now */
+      /* GO — tap now (the hot amber flash) */
       .pad.pad-go {
-        background: radial-gradient(120% 120% at 50% 40%, #5affe7, var(--mvx-cyan) 70%);
-        border-color: var(--mvx-cyan);
-        box-shadow: 0 0 0 2px rgba(35, 247, 221, 0.45), 0 0 26px rgba(35, 247, 221, 0.28);
+        background: radial-gradient(120% 120% at 50% 40%, #ffe199, var(--c) 70%);
+        border-color: var(--c);
+        box-shadow: 0 0 0 2px rgba(245, 181, 68, 0.5), 0 0 26px rgba(245, 181, 68, 0.32);
       }
       .pad.pad-go .pad-x { transform: scale(1.18); }
-      .pad.pad-go .pad-x path { fill: #04221f; }
-      .pad.pad-go .pad-main { color: #04221f; font-size: 44px; letter-spacing: 0.06em; }
-      .pad.pad-go .pad-sub { color: rgba(4, 34, 31, 0.7); }
+      .pad.pad-go .pad-x path { fill: #2a1c02; }
+      .pad.pad-go .pad-main { color: #2a1c02; font-size: 44px; letter-spacing: 0.06em; }
+      .pad.pad-go .pad-sub { color: rgba(42, 28, 2, 0.72); }
 
       /* hit — success flash with the reaction time */
-      .pad.pad-hit { background: radial-gradient(120% 100% at 50% 0%, rgba(35, 240, 199, 0.16), transparent 60%), var(--panel-2); border-color: rgba(35, 240, 199, 0.5); }
-      .pad.pad-hit .pad-x path { fill: var(--mvx-cyan); }
-      .pad.pad-hit .pad-main { color: var(--mvx-cyan); font-variant-numeric: tabular-nums; }
+      .pad.pad-hit { background: radial-gradient(120% 100% at 50% 0%, rgba(245, 181, 68, 0.16), transparent 60%), var(--panel-2); border-color: rgba(245, 181, 68, 0.5); }
+      .pad.pad-hit .pad-x path { fill: var(--c); }
+      .pad.pad-hit .pad-main { color: var(--c); font-variant-numeric: tabular-nums; }
 
       /* miss — too soon / too slow */
       .pad.pad-miss { background: radial-gradient(120% 100% at 50% 0%, rgba(255, 107, 107, 0.12), transparent 60%), var(--panel-2); border-color: rgba(255, 107, 107, 0.4); }
@@ -71,7 +71,7 @@
       .padline .pl { flex: 1; position: relative; text-align: center; background: linear-gradient(180deg, #0e131b, #0a0d12); border: 1px solid var(--line); border-radius: 12px; padding: 10px; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 6px 16px rgba(0, 0, 0, 0.3); }
       .padline .pl .v { font-variant-numeric: tabular-nums; font-size: 20px; font-weight: 800; }
       .padline .pl .k { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted-2); margin-top: 2px; }
-      .padline .pl .v.cyan { color: var(--mvx-cyan); text-shadow: 0 0 14px rgba(35, 247, 221, 0.35); }
+      .padline .pl .v.cyan { color: var(--c); text-shadow: 0 0 14px rgba(245, 181, 68, 0.35); }
       .screen .play { width: 100%; display: flex; flex-direction: column; gap: 12px; align-items: stretch; }
     </style>
       <!-- Vercel Web Analytics -->
@@ -96,7 +96,7 @@
           <div class="play">
             <div class="pad pad-idle" id="pad">
               <div>
-                <svg class="pad-x" viewBox="0 0 192 148" aria-hidden="true"><path d="M106.4,74L192,28L177.6,0.2L99.2,32.1c-2,0.8-4.3,0.8-6.3,0L14.5,0.2L0.1,28l85.6,46l-85.6,46l14.4,27.8l78.4-31.9c-2-0.8,4.3-0.8,6.3,0l78.4,31.9l14.4-27.8L106.4,74z" fill="#23F7DD"/></svg>
+                <svg class="pad-x" viewBox="0 0 192 148" aria-hidden="true"><path d="M106.4,74L192,28L177.6,0.2L99.2,32.1c-2,0.8-4.3,0.8-6.3,0L14.5,0.2L0.1,28l85.6,46l-85.6,46l14.4,27.8l78.4-31.9c-2-0.8,4.3-0.8,6.3,0l78.4,31.9l14.4-27.8L106.4,74z" fill="#F5B544"/></svg>
                 <div class="pad-main" id="padMain">Tap to start</div>
                 <div class="pad-sub" id="padSub">react when the X lights up</div>
               </div>
