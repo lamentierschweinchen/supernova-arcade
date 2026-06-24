@@ -17,7 +17,7 @@
     <link rel="stylesheet" href="/arcade-shell.css" />
     <style>
       /* Tug-of-War surfaces. Neon-arcade shell (Roobert, galaxy, cabinet/screen)
-         comes from /arcade-shell.css. Faction accents: Supa = mint, Nova = amber.
+         comes from /arcade-shell.css. Faction accents: Super = mint, Nova = amber.
          The game is a short 45s match: pick a team, a 3-2-1 countdown, pull, then
          a winner moment. You lock to one team until the next round starts. */
       .screen .play { width: 100%; display: flex; flex-direction: column; gap: 12px; align-items: stretch; }
@@ -118,6 +118,12 @@
       .roster .ros.a { color: #79e6d8; } .roster .ros.a .dot { background: var(--mint); box-shadow: 0 0 8px rgba(35,247,221,0.6); }
       .roster .ros.b { color: #c79a44; } .roster .ros.b .dot { background: var(--amber); box-shadow: 0 0 8px rgba(245,181,68,0.6); }
       .roster .ros .n { font-family: var(--mono); font-variant-numeric: tabular-nums; font-weight: 800; }
+      /* all-time series score: which team has won more games */
+      .series { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 9px; font-family: var(--mono); font-size: 11px; font-variant-numeric: tabular-nums; letter-spacing: 0.02em; }
+      .series .sl { font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase; color: #6B7385; }
+      .series .a { color: var(--mint); font-weight: 800; }
+      .series .b { color: var(--amber); font-weight: 800; }
+      .series .sd { color: #6B7385; }
 
       /* ── side picker ── */
       .sides { display: flex; gap: 10px; margin: 12px 0; }
@@ -242,18 +248,19 @@
               <div class="center-mark"></div>
               <div class="side-tally a" id="tallyA">0</div>
               <div class="side-tally b" id="tallyB">0</div>
-              <div class="side-name a">Supa</div>
+              <div class="side-name a">Super</div>
               <div class="side-name b">Nova</div>
               <div class="knot" id="knot"><svg class="xmark" viewBox="0 0 192 148" aria-hidden="true"><path d="M106.4,74L192,28L177.6,0.2L99.2,32.1c-2,0.8-4.3,0.8-6.3,0L14.5,0.2L0.1,28l85.6,46l-85.6,46l14.4,27.8l78.4-31.9c2-0.8,4.3-0.8,6.3,0l78.4,31.9l14.4-27.8L106.4,74z"/></svg></div>
             </div>
             <div class="roster">
-              <span class="ros a"><span class="dot"></span>Supa: <span class="n" id="rosterA">0</span> players</span>
-              <span class="ros b"><span class="n" id="rosterB">0</span> players :Nova<span class="dot"></span></span>
+              <span class="ros a"><span class="dot"></span>Super: <span class="n" id="rosterA">0</span> players</span>
+              <span class="ros b"><span class="n" id="rosterB">0</span> players &middot; Nova<span class="dot"></span></span>
             </div>
+            <div class="series" id="series"></div>
             <div class="sides">
-              <div class="side-btn a" id="sideA" role="button" tabindex="0" aria-label="Join team Supa">
+              <div class="side-btn a" id="sideA" role="button" tabindex="0" aria-label="Join team Super">
                 <div class="tag">Team</div>
-                <div class="nm">Supa</div>
+                <div class="nm">Super</div>
                 <div class="lk">Your team</div>
               </div>
               <div class="side-btn b" id="sideB" role="button" tabindex="0" aria-label="Join team Nova">
@@ -318,12 +325,12 @@
       const $ = (id) => document.getElementById(id);
       const fmt = (n) => (n == null ? "···" : Number(n).toLocaleString("en-US"));
       const ROUND_MS = 45000; // mirrors the contract's 45s ROUND_DURATION_MS (overridden by getRound)
-      // side 0 = Supa (A, left, mint), side 1 = Nova (B, right, amber)
-      const COLORS = ["Supa", "Nova"];
+      // side 0 = Super (A, left, mint), side 1 = Nova (B, right, amber)
+      const COLORS = ["Super", "Nova"];
 
       // unified view state
       const S = {
-        side: null, // 0 = Supa(A), 1 = Nova(B) — your locked team for THIS round
+        side: null, // 0 = Super(A), 1 = Nova(B) — your locked team for THIS round
         locked: false, // true once you've joined a team this round
         durationMs: ROUND_MS, // round length read from getRound (fallback 45s)
         onchain: { roundId: 1, a: 0, b: 0, start: Date.now(), global: 0, players: 0, playersA: 0, playersB: 0 },
@@ -331,6 +338,7 @@
         local: { roundId: 1, a: 0, b: 0, start: Date.now(), lastResult: null, playersA: 0, playersB: 0 }, // not-deployed preview
         yourPulls: 0,
         lastResult: null, // { roundId, winner, a, b }
+        winsA: 0, winsB: 0, // all-time rounds won per side — the running series (getWins)
         feed: [],
         named: false,
         // match-state machine: 'idle' (pick + start) | 'countdown' | 'live' | 'ended'
@@ -377,6 +385,7 @@
         $("players").textContent = fmt(v.players);
         $("rosterA").textContent = fmt(v.playersA);
         $("rosterB").textContent = fmt(v.playersB);
+        $("series").innerHTML = `<span class="sl">Series</span><b class="a">Super ${fmt(S.winsA)}</b><span class="sd">&middot;</span><b class="b">Nova ${fmt(S.winsB)}</b>`;
         $("yourPulls").textContent = fmt(S.yourPulls);
 
         const total = v.a + v.b;
@@ -616,7 +625,7 @@
         if (S.side == null || S.phase !== "live") return;
         const side = S.side;
         S.yourPulls++;
-        galaxy.pulse(side === 0 ? 1 : 0); // Supa→mint shard, Nova→amber shard
+        galaxy.pulse(side === 0 ? 1 : 0); // Super→mint shard, Nova→amber shard
 
         // knot jolts toward your side
         const knot = $("knot");
@@ -716,6 +725,11 @@
         if (rp && rp.length >= 2) {
           S.onchain.playersA = client.decodeU64(rp[0]);
           S.onchain.playersB = client.decodeU64(rp[1]);
+        }
+        const gw = await client.query("getWins", []);
+        if (gw && gw.length >= 2) {
+          S.winsA = client.decodeU64(gw[0]);
+          S.winsB = client.decodeU64(gw[1]);
         }
         const top = await client.query("getTopPullers", ["08"]); // top 8
         if (top) renderLeaderboard(client.decodeLeaderboard(top));

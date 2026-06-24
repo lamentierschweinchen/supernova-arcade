@@ -51,7 +51,7 @@
     tugofwar: {
       title: "Tug-of-War",
       objective: "Pick a team and pull the rope your way. Whoever has the most pulls when the 45-second round ends wins.",
-      controls: ["Pick Supa or Nova to join a team", "Tap PULL to pull the rope your way", "Each pull is one real transaction", "Most pulls when the round ends takes it"],
+      controls: ["Pick Super or Nova to join a team", "Tap PULL to pull the rope your way", "Each pull is one real transaction", "Most pulls when the round ends takes it"],
     },
   };
 
