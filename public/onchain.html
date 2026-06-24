@@ -589,6 +589,36 @@ body{
 .why .why-k{display:block;font-family:'JetBrains Mono','SFMono-Regular',ui-monospace,monospace;font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:#23F7DD;margin-bottom:2px;}
 .why .why-go{flex:0 0 auto;align-self:center;color:#23F7DD;font-size:18px;line-height:1;opacity:.8;transition:transform .15s,opacity .15s;}
 .why:hover .why-go{transform:translateX(3px);opacity:1;}
+
+/* ============================================================================
+   ARCADE CABINET — frame the Sprint play surface as a machine in the network,
+   matching the other cabinets (arcade-shell.css's .cabinet/.cab-marquee/.screen)
+   but mint-themed and self-contained (this page predates the shell). Decorative
+   frame around the existing tap UI; no tap logic touched.
+   ============================================================================ */
+.cabinet{position:relative;border-radius:18px;padding:9px;
+  background:linear-gradient(180deg,#141821,#0b0e14 60%,#080a0f);
+  border:1px solid rgba(35,247,221,.34);
+  box-shadow:0 0 30px rgba(35,247,221,.12),0 20px 48px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.05);}
+.cabinet::before,.cabinet::after{content:"";position:absolute;top:18px;bottom:18px;width:3px;border-radius:3px;background:var(--mint);box-shadow:0 0 10px var(--mint);opacity:.6;}
+.cabinet::before{left:2px;}.cabinet::after{right:2px;}
+.cab-marquee{position:relative;text-align:center;font-family:var(--mono);font-size:10px;letter-spacing:.22em;text-transform:uppercase;color:var(--mint);padding:15px 0 10px;text-shadow:0 0 10px rgba(35,247,221,.55);}
+.cab-marquee::before{content:"";position:absolute;top:6px;left:50%;transform:translateX(-50%);width:min(74%,240px);height:5px;
+  background-image:radial-gradient(circle,var(--mint) 1.3px,transparent 1.8px);background-size:15px 5px;background-position:center;background-repeat:repeat-x;
+  filter:drop-shadow(0 0 4px var(--mint));opacity:.7;animation:cabMarq 2.6s ease-in-out infinite;}
+@keyframes cabMarq{0%,100%{opacity:.7}50%{opacity:.3}}
+.cab-screen{position:relative;border-radius:11px;padding:12px 11px;display:flex;flex-direction:column;gap:14px;overflow:hidden;
+  background:radial-gradient(130% 120% at 50% 0%,rgba(35,247,221,.05),#050608),#040506;
+  border:2px solid #04060a;box-shadow:inset 0 0 30px rgba(0,0,0,.8),0 0 0 1px rgba(35,247,221,.22);}
+.cab-screen::after{content:"";position:absolute;inset:0;pointer-events:none;z-index:0;opacity:.2;background:repeating-linear-gradient(0deg,rgba(0,0,0,0) 0 2px,rgba(0,0,0,.2) 2px 3px);}
+.cab-screen > *{position:relative;z-index:1;}
+/* corner brackets — the arcade viewport frame, like every other cabinet */
+.brk{position:fixed;z-index:3;width:22px;height:22px;border:2px solid rgba(35,247,221,.4);pointer-events:none;}
+.brk.tl{top:14px;left:14px;border-right:none;border-bottom:none;border-radius:12px 0 0 0;}
+.brk.tr{top:14px;right:14px;border-left:none;border-bottom:none;border-radius:0 12px 0 0;}
+.brk.bl{bottom:14px;left:14px;border-right:none;border-top:none;border-radius:0 0 0 12px;}
+.brk.br{bottom:14px;right:14px;border-left:none;border-top:none;border-radius:0 0 12px 0;}
+@media (prefers-reduced-motion:reduce){.cab-marquee::before{animation:none;}}
 </style>
     <!-- Vercel Web Analytics -->
     <script defer src="/_vercel/insights/script.js"></script>
@@ -610,6 +640,8 @@ body{
   <div class="glow g3"></div>
   <div class="grid-floor"></div>
 </div>
+
+<div class="brk tl"></div><div class="brk tr"></div><div class="brk bl"></div><div class="brk br"></div>
 
 <main class="wrap">
   <div class="topbar">
@@ -638,6 +670,10 @@ body{
       Tap as fast as you can for 30 seconds. Every tap is a real transaction.
     </p>
   </section>
+
+  <div class="cabinet">
+    <div class="cab-marquee">Supernova Sprint · tap at the speed of finality</div>
+    <div class="cab-screen">
 
   <!-- top-level mode: 30s Sprint (default) | Unlimited -->
   <div class="appmode-row">
@@ -714,6 +750,9 @@ body{
 
     <div class="status" id="status"></div>
   </section>
+
+    </div>
+  </div>
 
   <a class="why" href="/why#speed">
     <span class="why-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.5c.6.6 1 1.5 1 2.5h6c0-1 .4-1.9 1-2.5A6 6 0 0 0 12 3Z"/></svg></span>
