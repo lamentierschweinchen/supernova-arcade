@@ -691,6 +691,20 @@ h1.title{
 .why .why-k{display:block;font-family:'JetBrains Mono','SFMono-Regular',ui-monospace,monospace;font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:#23F7DD;margin-bottom:2px;}
 .why .why-go{flex:0 0 auto;align-self:center;color:#23F7DD;font-size:18px;line-height:1;opacity:.8;transition:transform .15s,opacity .15s;}
 .why:hover .why-go{transform:translateX(3px);opacity:1;}
+
+/* ---- arcade viewport chrome: bring Finality Frenzy into the cabinet ambient
+   language (scanline, vignette, floor glow, corner brackets) like every other
+   game. Fixed decorative layers over the galaxy; the state-screens sit above. ---- */
+.scan{position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.4;background:repeating-linear-gradient(0deg,rgba(0,0,0,0) 0 2px,rgba(0,0,0,.12) 2px 3px);}
+.vignette{position:fixed;inset:0;z-index:0;pointer-events:none;background:radial-gradient(140% 100% at 50% 38%,transparent 50%,rgba(2,3,4,.6) 100%);}
+.afloor{position:fixed;left:0;right:0;bottom:0;height:24vh;z-index:0;pointer-events:none;
+  background:linear-gradient(to bottom,rgba(35,247,221,.05),rgba(4,5,6,0) 24%,rgba(4,5,6,.6));}
+.afloor::before{content:"";position:absolute;top:0;left:8%;right:8%;height:1px;background:linear-gradient(90deg,transparent,rgba(35,247,221,.5),transparent);box-shadow:0 0 12px rgba(35,247,221,.3);}
+.brk{position:fixed;z-index:3;width:22px;height:22px;border:2px solid rgba(35,247,221,.42);pointer-events:none;}
+.brk.tl{top:14px;left:14px;border-right:none;border-bottom:none;border-radius:12px 0 0 0;}
+.brk.tr{top:14px;right:14px;border-left:none;border-bottom:none;border-radius:0 12px 0 0;}
+.brk.bl{bottom:14px;left:14px;border-right:none;border-top:none;border-radius:0 0 0 12px;}
+.brk.br{bottom:14px;right:14px;border-left:none;border-top:none;border-radius:0 0 12px 0;}
 </style>
     <!-- Vercel Web Analytics -->
     <script defer src="/_vercel/insights/script.js"></script>
@@ -712,6 +726,11 @@ h1.title{
   <div class="glow g3"></div>
 </div>
 <div class="flash" id="flash"></div>
+
+<div class="scan" aria-hidden="true"></div>
+<div class="vignette" aria-hidden="true"></div>
+<div class="afloor" aria-hidden="true"></div>
+<div class="brk tl"></div><div class="brk tr"></div><div class="brk bl"></div><div class="brk br"></div>
 
 <div id="app">
 
