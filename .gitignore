@@ -40,6 +40,9 @@ yarn-error.log*
 # local tooling
 .claude/
 
+# stray local image drops (reveal-campaign WIP etc.) — keep out of the public repo
+/images/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
