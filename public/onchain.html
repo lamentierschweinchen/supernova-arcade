@@ -2245,26 +2245,13 @@ function lbRenderLeaderboard(entries){
 
 /* ---------- share ---------- */
 function sprintShare(){
-  var score = ST.sprint.finalized;   // N_real — confirmed onchain in the 30s (the honest number)
-  var lines = [
-    'I got ' + score + ' real transactions in 30 seconds. Compete against me in the Supernova Sprint!'
-  ];
-  // add the simulated cross-chain line if we have it (clearly labeled)
-  if(simResult){
-    var fin = finalizedByKey(simResult.results);
-    lines.push('');
-    lines.push('Same taps, simulated at each chain’s finality in 30s:');
-    lines.push('MultiversX ' + fin.mvx + ' · Solana ' + fin.sol + ' · Ethereum ' + fin.eth + ' · Bitcoin ' + fin.btc + ' · Tron ' + fin.trx);
-  }
-  lines.push('');
-  lines.push('👉 https://supernova-arcade.xyz/sprint');
-  var text = lines.join('\n');
-  // native share on mobile, X web-intent otherwise
-  if(navigator.share){
-    navigator.share({ text: text }).catch(function(){ openXIntent(text); });
-  } else {
-    openXIntent(text);
-  }
+  // share the score the player sees, plain — the unfurling card carries the rest.
+  var el = document.getElementById('resScore');
+  var score = (el && el.textContent ? el.textContent : String(ST.sprint.finalized || 0)).trim();
+  if(window.shareScore){ window.shareScore({ game: 'sprint', score: score }); return; }
+  // fallback if the share helper hasn't loaded yet
+  var clean = score.replace(/[^\d.,]/g, '') || '0';
+  openXIntent('I got ' + score + ' taps in 30 seconds on the Supernova Sprint.\n\n👉 https://supernova-arcade.xyz/s/sprint?s=' + encodeURIComponent(clean));
 }
 function openXIntent(text){
   var url = 'https://twitter.com/intent/tweet?text=' + encodeURIComponent(text);
@@ -2382,5 +2369,6 @@ function openXIntent(text){
   setInterval(refreshGlobal, CFG.globalRefreshMs);
 })();
 </script>
-<p style="position:relative;z-index:3;margin:22px auto 16px;text-align:center;font-family:&#39;JetBrains Mono&#39;,ui-monospace,monospace;font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:#6B7385;line-height:1.6;">Built with &#10084;&#65039; on MultiversX &middot; <a href="https://github.com/lamentierschweinchen/supernova-arcade" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;text-underline-offset:2px;">GitHub</a> &middot; <a href="https://github.com/lamentierschweinchen/supernova-arcade/issues/new?template=bug-report.yml" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;text-underline-offset:2px;">Report a bug</a></p></body>
+<p style="position:relative;z-index:3;margin:22px auto 16px;text-align:center;font-family:&#39;JetBrains Mono&#39;,ui-monospace,monospace;font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:#6B7385;line-height:1.6;">Built with &#10084;&#65039; on MultiversX &middot; <a href="https://github.com/lamentierschweinchen/supernova-arcade" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;text-underline-offset:2px;">GitHub</a> &middot; <a href="https://github.com/lamentierschweinchen/supernova-arcade/issues/new?template=bug-report.yml" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;text-underline-offset:2px;">Report a bug</a></p>
+<script type="module" src="/arcade-share.js"></script></body>
 </html>

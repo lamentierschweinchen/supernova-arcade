@@ -220,12 +220,15 @@
           ${rankBlock}
         </div>
       </div>
+      ${myTotal > 0 ? `<button id="meShareBtn" style="width:100%;max-width:340px;margin:16px auto 2px;display:flex;align-items:center;justify-content:center;gap:8px;background:rgba(35,247,221,.1);color:#23F7DD;border:1px solid rgba(35,247,221,.35);border-radius:12px;padding:13px 18px;font:600 13px/1 'JetBrains Mono',ui-monospace,monospace;letter-spacing:.08em;text-transform:uppercase;cursor:pointer"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7"/><path d="M16 6l-4-4-4 4M12 2v13"/></svg>Share my passport</button>` : ""}
       <p class="pg-h">Points by game</p>
       <div class="pg-grid">${games}</div>`;
+    { const _msb = document.getElementById("meShareBtn"); if (_msb) _msb.addEventListener("click", () => window.shareScore && window.shareScore({ game: "me", score: myTotal, rank: myRank })); }
     if (galaxy) { try { for (let i = 0; i < 6; i++) galaxy.pulse(i % 3, 1); } catch (e) {} }
   }
 
   load();
 </script>
-<p style="position:relative;z-index:3;margin:22px auto 16px;text-align:center;font-family:&#39;JetBrains Mono&#39;,ui-monospace,monospace;font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:#6B7385;line-height:1.6;">Built with &#10084;&#65039; on MultiversX &middot; <a href="https://github.com/lamentierschweinchen/supernova-arcade" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;text-underline-offset:2px;">GitHub</a> &middot; <a href="https://github.com/lamentierschweinchen/supernova-arcade/issues/new?template=bug-report.yml" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;text-underline-offset:2px;">Report a bug</a></p></body>
+<p style="position:relative;z-index:3;margin:22px auto 16px;text-align:center;font-family:&#39;JetBrains Mono&#39;,ui-monospace,monospace;font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:#6B7385;line-height:1.6;">Built with &#10084;&#65039; on MultiversX &middot; <a href="https://github.com/lamentierschweinchen/supernova-arcade" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;text-underline-offset:2px;">GitHub</a> &middot; <a href="https://github.com/lamentierschweinchen/supernova-arcade/issues/new?template=bug-report.yml" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;text-underline-offset:2px;">Report a bug</a></p>
+<script type="module" src="/arcade-share.js"></script></body>
 </html>

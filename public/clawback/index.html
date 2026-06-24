@@ -802,11 +802,12 @@ function reveal(final, claimable, practice, ended = true) {
       `<div class="tr gain"><span class="ico">▲</span><span class="lab">Inflows kept${G.forfeitCount ? `<em>${G.forfeitCount} cancelled by mistake</em>` : ""}</span><b>+${fmt(gained)}</b></div>` +
     `</div>` +
     `<div class="final" style="font-size:12px;color:var(--text-dim);max-width:300px">${verdict}</div>` +
-    `<div class="row" style="margin-top:2px"><button class="btn" id="againBtn">Play again</button>`;
+    `<div class="row" style="margin-top:2px"><button class="btn" id="againBtn">Play again</button><button class="btn" id="shareBtn">Share</button>`;
   if (onchain && claimable > 0) html += `<button class="btn gold" id="claimNovaBtn">Claim ${fmt(claimable)} NOVA</button>`;
   html += `</div>`;
   showCenter(html);
   $("againBtn").addEventListener("click", onDefend);
+  { const _sb = $("shareBtn"); if (_sb) _sb.addEventListener("click", () => window.shareScore && window.shareScore({ game: "clawback", score: fmt(final) })); }
   if (onchain && claimable > 0) $("claimNovaBtn").addEventListener("click", () => claimNova(claimable));
 
   // a board spot only opens when the score is actually recorded onchain (round ended)
@@ -915,5 +916,6 @@ selectMode(savedMode);
 detectMode();
 refreshBoard();
 </script>
-<p style="position:relative;z-index:3;margin:22px auto 16px;text-align:center;font-family:&#39;JetBrains Mono&#39;,ui-monospace,monospace;font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:#6B7385;line-height:1.6;">Built with &#10084;&#65039; on MultiversX &middot; <a href="https://github.com/lamentierschweinchen/supernova-arcade" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;text-underline-offset:2px;">GitHub</a> &middot; <a href="https://github.com/lamentierschweinchen/supernova-arcade/issues/new?template=bug-report.yml" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;text-underline-offset:2px;">Report a bug</a></p></body>
+<p style="position:relative;z-index:3;margin:22px auto 16px;text-align:center;font-family:&#39;JetBrains Mono&#39;,ui-monospace,monospace;font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:#6B7385;line-height:1.6;">Built with &#10084;&#65039; on MultiversX &middot; <a href="https://github.com/lamentierschweinchen/supernova-arcade" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;text-underline-offset:2px;">GitHub</a> &middot; <a href="https://github.com/lamentierschweinchen/supernova-arcade/issues/new?template=bug-report.yml" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;text-underline-offset:2px;">Report a bug</a></p>
+<script type="module" src="/arcade-share.js"></script></body>
 </html>
