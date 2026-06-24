@@ -10,6 +10,7 @@
     { "source": "/degen-dash", "destination": "/degen-dash/index.html" },
     { "source": "/onchain", "destination": "/onchain.html" },
     { "source": "/supernova-sprint", "destination": "/supernova-sprint.html" },
-    { "source": "/why", "destination": "/why.html" }
+    { "source": "/why", "destination": "/why.html" },
+    { "source": "/me", "destination": "/me.html" }
   ]
 }
