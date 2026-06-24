@@ -55,7 +55,9 @@ import { createArcadeScore } from "/arcade-score.js";
   }
 
   // ---- the score engine (lazy-boots Tone.js inside the first gesture) ----
-  var score = createArcadeScore({ momentStep: 25000 });
+  // lite: the lighter during-gameplay profile (trimmed poly, no convolution reverb),
+  // so the synth doesn't fight the game's own render loop. The hub keeps the full mix.
+  var score = createArcadeScore({ momentStep: 25000, lite: true });
   // console mixer parity with the hub: arcadeScore.getState() etc.
   try { window.arcadeScore = window.arcadeScore || score; } catch (e) {}
 
