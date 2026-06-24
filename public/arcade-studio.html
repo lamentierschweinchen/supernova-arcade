@@ -34,6 +34,7 @@
   <div class="head">
     <h1>Score Studio <span class="x">·</span> Supernova Arcade</h1>
     <a href="/arcade.html">← back to the hub</a>
+    <a id="profileLink" href="#" title="A/B the full (hub) vs lite (in-game) CPU profile">profile: …</a>
     <span class="note">Tune by ear, then "Export mix" and paste into DEFAULT_MIX (arcade-score.js).</span>
   </div>
 
@@ -49,8 +50,20 @@
 import { createArcadeScore } from "/arcade-score.js";
 import { mountStudio } from "/arcade-studio.js";
 
-const score = createArcadeScore({ debug: false });
+// ?lite loads the lighter DURING-GAMEPLAY profile so it can be tuned/A-B'd by ear.
+const params = new URLSearchParams(location.search);
+const LITE = params.has("lite");
+const score = createArcadeScore({ debug: false, lite: LITE });
 window.arcadeScore = score; // console access too
+
+// header pill: show the active profile + one-click A/B to the other one
+const pl = document.getElementById("profileLink");
+if (pl) {
+  pl.textContent = "profile: " + (LITE ? "lite (in-game)" : "full (hub)");
+  pl.style.color = LITE ? "#F5B544" : "#23F7DD";
+  pl.href = LITE ? location.pathname : location.pathname + "?lite";
+  pl.title = "Now: " + (LITE ? "lite" : "full") + ". Click to A/B the " + (LITE ? "full (hub)" : "lite (in-game)") + " profile.";
+}
 
 const ov = document.getElementById("ov");
 let mounted = null;

@@ -172,6 +172,26 @@ function tierName(e) {
 export function createArcadeScore(opts = {}) {
   const momentStep = opts.momentStep || 25000;
 
+  /* ---- CPU PROFILE -------------------------------------------------------
+     opts.lite = the DURING-GAMEPLAY mix: the game's own render loop is already
+     spending the frame budget, so the score must be cheap. Lite drops the
+     convolution reverb + chorus + EQ, uses a single-oscillator pad with a short
+     release, halves the arp/hat scheduling, and caps polyphony hard. The HUB
+     (no lite) keeps the full mix. Both are lighter than before (trimmed poly
+     caps + pad osc count + reverb tail), so baseline CPU drops everywhere.
+     Lite is purely about which NODES get built and how dense the scheduling is;
+     the public API and the musical logic are identical. ----------------------- */
+  const lite = !!opts.lite;
+  const P = lite
+    ? { reverb: false, chorus: false, eq: false, vibrato: false, riser: false,
+        padOsc: { type: "triangle" }, padPoly: 3, padRelease: 2.0,
+        poly: { arp: 3, lead: 2, sprint: 3, tugofwar: 3, canvas: 4, clawback: 3, degendash: 4, blip: 4 },
+        arpEvery: 2, hatSparse: true }
+    : { reverb: true, chorus: true, eq: true, vibrato: true, riser: true,
+        padOsc: { type: "fatsawtooth", spread: 22, count: 2 }, padPoly: 6, padRelease: 3.0,
+        poly: { arp: 5, lead: 3, sprint: 6, tugofwar: 5, canvas: 6, clawback: 5, degendash: 6, blip: 8 },
+        arpEvery: 1, hatSparse: false };
+
   /* ---- live state ---- */
   let T = null, graph = null;
   let started = false, on = false, loading = null;
@@ -213,27 +233,38 @@ export function createArcadeScore(opts = {}) {
   /* ====================================================================== graph */
   function buildGraph() {
     const dest = T.getDestination();
-    const limiter = new T.Limiter(-1).connect(dest);                 // brickwall, no clip
+    const limiter = new T.Limiter(-1).connect(dest);                 // brickwall, no clip (cheap, always)
     const comp = new T.Compressor({ threshold: -16, ratio: 3, attack: 0.008, release: 0.18 }).connect(limiter);
-    const eq = new T.EQ3({ low: -1, mid: 0, high: 2, lowFrequency: 220, highFrequency: 3600 }).connect(comp);
-    const master = new T.Gain(0).connect(eq);                        // 0 == muted by default
-    const reverb = new T.Reverb({ decay: 2.8, preDelay: 0.015, wet: 1 }).connect(master);
-    const reverbBus = new T.Gain(1).connect(reverb);
-    const delay = new T.FeedbackDelay({ delayTime: "8n.", feedback: 0.30, wet: 1 }).connect(master);
+    const head = P.eq ? new T.EQ3({ low: -1, mid: 0, high: 2, lowFrequency: 220, highFrequency: 3600 }).connect(comp) : comp;
+    const master = new T.Gain(0).connect(head);                      // 0 == muted by default
+    const disposables = [limiter, comp, master];
+    if (P.eq) disposables.push(head);
+    // delay send — cheap, kept in both profiles; it carries the "space" in lite.
+    const delay = new T.FeedbackDelay({ delayTime: "8n.", feedback: P.reverb ? 0.30 : 0.24, wet: 1 }).connect(master);
     const delayBus = new T.Gain(1).connect(delay);
+    disposables.push(delay, delayBus);
+    // convolution reverb is the single heaviest node — full profile only. In lite
+    // the per-voice "reverb" sends fold into the delay (a touch of echo) so the
+    // studio reverb knob still does something and the graph shape is unchanged.
+    let reverb = null, reverbBus = null;
+    if (P.reverb) {
+      reverb = new T.Reverb({ decay: 2.2, preDelay: 0.015, wet: 1 }).connect(master);
+      reverbBus = new T.Gain(1).connect(reverb);
+      disposables.push(reverb, reverbBus);
+    }
+    const revTarget = reverbBus || delayBus;
 
-    graph = { dest, limiter, comp, eq, master, reverb, reverbBus, delay, delayBus,
-      strips: {}, synth: {}, disposables: [limiter, comp, eq, master, reverb, reverbBus, delay, delayBus] };
+    graph = { dest, limiter, comp, master, reverb, reverbBus, delay, delayBus, strips: {}, synth: {}, disposables };
 
     function makeStrip(name) {
       const cfg = mix.voices[name] || { level: 0.5, reverb: 0.2, delay: 0.1 };
       userLevel[name] = cfg.level; muted[name] = false; soloed[name] = false; meter[name] = 0;
       if (BED_LAYERS.indexOf(name) >= 0) energyGate[name] = 0;       // bed starts faded out
       const level = new T.Gain(0).connect(master);                  // dry (ramped by gateValue)
-      const rev = new T.Gain(cfg.reverb).connect(reverbBus);
       const del = new T.Gain(cfg.delay).connect(delayBus);
-      level.connect(rev); level.connect(del);
-      const strip = { level, rev, del };
+      const rev = new T.Gain(P.reverb ? cfg.reverb : cfg.reverb * 0.5).connect(revTarget); // -> reverb, or delay in lite
+      level.connect(del); level.connect(rev);
+      const strip = { level, rev, del };                            // strip shape identical in both profiles
       graph.strips[name] = strip; graph.disposables.push(level, rev, del);
       return strip;
     }
@@ -262,12 +293,13 @@ export function createArcadeScore(opts = {}) {
     {
       const strip = makeStrip("pad");
       const filt = new T.Filter({ type: "lowpass", frequency: 500, Q: 0.8 }).connect(strip.level);
-      const chorus = new T.Chorus({ frequency: 0.6, delayTime: 4, depth: 0.6, wet: 0.5 }).connect(filt).start();
-      const pad = new T.PolySynth(T.Synth, { maxPolyphony: 10,
-        oscillator: { type: "fatsawtooth", spread: 26, count: 3 },
-        envelope: { attack: 1.8, decay: 1.4, sustain: 0.8, release: 3.2 } }).connect(chorus);
+      let padOut = filt;
+      if (P.chorus) { const chorus = new T.Chorus({ frequency: 0.6, delayTime: 4, depth: 0.6, wet: 0.5 }).connect(filt).start(); padOut = chorus; graph.disposables.push(chorus); }
+      const pad = new T.PolySynth(T.Synth, { maxPolyphony: P.padPoly,
+        oscillator: P.padOsc,
+        envelope: { attack: 1.8, decay: 1.4, sustain: 0.8, release: P.padRelease } }).connect(padOut);
       pad.volume.value = -6;
-      S.pad = pad; graph.padFilter = filt; graph.disposables.push(filt, chorus, pad);
+      S.pad = pad; graph.padFilter = filt; graph.disposables.push(filt, pad);
     }
     // bass — funky NES triangle
     {
@@ -301,7 +333,7 @@ export function createArcadeScore(opts = {}) {
     // arp — fast pulse-wave chiptune arpeggio
     {
       const strip = makeStrip("arp");
-      const arp = new T.PolySynth(T.Synth, { maxPolyphony: 6,
+      const arp = new T.PolySynth(T.Synth, { maxPolyphony: P.poly.arp,
         oscillator: { type: "pulse", width: 0.35 },
         envelope: { attack: 0.002, decay: 0.1, sustain: 0, release: 0.08 } }).connect(strip.level);
       arp.volume.value = -4;
@@ -310,49 +342,62 @@ export function createArcadeScore(opts = {}) {
     // lead — generative chiptune melody (square + a touch of vibrato)
     {
       const strip = makeStrip("lead");
-      const vib = new T.Vibrato({ frequency: 5.5, depth: 0.06 }).connect(strip.level);
-      const lead = new T.PolySynth(T.Synth, { maxPolyphony: 4,
+      let leadOut = strip.level;
+      if (P.vibrato) { const vib = new T.Vibrato({ frequency: 5.5, depth: 0.06 }).connect(strip.level); leadOut = vib; graph.disposables.push(vib); }
+      const lead = new T.PolySynth(T.Synth, { maxPolyphony: P.poly.lead,
         oscillator: { type: "square" },
-        envelope: { attack: 0.004, decay: 0.18, sustain: 0.25, release: 0.2 } }).connect(vib);
+        envelope: { attack: 0.004, decay: 0.18, sustain: 0.25, release: 0.2 } }).connect(leadOut);
       lead.volume.value = -6;
-      S.lead = lead; graph.disposables.push(vib, lead);
+      S.lead = lead; graph.disposables.push(lead);
     }
 
     /* ---- per-cabinet accent voices ---- */
     { const strip = makeStrip("sprint");
-      const s = new T.PolySynth(T.Synth, { maxPolyphony: 10, oscillator: { type: "pulse", width: 0.5 },
+      const s = new T.PolySynth(T.Synth, { maxPolyphony: P.poly.sprint, oscillator: { type: "pulse", width: 0.5 },
         envelope: { attack: 0.003, decay: 0.12, sustain: 0, release: 0.1 } }).connect(strip.level);
       S.sprint = s; graph.disposables.push(s); }
     { const strip = makeStrip("tugofwar");
       const pan = new T.Panner(0).connect(strip.level);
-      const s = new T.PolySynth(T.Synth, { maxPolyphony: 6, oscillator: { type: "triangle" },
+      const s = new T.PolySynth(T.Synth, { maxPolyphony: P.poly.tugofwar, oscillator: { type: "triangle" },
         envelope: { attack: 0.01, decay: 0.26, sustain: 0.1, release: 0.3 } }).connect(pan);
       S.tugofwar = s; S.tugPan = pan; graph.disposables.push(pan, s); }
     { const strip = makeStrip("canvas");
-      const s = new T.PolySynth(T.FMSynth, { maxPolyphony: 12, harmonicity: 3.01, modulationIndex: 8,
-        oscillator: { type: "sine" }, envelope: { attack: 0.002, decay: 1.0, sustain: 0, release: 1.2 },
-        modulation: { type: "sine" }, modulationEnvelope: { attack: 0.002, decay: 0.2, sustain: 0, release: 0.2 } }).connect(strip.level);
+      // FM bell in full; cheaper plain-synth chime in lite (FMSynth doubles the oscillators)
+      const s = P.reverb
+        ? new T.PolySynth(T.FMSynth, { maxPolyphony: P.poly.canvas, harmonicity: 3.01, modulationIndex: 8,
+            oscillator: { type: "sine" }, envelope: { attack: 0.002, decay: 1.0, sustain: 0, release: 1.2 },
+            modulation: { type: "sine" }, modulationEnvelope: { attack: 0.002, decay: 0.2, sustain: 0, release: 0.2 } }).connect(strip.level)
+        : new T.PolySynth(T.Synth, { maxPolyphony: P.poly.canvas, oscillator: { type: "triangle" },
+            envelope: { attack: 0.002, decay: 0.8, sustain: 0, release: 0.9 } }).connect(strip.level);
       S.canvas = s; graph.disposables.push(s); }
     { const strip = makeStrip("button");
       const s = new T.MembraneSynth({ pitchDecay: 0.08, octaves: 5, oscillator: { type: "sine" },
         envelope: { attack: 0.004, decay: 0.6, sustain: 0, release: 0.6 } }).connect(strip.level);
       S.button = s; graph.disposables.push(s); }
     { const strip = makeStrip("clawback");
-      const s = new T.PolySynth(T.AMSynth, { maxPolyphony: 6, harmonicity: 2.2, oscillator: { type: "triangle" },
-        envelope: { attack: 0.02, decay: 0.25, sustain: 0.18, release: 0.5 }, modulation: { type: "square" } }).connect(strip.level);
+      // AM in full; plain triangle in lite (AMSynth doubles the oscillators)
+      const s = P.reverb
+        ? new T.PolySynth(T.AMSynth, { maxPolyphony: P.poly.clawback, harmonicity: 2.2, oscillator: { type: "triangle" },
+            envelope: { attack: 0.02, decay: 0.25, sustain: 0.18, release: 0.5 }, modulation: { type: "square" } }).connect(strip.level)
+        : new T.PolySynth(T.Synth, { maxPolyphony: P.poly.clawback, oscillator: { type: "triangle" },
+            envelope: { attack: 0.02, decay: 0.25, sustain: 0.18, release: 0.5 } }).connect(strip.level);
       S.clawback = s; graph.disposables.push(s); }
     { const strip = makeStrip("degendash");
-      const s = new T.PolySynth(T.Synth, { maxPolyphony: 8, oscillator: { type: "square" },
+      const s = new T.PolySynth(T.Synth, { maxPolyphony: P.poly.degendash, oscillator: { type: "square" },
         envelope: { attack: 0.002, decay: 0.08, sustain: 0, release: 0.05 } }).connect(strip.level);
       S.degendash = s; graph.disposables.push(s); }
 
     /* ---- event SFX (jingles / stingers / risers) ---- */
     { const strip = makeStrip("blip");
-      const blip = new T.PolySynth(T.Synth, { maxPolyphony: 10, oscillator: { type: "pulse", width: 0.5 },
+      const blip = new T.PolySynth(T.Synth, { maxPolyphony: P.poly.blip, oscillator: { type: "pulse", width: 0.5 },
         envelope: { attack: 0.002, decay: 0.16, sustain: 0, release: 0.16 } }).connect(strip.level);
-      const riserHP = new T.Filter({ type: "bandpass", frequency: 400, Q: 1.2 }).connect(strip.level);
-      const riser = new T.NoiseSynth({ noise: { type: "white" }, envelope: { attack: 0.6, decay: 0.4, sustain: 0 } }).connect(riserHP);
-      S.blip = blip; S.riser = riser; S.riserHP = riserHP; graph.disposables.push(blip, riser, riserHP); }
+      S.blip = blip; graph.disposables.push(blip);
+      if (P.riser) {  // the noise riser is full-only (a movement/modulate flourish)
+        const riserHP = new T.Filter({ type: "bandpass", frequency: 400, Q: 1.2 }).connect(strip.level);
+        const riser = new T.NoiseSynth({ noise: { type: "white" }, envelope: { attack: 0.6, decay: 0.4, sustain: 0 } }).connect(riserHP);
+        S.riser = riser; S.riserHP = riserHP; graph.disposables.push(riser, riserHP);
+      }
+    }
   }
 
   /* ====================================================================== harmony */
@@ -484,9 +529,9 @@ export function createArcadeScore(opts = {}) {
       if (energyGate.snare > 0.02 && (s === 4 || s === 12)) {
         graph.synth.snare.triggerAttackRelease("16n", t, 0.7); bumpMeter("snare", 0.8);
       }
-      // --- HATS: offbeats, denser as it builds ---
+      // --- HATS: offbeats, denser as it builds (lite stays at quarters) ---
       if (energyGate.hat > 0.02) {
-        const hatHit = energy > 0.55 ? (s % 2 === 0) : (s % 4 === 2);
+        const hatHit = (!P.hatSparse && energy > 0.55) ? (s % 2 === 0) : (s % 4 === 2);
         if (hatHit) { graph.synth.hat.triggerAttackRelease("32n", t, s % 4 === 2 ? 0.6 : 0.35); bumpMeter("hat", 0.5); }
       }
       // --- BASS: the narrator — an evolving walking phrase seeded by the chain ---
@@ -500,7 +545,7 @@ export function createArcadeScore(opts = {}) {
       }
       // --- ARP: chiptune chord arp; runs UP or DOWN with the data's steer ---
       if (energyGate.arp > 0.02) {
-        const rate = energy > 0.7 ? 1 : 2; // 16ths when frenetic, 8ths otherwise
+        const rate = Math.max(P.arpEvery, energy > 0.7 ? 1 : 2); // 16ths when frenetic; lite caps at 8ths
         if (s % rate === 0) {
           const k = Math.floor(s / rate);
           const toneIdx = conductor.steer * conductor.litStrength >= 0 ? k : (5 - k);
@@ -554,8 +599,8 @@ export function createArcadeScore(opts = {}) {
     const bpm = tempoOverride != null ? tempoOverride : Math.round(96 + energy * 52); // 96..148
     if (graph) {
       T.getTransport().bpm.rampTo(bpm, 1.5);
-      graph.padFilter.frequency.rampTo(500 + energy * 3200, 1.2);
-      graph.reverbBus.gain.rampTo(1.0 + energy * 0.25, 1.5);
+      if (graph.padFilter) graph.padFilter.frequency.rampTo(500 + energy * 3200, 1.2);
+      if (graph.reverbBus) graph.reverbBus.gain.rampTo(1.0 + energy * 0.25, 1.5); // no reverb bus in lite
     }
   }
 
@@ -665,12 +710,12 @@ export function createArcadeScore(opts = {}) {
     } else if (type === "milestone" || type === "levelup") {
       for (let i = 0; i < 6; i++) S.blip.triggerAttackRelease(scaleFreq(i, 1), "16n", t + i * 0.07, 0.55 + 0.03 * i);
       S.blip.triggerAttackRelease([scaleFreq(0, 2), scaleFreq(2, 2), scaleFreq(4, 2)], "4n", t + 0.45, 0.6);
-      graph.reverbBus.gain.rampTo(1.6, 0.3, t); graph.reverbBus.gain.rampTo(1.0 + energy * 0.25, 4, t + 1);
+      if (graph.reverbBus) { graph.reverbBus.gain.rampTo(1.6, 0.3, t); graph.reverbBus.gain.rampTo(1.0 + energy * 0.25, 4, t + 1); }
     }
     bumpMeter("blip", 1);
   }
   function triggerRiser() {
-    if (!graph || !on) return;
+    if (!graph || !on || !graph.synth.riser) return; // no noise riser in lite
     const t = T.now() + 0.02;
     try {
       graph.synth.riserHP.frequency.setValueAtTime(400, t);
@@ -771,7 +816,8 @@ export function createArcadeScore(opts = {}) {
         meter: +(meter[k] || 0).toFixed(3) };
     }
     const mv = currentMovement();
-    return { on, started, intensity: +intensity.toFixed(3), energy: +energy.toFixed(3), tier: tierName(energy),
+    return { on, started, lite, nodes: graph ? graph.disposables.length : 0, // node count: lite builds fewer
+      intensity: +intensity.toFixed(3), energy: +energy.toFixed(3), tier: tierName(energy),
       energyOverride, bpm: graph ? Math.round(T.getTransport().bpm.value) : null, tempoOverride,
       key: { root: NOTE_NAMES[((keyRootMidi % 12) + 12) % 12], mode: modeName }, modCount, autoKeyCycle,
       chordIdx, bar, total: lastTotal, master: mix.master.level,
