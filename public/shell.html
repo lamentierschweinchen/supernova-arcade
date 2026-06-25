@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <!-- no-pinch viewport; shell owns the chrome, the iframe fills the rest -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <title>Supernova Arcade</title>
+    <meta name="description" content="The Supernova Arcade — real onchain games on MultiversX, gasless and no wallet." />
+    <link rel="icon" href="/favicon.svg" />
+    <!--
+      shell.html — the persistent parent that owns the audio.
+
+      Each game loads in a full-bleed iframe. The ONE sound toggle + the Tone
+      engine live HERE and never reload, so the live arcade score plays GAPLESSLY
+      as the player moves between games (today each game is its own page, so the
+      AudioContext dies on every nav). Games postMessage their per-game activity
+      up; the shell feeds the single score. A History/popstate router keeps the
+      address bar honest while only the iframe navigates.
+
+      ONE persistent score = gapless: a single AudioContext, owned here, never
+      restarted across game switches. It runs the LITE profile for now — the full
+      mix is too heavy to run over a game's render loop (it hung the tab on test).
+      The lush full mix returns to the LOBBY once the engine supports a LIVE
+      full<->lite morph (disconnect/reconnect the heavy reverb+voices on the
+      running context, still gapless). Until then, lite everywhere keeps play
+      smooth. NOTE: the engine also re-ramps audio params every 8n unconditionally
+      (arcade-score.js updateEnergy) — the real CPU/hang fix is there, not here.
+
+      Same-origin throughout, so the iframe shares localStorage and resolves
+      /api/relay, passport.js identity, and the arcade_sound_on pref unchanged.
+
+      US English, on-canon (Roobert PRO + JetBrains Mono via the games' own CSS).
+    -->
+    <style>
+      :root {
+        --mint: #23f7dd;
+        --text: #f4f6fa;
+        --text-dim: #9ba3b4;
+        --border: #1e2330;
+      }
+      html, body {
+        margin: 0;
+        height: 100dvh;
+        overflow: hidden;
+        overscroll-behavior: none;
+        background: #040506;
+      }
+      #stage {
+        width: 100%;
+        height: 100dvh;
+        border: 0;
+        display: block;
+      }
+
+      /* The single sound toggle, floated top-right over the iframe. Markup + look
+         lifted verbatim from the hub (arcade.html ~95-109, 307-316) so it reads
+         identically; mint accent (the shell has no per-game --c). */
+      .sound-toggle {
+        position: fixed;
+        top: calc(12px + env(safe-area-inset-top));
+        right: calc(12px + env(safe-area-inset-right));
+        z-index: 2147483000;
+        display: inline-flex; align-items: center; gap: 8px;
+        font-family: 'Roobert PRO', system-ui, -apple-system, sans-serif;
+        font-size: 11.5px; font-weight: 500;
+        padding: 6px 12px; border-radius: 999px;
+        border: 1px solid var(--border); background: rgba(14, 17, 23, 0.6); color: var(--text-dim);
+        cursor: pointer; white-space: nowrap;
+        -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px);
+        -webkit-user-select: none; user-select: none;
+        transition: border-color .2s, color .2s, background .2s, box-shadow .35s;
+      }
+      .sound-toggle:hover { border-color: rgba(35, 247, 221, .4); color: var(--text); }
+      .sound-toggle .st-ic { width: 14px; height: 14px; display: block; flex: 0 0 auto; }
+      .sound-toggle.on { border-color: rgba(35, 247, 221, .5); color: var(--mint); background: rgba(35, 247, 221, .06); box-shadow: 0 0 16px rgba(35, 247, 221, .16); }
+      .sound-toggle.on .st-ic { color: var(--mint); }
+      .sound-toggle.loading { opacity: .6; cursor: progress; }
+      .sound-toggle .eq { display: none; align-items: flex-end; gap: 2px; height: 11px; }
+      .sound-toggle.on .eq { display: inline-flex; }
+      .sound-toggle .eq i { width: 2px; height: 100%; background: var(--mint); border-radius: 1px; transform-origin: bottom; animation: eqb .9s ease-in-out infinite; }
+      .sound-toggle .eq i:nth-child(1) { animation-delay: 0s; }
+      .sound-toggle .eq i:nth-child(2) { animation-delay: .18s; }
+      .sound-toggle .eq i:nth-child(3) { animation-delay: .34s; }
+      @keyframes eqb { 0%, 100% { transform: scaleY(.32); } 50% { transform: scaleY(1); } }
+      @media (prefers-reduced-motion: reduce) { .sound-toggle .eq i { animation: none; } }
+    </style>
+  </head>
+  <body>
+    <iframe id="stage" title="Supernova Arcade" allow="web-share" referrerpolicy="same-origin"></iframe>
+
+    <button class="sound-toggle" id="soundToggle" type="button" aria-pressed="false"
+      title="Play the live arcade score — the arcade sonifies its own onchain activity (off by default)">
+      <svg class="st-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M11 5 6 9H3v6h3l5 4V5Z"/>
+        <path class="st-wave" d="M15.5 8.5a5 5 0 0 1 0 7M18 6a8 8 0 0 1 0 12" style="display:none"/>
+        <path class="st-mute" d="M22 9.5l-5 5M17 9.5l5 5"/>
+      </svg>
+      <span class="st-label">Sound</span>
+      <span class="eq" aria-hidden="true"><i></i><i></i><i></i></span>
+    </button>
+
+    <script type="module">
+      import { createArcadeScore } from "/arcade-score.js";
+
+      "use strict";
+
+      /* =====================================================================
+         GAME -> RAW FILE map. The iframe ALWAYS loads the raw .html (never the
+         pretty path), or a pretty path would nest a shell inside a shell.
+         Canonical list, mirrors vercel.json + arcade-info.js/arcade-sound.js.
+         ===================================================================== */
+      var GAME_FILE = {
+        arcade: "/arcade.html",
+        sprint: "/onchain.html",
+        tugofwar: "/tug-of-war.html",
+        canvas: "/canvas.html",
+        button: "/button.html",
+        reaction: "/reaction.html",
+        clawback: "/clawback/index.html",
+        degendash: "/degen-dash/index.html",
+        why: "/why.html",
+        me: "/me.html",
+        "supernova-sprint": "/supernova-sprint.html",
+      };
+      /* GAME -> PRETTY path for the address bar (the live rewrites). */
+      var GAME_PRETTY = {
+        arcade: "/arcade",
+        sprint: "/sprint",
+        tugofwar: "/tug-of-war",
+        canvas: "/canvas",
+        button: "/button",
+        reaction: "/reaction",
+        clawback: "/clawback",
+        degendash: "/degen-dash",
+        why: "/why",
+        me: "/me",
+        "supernova-sprint": "/supernova-sprint",
+      };
+      var DEFAULT_GAME = "arcade";
+
+      function normGame(g) {
+        if (!g) return DEFAULT_GAME;
+        g = String(g).toLowerCase();
+        return GAME_FILE[g] ? g : DEFAULT_GAME;
+      }
+
+      var stage = document.getElementById("stage");
+
+      /* ---- ONE persistent score. LITE for now: the full mix hung the tab over a
+         game's render loop. Full returns to the lobby via a live morph once the
+         engine supports it (see marketing/games/arcade-audio-engine-perf-brief.md). ---- */
+      var score = createArcadeScore({ momentStep: 25000, lite: true });
+      try { window.arcadeScore = window.arcadeScore || score; } catch (e) {}
+
+      /* ===================================================================
+         SOUND TOGGLE — lifted from the hub (arcade.html ~732-773): persist the
+         choice in `arcade_sound_on`, paint the saved pref on load, resume audio
+         on the first user gesture (autoplay needs a gesture, so a saved "on"
+         can't auto-play on load). The first IN-IFRAME tap arrives as an
+         `arcade:gesture` message (in-iframe pointer events don't bubble here),
+         which also arms the resume — see the message handler below.
+         =================================================================== */
+      var SOUND_KEY = "arcade_sound_on";
+      function readSoundPref() { try { return localStorage.getItem(SOUND_KEY) === "1"; } catch (e) { return false; } }
+      function writeSoundPref(on) { try { localStorage.setItem(SOUND_KEY, on ? "1" : "0"); } catch (e) {} }
+
+      var soundToggle = document.getElementById("soundToggle");
+      var soundLabel = soundToggle.querySelector(".st-label");
+      var waveEl = soundToggle.querySelector(".st-wave");
+      var muteEl = soundToggle.querySelector(".st-mute");
+      function paintSound(nowOn) {
+        soundToggle.classList.toggle("on", nowOn);
+        soundToggle.setAttribute("aria-pressed", String(nowOn));
+        soundLabel.textContent = nowOn ? "Sound on" : "Sound";
+        if (waveEl) waveEl.style.display = nowOn ? "" : "none";
+        if (muteEl) muteEl.style.display = nowOn ? "none" : "";
+      }
+      soundToggle.addEventListener("click", async () => {
+        soundToggle.classList.add("loading");
+        try {
+          var nowOn = await score.toggle();
+          writeSoundPref(nowOn);
+          paintSound(nowOn);
+        } catch (e) {
+          console.warn("[shell] sound toggle failed", e);
+        } finally {
+          soundToggle.classList.remove("loading");
+        }
+      });
+
+      // reflect the saved choice on load
+      paintSound(readSoundPref());
+
+      // resume on the first gesture (chrome gestures here OR an in-iframe gesture
+      // forwarded as a message). Idempotent: only the first real gesture fires.
+      async function tryResume() {
+        if (!readSoundPref() || score.isStarted()) return;
+        try { paintSound(await score.setOn(true)); }
+        catch (e) { console.warn("[shell] sound resume failed", e); }
+      }
+      (function armSoundResume() {
+        var fire = function () {
+          document.removeEventListener("pointerdown", fire, true);
+          document.removeEventListener("keydown", fire, true);
+          tryResume();
+        };
+        document.addEventListener("pointerdown", fire, true);
+        document.addEventListener("keydown", fire, true);
+      })();
+
+      /* ===================================================================
+         ROUTER. On load read ?g= (default arcade), load the RAW file, and clean
+         the ?g= out of the bar via replaceState to the pretty path. A navigate
+         message pushes state + swaps the iframe. popstate (back/forward) swaps
+         the iframe only — the shell never reloads, so audio rides through.
+         =================================================================== */
+      var current = null;
+
+      function loadGame(g, mode) {
+        g = normGame(g);
+        current = g;
+        var file = GAME_FILE[g];
+        var pretty = GAME_PRETTY[g] || "/";
+        // only touch iframe.src if it actually changed (popstate to the same page)
+        var want = location.origin + file;
+        if (stage.src !== want) stage.src = file;
+        if (mode === "push") history.pushState({ g: g }, "", pretty);
+        else if (mode === "replace") history.replaceState({ g: g }, "", pretty);
+        // give the iframe focus so games listening on document.keydown work
+        try { if (stage.contentWindow) stage.contentWindow.focus(); } catch (e) {}
+      }
+
+      function navigate(to) {
+        var g = normGame(to);
+        if (g === current) return;
+        loadGame(g, "push");
+      }
+
+      // initial route from ?g=
+      (function initRoute() {
+        var g = DEFAULT_GAME;
+        try { g = new URLSearchParams(location.search).get("g") || DEFAULT_GAME; } catch (e) {}
+        loadGame(g, "replace");
+      })();
+
+      // back / forward: state carries the game id; fall back to default
+      window.addEventListener("popstate", function (e) {
+        var g = (e.state && e.state.g) || DEFAULT_GAME;
+        loadGame(g, null);
+      });
+
+      /* ===================================================================
+         MESSAGE HANDLER — only trust same-origin messages from the iframe.
+           arcade:activity {game,total} -> feed the score this game's count
+           arcade:navigate {to}         -> pushState + swap iframe
+           arcade:gesture               -> first in-iframe tap: arm audio resume
+         =================================================================== */
+      window.addEventListener("message", function (e) {
+        if (e.origin !== location.origin) return;
+        var d = e.data;
+        if (!d || typeof d !== "object") return;
+        switch (d.type) {
+          case "arcade:activity": {
+            if (!d.game) return;
+            var per = {};
+            per[d.game] = +d.total || 0;
+            try { score.feed({ perCabinet: per, total: +d.total || 0 }); } catch (err) {}
+            break;
+          }
+          case "arcade:navigate": {
+            navigate(d.to);
+            break;
+          }
+          case "arcade:gesture": {
+            // an in-iframe gesture is a valid user gesture for resuming audio
+            tryResume();
+            break;
+          }
+        }
+      });
+    </script>
+  </body>
+</html>
