@@ -870,10 +870,14 @@ function setupControls() {
   }, { passive: true });
   arena.addEventListener("pointercancel", () => { dx0 = dy0 = null; }, { passive: true });
   addEventListener("keydown", (e) => {
+    // don't hijack typing (e.g. the handle input)
+    if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")) return;
     const k = e.key;
+    // arrows + space scroll the page by default — stop that so up/down PLAY, not scroll
+    if (k === "ArrowLeft" || k === "ArrowRight" || k === "ArrowUp" || k === "ArrowDown" || k === " ") e.preventDefault();
     if (k === "ArrowLeft" || k === "a") moveLane(-1);
     else if (k === "ArrowRight" || k === "d") moveLane(1);
-    else if (k === "ArrowUp" || k === "w" || k === " ") { jump(); if (k === " ") e.preventDefault(); }
+    else if (k === "ArrowUp" || k === "w" || k === " ") jump();
     else if (k === "ArrowDown" || k === "s") duck();
   });
 }
