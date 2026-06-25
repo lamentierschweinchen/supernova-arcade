@@ -46,6 +46,14 @@ import { createArcadeScore } from "/arcade-score.js";
   var GAME_ID = gameFromPath();
   if (!GAME_ID) return; // unknown page — do nothing
 
+  // Inside the persistent audio shell? The shell owns the AudioContext + the one
+  // toggle, so do NOT create a second score/toggle here (that doubles the music).
+  // Hand off to the bridge: it postMessages this game's activity up + routes nav.
+  if (window.parent !== window) {
+    import("/arcade-bridge.js").catch(function (e) { console.warn("[arcade-sound] bridge load failed", e); });
+    return;
+  }
+
   // ---- persistence helpers (fail-safe: private mode / disabled storage) ----
   function readPref() {
     try { return localStorage.getItem(STORAGE_KEY) === "1"; } catch (e) { return false; }

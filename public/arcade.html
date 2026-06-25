@@ -598,7 +598,15 @@ let firstLoadPulse = true; // don't pulse the galaxy on the baseline read
    =========================================================================== */
 const demoMode = new URLSearchParams(location.search).has("score-demo")
   || new URLSearchParams(location.search).has("mock");
-const score = createArcadeScore({
+// Inside the persistent audio shell? The shell owns the AudioContext + the single
+// toggle, so the hub must NOT boot a second score (that doubles the music). Use a
+// no-op stub, hide this page's toggle (below), and load the bridge so cabinet links
+// route to the shell. Standalone, the hub keeps its full inline score.
+const embedded = window.parent !== window;
+if (embedded) import("/arcade-bridge.js").catch(() => {});
+const score = embedded
+  ? { feed() {}, setOn() { return Promise.resolve(false); }, toggle() { return Promise.resolve(false); }, isOn() { return false; }, isStarted() { return false; }, getState() { return {}; } }
+  : createArcadeScore({
   momentStep: 25000,
   onBeat: (info) => {                   // subtle scoreboard breath, only when busy
     if (!info || info.energy < 0.10) return;
@@ -736,6 +744,8 @@ const soundToggle = document.getElementById("soundToggle");
 const soundLabel = soundToggle.querySelector(".st-label");
 const waveEl = soundToggle.querySelector(".st-wave");
 const muteEl = soundToggle.querySelector(".st-mute");
+// embedded in the shell: the shell shows the only toggle — hide this page's
+if (embedded) soundToggle.style.display = "none";
 function paintSound(nowOn) {
   soundToggle.classList.toggle("on", nowOn);
   soundToggle.setAttribute("aria-pressed", String(nowOn));
