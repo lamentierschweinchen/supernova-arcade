@@ -208,6 +208,13 @@ export function createArcadeScore(opts = {}) {
   let energy = 0, energyTarget = 0, energyOverride = null; // arranger energy
   const voiceAvg = {};                   // EMA of each voice delta (surge detect)
 
+  /* ---- perf: cache the last-applied automation targets so we only re-ramp on a
+     REAL change. updateEnergy runs every 8n; before this it rescheduled ~10 param
+     ramps every tick (~40/sec) even while idle — steady CPU plus a slow timeline
+     pileup that hung the tab over long sessions. Now idle costs ~nothing. ---- */
+  let lastBpm = null, lastPadFreq = null, lastReverbGain = null;
+  const lastGate = {};                    // last-applied strip gain (gateValue) per voice
+
   /* ---- key / harmony ---- */
   let keyRootMidi = noteToMidi("D", 3);  // current key root (D)
   let modeName = "spacey";               // current mode (idle starts cool)
@@ -255,6 +262,9 @@ export function createArcadeScore(opts = {}) {
     const revTarget = reverbBus || delayBus;
 
     graph = { dest, limiter, comp, master, reverb, reverbBus, delay, delayBus, strips: {}, synth: {}, disposables };
+    // fresh graph -> drop the automation-target caches so the first ramps apply
+    lastBpm = lastPadFreq = lastReverbGain = null;
+    for (const k in lastGate) delete lastGate[k];
 
     function makeStrip(name) {
       const cfg = mix.voices[name] || { level: 0.5, reverb: 0.2, delay: 0.1 };
@@ -283,7 +293,12 @@ export function createArcadeScore(opts = {}) {
   }
   function setStripGain(name, ramp = 0.08) {
     const s = graph && graph.strips[name];
-    if (s) s.level.gain.rampTo(gateValue(name), ramp);
+    if (!s) return;
+    const g = gateValue(name);
+    // skip redundant re-ramps to (essentially) the same gain — the big idle win
+    if (lastGate[name] != null && Math.abs(g - lastGate[name]) < 0.004) return;
+    lastGate[name] = g;
+    s.level.gain.rampTo(g, ramp);
   }
   function bumpMeter(name, v) { meter[name] = Math.max(meter[name] || 0, v); }
 
@@ -598,9 +613,16 @@ export function createArcadeScore(opts = {}) {
     // tempo + brightness ride energy
     const bpm = tempoOverride != null ? tempoOverride : Math.round(96 + energy * 52); // 96..148
     if (graph) {
-      T.getTransport().bpm.rampTo(bpm, 1.5);
-      if (graph.padFilter) graph.padFilter.frequency.rampTo(500 + energy * 3200, 1.2);
-      if (graph.reverbBus) graph.reverbBus.gain.rampTo(1.0 + energy * 0.25, 1.5); // no reverb bus in lite
+      // only re-ramp the params that actually moved (idle = no automation churn)
+      if (lastBpm == null || Math.abs(bpm - lastBpm) >= 0.5) { T.getTransport().bpm.rampTo(bpm, 1.5); lastBpm = bpm; }
+      if (graph.padFilter) {
+        const pf = 500 + energy * 3200;
+        if (lastPadFreq == null || Math.abs(pf - lastPadFreq) >= 1) { graph.padFilter.frequency.rampTo(pf, 1.2); lastPadFreq = pf; }
+      }
+      if (graph.reverbBus) {
+        const rg = 1.0 + energy * 0.25; // no reverb bus in lite
+        if (lastReverbGain == null || Math.abs(rg - lastReverbGain) >= 0.004) { graph.reverbBus.gain.rampTo(rg, 1.5); lastReverbGain = rg; }
+      }
     }
   }
 
