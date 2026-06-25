@@ -342,11 +342,9 @@
         winsA: 0, winsB: 0, // all-time rounds won per side — the running series (getWins)
         feed: [],
         named: false,
-        // match-state machine: 'idle' (pick + start) | 'countdown' | 'live' | 'ended'
+        // phase is DERIVED from the shared onchain round each tick (see phaseNow): 'idle' | 'countdown' | 'live'
         phase: "idle",
         seenRound: null, // last round_id we've reacted to (detect a fresh round)
-        countdownUntil: 0, // timestamp the 3-2-1-GO overlay ends
-        endedForRound: null, // round_id whose winner moment is showing
         _ovKey: null, // what the overlay currently shows; rebuild only on change so the pop animation isn't re-triggered every tick
       };
 
@@ -467,21 +465,53 @@
         return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
       }
 
-      // ---------- match-state: pick / lock / countdown / winner ----------
+      // ---------- match-state: pick a team, then play the SHARED onchain round ----------
+      // SYNC PRINCIPLE: every shared moment a player sees — the 3-2-1, when PULL goes
+      // live, the timer, the rope, the winner — is DERIVED from the contract's shared
+      // round (getRound -> start, duration, tallies), never from a per-player local timer
+      // or click. So all four devices stay in lockstep. (The old build started a LOCAL
+      // countdown when YOU picked, so players went live at different times -> the start
+      // was async/unusable. This is that fix.)
+      const WINNER_MS = 2200;    // first ~2.2s of a new round = synced winner celebration
+      const COUNTDOWN_MS = 3000; // then a synced 3-2-1 ready-set-go, then PULL
 
-      // join a team. Once joined you're LOCKED to it until a new round starts.
+      // The just-finished round's result, but ONLY right after the round rolled from it
+      // (its id is exactly one behind the current round). Drives the synced winner moment;
+      // null on the very first round / before any result, so there's nothing to celebrate
+      // then. It's onchain + identical for everyone, so the celebration stays in lockstep.
+      function freshWinner() {
+        const r = view().lastResult;
+        return r && r.roundId > 0 && r.roundId === view().roundId - 1 ? r : null;
+      }
+
+      // phase, derived purely from the shared round + whether you've joined. Each round
+      // opens with a synced sequence — celebrate (if a round just finished) -> 3-2-1 ->
+      // live — all timed off the onchain round start, so every device is in lockstep:
+      //   idle      — no team picked
+      //   celebrate — picked, first WINNER_MS of a round that just rolled (winner shown)
+      //   countdown — picked, the 3-2-1 window before PULL
+      //   live      — picked, past the countdown -> PULL
+      function phaseNow() {
+        if (S.side == null) return "idle";
+        const into = Date.now() - view().start; // ms into the shared round (start is onchain)
+        if (into < 0) return "countdown";
+        const celebrateMs = freshWinner() ? WINNER_MS : 0; // nothing to celebrate on round 1
+        if (celebrateMs && into < celebrateMs) return "celebrate";
+        if (into < celebrateMs + COUNTDOWN_MS) return "countdown";
+        return "live";
+      }
+
+      // join a team. You LOCK to it and STAY on it across rounds — no per-round re-pick
+      // (re-picking re-entered each player at a different time -> desync). The other team
+      // dims; your phase is then derived from the shared round, identically for everyone.
       function pickSide(side) {
-        if (S.locked && S.side !== side) return; // can't switch mid-round
+        if (S.locked && S.side !== side) return; // locked to your team
         S.side = side;
-        if (!S.locked) {
-          S.locked = true;
-          lockTeamUI();
-        }
+        S.locked = true;
+        lockTeamUI();
         $("sideA").classList.toggle("sel", side === 0);
         $("sideB").classList.toggle("sel", side === 1);
-        // joining a team starts the match: a 3-2-1 countdown, then PULL goes live
-        if (S.phase === "idle") startCountdown();
-        else syncPullButton();
+        updatePhaseUI();
       }
 
       // dim + disable the team you did NOT join for the rest of this round
@@ -494,18 +524,6 @@
         $(mine).classList.add("sel");
       }
 
-      // re-enable both teams for a brand-new round (you can pick again)
-      function unlockTeamUI() {
-        S.locked = false;
-        S.side = null;
-        $("sideA").classList.remove("locked", "sel");
-        $("sideB").classList.remove("locked", "sel");
-        const btn = $("pullBtn");
-        btn.disabled = true;
-        btn.className = "btn pull-btn a";
-        btn.textContent = "Pick a team to start";
-      }
-
       function syncPullButton() {
         const btn = $("pullBtn");
         if (S.side == null) {
@@ -514,21 +532,14 @@
           btn.textContent = "Pick a team to start";
           return;
         }
-        const live = S.phase === "live";
+        const live = phaseNow() === "live";
         btn.disabled = !live;
         btn.className = "btn pull-btn " + (S.side === 0 ? "a" : "b");
         btn.textContent = live ? "PULL FOR " + COLORS[S.side].toUpperCase() : "Get ready…";
       }
 
-      // 3-2-1-GO flourish before play feels live. The contract round is already
-      // running; this is purely client-side UX so a join lands with a beat.
-      function startCountdown() {
-        S.phase = "countdown";
-        S.countdownUntil = Date.now() + 3600; // ~3s of digits + a short GO
-        S._ovKey = null; // force a fresh overlay render for the new countdown
-        syncPullButton();
-        renderOverlay();
-      }
+      // (the old per-player startCountdown was removed: the 3-2-1 is derived from the
+      // SHARED round in phaseNow/renderOverlay, so every player counts down together.)
 
       // Idempotent overlay: only rebuilds the DOM when what it shows (S._ovKey)
       // changes. Calling renderOverlay every ~200ms used to re-create the number
@@ -542,106 +553,70 @@
         return true;
       }
 
+      // The round-opening overlay, every part timed off the SHARED round start so all
+      // players see the same thing at the same instant: a winner celebration (auto-timed,
+      // NO dismiss button — the per-player dismiss is what used to desync), then a synced
+      // 3-2-1, then it clears for PULL. The persistent last-result banner under the rope
+      // (render(), onchain) carries the winner the rest of the round.
       function renderOverlay() {
         const ov = $("overlay");
-        // winner moment takes priority over everything else
-        if (S.phase === "ended") {
-          const r = view().lastResult || S.lastResult;
-          if (!r) { setOverlay(ov, "hidden", null); return; }
-          const w = r.winner;
+        const ph = phaseNow();
+        const win = freshWinner();
+        if (ph === "celebrate" && win) {
+          const w = win.winner;
           const cls = w === 0 ? "a" : w === 1 ? "b" : "tie";
           const title = w === 2 ? "It's a tie!" : `${COLORS[w]} wins!`;
-          const hi = Math.max(r.a, r.b), lo = Math.min(r.a, r.b);
+          const hi = Math.max(win.a, win.b), lo = Math.min(win.a, win.b);
           const score = w === 2
-            ? `<span class="a">${fmt(r.a)}</span> – <span class="b">${fmt(r.b)}</span>`
+            ? `<span class="a">${fmt(win.a)}</span> – <span class="b">${fmt(win.b)}</span>`
             : `<span class="${cls}">${fmt(hi)}</span> – ${fmt(lo)}`;
-          const youWon = S.side != null && S.side === w;
-          const sub = w === 2
-            ? "Dead even. Line up for the next round."
-            : youWon
-              ? "Your team took it. Stay in for the next round."
-              : "Tough round. Join up and pull it back next time.";
-          const built = setOverlay(ov, "ended:" + r.roundId,
-            `<span class="ov-k">Round ${r.roundId} · final</span>` +
+          setOverlay(ov, "win:" + win.roundId,
+            `<span class="ov-k">Round ${win.roundId} · final</span>` +
             `<div class="win-title ${cls}">${title}</div>` +
-            `<div class="win-score">${score}</div>` +
-            `<div class="win-sub">${sub}</div>` +
-            `<button class="btn win-cta" id="againBtn">Play the next round</button>`);
-          if (built) { const again = $("againBtn"); if (again) again.addEventListener("click", dismissWinner, { once: true }); }
+            `<div class="win-score">${score}</div>`);
           return;
         }
-
-        if (S.phase === "countdown") {
-          const left = S.countdownUntil - Date.now();
-          if (left <= 0) { endCountdown(); return; }
+        if (ph === "countdown") {
+          const celebrateMs = win ? WINNER_MS : 0; // mirror phaseNow's opening sequence
+          const left = view().start + celebrateMs + COUNTDOWN_MS - Date.now();
           let label, go = false;
           if (left <= 600) { label = "GO"; go = true; }
-          else if (left <= 1600) label = "1";
-          else if (left <= 2600) label = "2";
+          else if (left <= 1400) label = "1";
+          else if (left <= 2200) label = "2";
           else label = "3";
           setOverlay(ov, "cd:" + label,
             `<span class="ov-k">Team ${COLORS[S.side]} · get ready</span>` +
             `<div class="cd-num ${go ? "go" : ""}" data-n="${label}">${label}</div>`);
           return;
         }
-
         setOverlay(ov, "hidden", null);
       }
 
-      function endCountdown() {
-        if (S.phase !== "countdown") return;
-        S.phase = "live";
-        $("overlay").classList.add("hidden");
+      // push the derived phase to the UI (overlay + PULL button). Called every render
+      // tick and on pick, so both always reflect the shared round, the same for everyone.
+      function updatePhaseUI() {
+        S.phase = phaseNow();
+        renderOverlay();
         syncPullButton();
       }
 
-      // player dismissed (or auto-dismissed) the winner moment → ready for next round
-      function dismissWinner() {
-        if (S.phase !== "ended") return;
-        S.phase = "idle";
-        S.endedForRound = null;
-        $("overlay").classList.add("hidden");
-        unlockTeamUI();
-      }
-
-      // detect round transitions from the polled round_id (deployed) or local timer
+      // detect a round roll from the polled round id. Nothing per-player resets: the
+      // winner of the finished round is shown by the persistent banner (render(),
+      // onchain — identical for all), and the new round's synced 3-2-1 (derived from its
+      // onchain start) hands off automatically. The team persists, so players stay in
+      // lockstep across rounds.
       function reconcilePhase() {
-        const v = view();
-        const rid = v.roundId;
-
-        // first sight of a round: prime the marker without a winner moment
-        if (S.seenRound == null) {
-          S.seenRound = rid;
-          return;
-        }
-
-        // a NEW round started (round_id advanced) → show the just-finished winner,
-        // then reset so the player picks a team again
+        const rid = view().roundId;
+        if (S.seenRound == null) { S.seenRound = rid; return; }
         if (rid !== S.seenRound) {
           S.seenRound = rid;
-          S.opt.a = 0; S.opt.b = 0;
-          // mid-countdown? the player is joining the NEW round — let the 3-2-1 finish
-          // into it; don't hijack with a winner moment for a round they didn't pull.
-          if (S.phase === "countdown") return;
-          const last = v.lastResult || S.lastResult;
-          // only celebrate if we have a result AND the player was actually in the match
-          if (last && S.side != null && S.endedForRound !== last.roundId) {
-            S.endedForRound = last.roundId;
-            S.phase = "ended";
-            renderOverlay();
-          } else {
-            // player was idle/spectating: just roll into the fresh round cleanly
-            if (S.phase !== "ended") {
-              S.phase = "idle";
-              unlockTeamUI();
-            }
-          }
+          S.opt.a = 0; S.opt.b = 0; // vestigial optimistic deltas — keep clean
         }
       }
 
       // ---------- pulling ----------
       async function pull() {
-        if (S.side == null || S.phase !== "live") return;
+        if (S.side == null || phaseNow() !== "live") return;
         const side = S.side;
         S.yourPulls++;
         galaxy.pulse(side === 0 ? 1 : 0); // Super→mint shard, Nova→amber shard
@@ -780,7 +755,7 @@
         if (client.deployed) return;
         const now = Date.now();
         // practice bot only pulls once the match is live and you've joined a side
-        if (S.phase === "live" && S.side != null) {
+        if (phaseNow() === "live" && S.side != null) {
           const botSide = S.side === 1 ? 0 : 1;
           const botPulls = 1 + Math.floor(Math.random() * 3);
           if (botSide === 0) S.local.a += botPulls;
@@ -848,9 +823,10 @@
         renderOverlay();
         poll();
         setInterval(poll, 1200); // fast onchain-state read (vm-query) keeps the rope responsive + identical for all players
-        // smooth timer + knot + drive the countdown / winner overlay
+        // smooth timer + knot + re-derive the synced phase (overlay + PULL button) from
+        // the shared round every tick, so every device shows the same thing at once
         setInterval(() => {
-          if (S.phase === "countdown") renderOverlay();
+          updatePhaseUI();
           render();
         }, 200);
       })();
