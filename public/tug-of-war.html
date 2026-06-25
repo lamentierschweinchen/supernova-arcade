@@ -354,10 +354,14 @@
         if (client.deployed) {
           return {
             roundId: S.onchain.roundId,
-            a: S.onchain.a + S.opt.a,
-            b: S.onchain.b + S.opt.b,
+            // shared tally = PURE ONCHAIN, so all players see the same rope. No
+            // optimistic delta: it skipped DOWN when a poll landed before your tx
+            // indexed (onchain+opt -> reset opt -> onchain not caught up yet). The
+            // instant feel comes from the local knot jolt + your-pulls, not this.
+            a: S.onchain.a,
+            b: S.onchain.b,
             start: S.onchain.start,
-            global: S.onchain.global + S.opt.a + S.opt.b,
+            global: S.onchain.global,
             players: S.onchain.players,
             playersA: S.onchain.playersA,
             playersB: S.onchain.playersB,
@@ -683,6 +687,9 @@
       async function pollTx(entry) {
         for (let i = 0; i < 26; i++) {
           await new Promise((r) => setTimeout(r, 600));
+          // rapid pulls push entries off the capped 8-row feed; stop polling those
+          // so a fast tapper doesn't spawn hundreds of concurrent status loops.
+          if (!S.feed.includes(entry)) return;
           const st = await client.txStatus(entry.hash);
           if (st === "success") {
             entry.state = "final";
@@ -839,7 +846,7 @@
         render();
         renderOverlay();
         poll();
-        setInterval(poll, 2000);
+        setInterval(poll, 1200); // fast onchain-state read (vm-query) keeps the rope responsive + identical for all players
         // smooth timer + knot + drive the countdown / winner overlay
         setInterval(() => {
           if (S.phase === "countdown") renderOverlay();

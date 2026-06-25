@@ -172,7 +172,7 @@ const RELAY_OPS: Record<string, RelayOp> = {
   [PULL_FUNCTION]: {
     receivers: isPlaceholder(TUGOFWAR_CONTRACT) ? [] : [TUGOFWAR_CONTRACT],
     maxGasLimit: PULL_GAS_LIMIT + 100_000,
-    rateMax: 1200,
+    rateMax: 5000, // flagship: 4 players may share one event-WiFi IP and pool this budget; 1200 throttled them mid-game
   },
   // Canvas: one `placePixel` = one tx = one pixel. The contract enforces a
   // per-address cooldown and the client mirrors it, so a single key paces itself;
