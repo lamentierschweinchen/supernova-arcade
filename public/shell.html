@@ -236,11 +236,20 @@
         loadGame(g, "push");
       }
 
-      // initial route from ?g=
+      // initial route: derive the game from the pretty PATH. A vercel rewrite keeps
+      // the browser URL pretty (e.g. /canvas) and serves shell.html; a ?g= in the
+      // rewrite destination is NOT visible to the client, so read location.pathname.
+      // Fall back to ?g= (direct /shell.html?g=<id> testing), then the default.
+      function gameFromPath() {
+        var p = (location.pathname || "/").replace(/\/+$/, "");
+        if (p === "") return DEFAULT_GAME; // "/"
+        for (var key in GAME_PRETTY) { if (GAME_PRETTY[key] === p) return key; }
+        return null;
+      }
       (function initRoute() {
-        var g = DEFAULT_GAME;
-        try { g = new URLSearchParams(location.search).get("g") || DEFAULT_GAME; } catch (e) {}
-        loadGame(g, "replace");
+        var g = gameFromPath();
+        if (!g) { try { g = new URLSearchParams(location.search).get("g"); } catch (e) {} }
+        loadGame(normGame(g), "replace");
       })();
 
       // back / forward: state carries the game id; fall back to default

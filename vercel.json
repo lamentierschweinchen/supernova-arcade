@@ -1,17 +1,17 @@
 {
   "rewrites": [
-    { "source": "/", "destination": "/arcade.html" },
-    { "source": "/arcade", "destination": "/arcade.html" },
-    { "source": "/tug-of-war", "destination": "/tug-of-war.html" },
-    { "source": "/canvas", "destination": "/canvas.html" },
-    { "source": "/button", "destination": "/button.html" },
-    { "source": "/reaction", "destination": "/reaction.html" },
-    { "source": "/clawback", "destination": "/clawback/index.html" },
-    { "source": "/degen-dash", "destination": "/degen-dash/index.html" },
-    { "source": "/sprint", "destination": "/onchain.html" },
-    { "source": "/supernova-sprint", "destination": "/supernova-sprint.html" },
-    { "source": "/why", "destination": "/why.html" },
-    { "source": "/me", "destination": "/me.html" }
+    { "source": "/", "destination": "/shell.html" },
+    { "source": "/arcade", "destination": "/shell.html" },
+    { "source": "/tug-of-war", "destination": "/shell.html" },
+    { "source": "/canvas", "destination": "/shell.html" },
+    { "source": "/button", "destination": "/shell.html" },
+    { "source": "/reaction", "destination": "/shell.html" },
+    { "source": "/clawback", "destination": "/shell.html" },
+    { "source": "/degen-dash", "destination": "/shell.html" },
+    { "source": "/sprint", "destination": "/shell.html" },
+    { "source": "/supernova-sprint", "destination": "/shell.html" },
+    { "source": "/why", "destination": "/shell.html" },
+    { "source": "/me", "destination": "/shell.html" }
   ],
   "redirects": [
     { "source": "/onchain", "destination": "/sprint", "permanent": false }
