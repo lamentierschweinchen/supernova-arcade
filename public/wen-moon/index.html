@@ -315,7 +315,7 @@
 
   <a class="why" href="/why#randomness">
     <span class="why-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.5c.6.6 1 1.5 1 2.5h6c0-1 .4-1.9 1-2.5A6 6 0 0 0 12 3Z"/></svg></span>
-    <span class="why-tx"><span class="why-k">Why it's fair</span>The outcome is derived from the block VRF seed before your tx is included. The derivation is open-source — anyone can recompute it from the block hash.</span>
+    <span class="why-tx"><span class="why-k">Why it's fair</span>The outcome is derived from the block VRF seed before your tx is included. The derivation is open-source, so anyone can recompute it from the block hash.</span>
     <span class="why-go" aria-hidden="true">&rarr;</span>
   </a>
 
@@ -343,10 +343,10 @@
   <!-- HOW IT WORKS -->
   <section class="panel how">
     <h2>How it works</h2>
-    Start a run to get <b>1,000 NOVA</b>. Pick a <b>risk band</b> — how likely a
-    <span class="moon-hi">MOON</span> is — and a <b>wager</b> (percentage of your bankroll).
+    Start a run to get <b>1,000 NOVA</b>. Pick a <b>risk band</b> (how likely a
+    <span class="moon-hi">MOON</span> is) and a <b>wager</b> (percentage of your bankroll).
     Hit <b>Call it</b> to fire a real gasless tx onchain. The contract draws the result from
-    <b>get_block_random_seed()</b> — the MultiversX VRF-backed block seed — and applies it
+    <b>get_block_random_seed()</b> (the MultiversX VRF-backed block seed) and applies it
     immediately: <span class="moon-hi">MOON</span> grows your bankroll by the payout, <span class="rug-hi">RUG</span>
     takes the wager. <b>Press your luck</b> and call again, or hit <b>Cash Out</b> to bank your
     score. Bust (bankroll hits 0) and the run is over.
@@ -358,14 +358,14 @@
   <!-- WHY IT'S FAIR -->
   <section class="panel how">
     <h2>Why it's provably fair</h2>
-    The outcome is determined by <b>get_block_random_seed()</b> — a VRF-backed seed that is
+    The outcome is determined by <b>get_block_random_seed()</b>, a VRF-backed seed that is
     fixed by the block before your transaction is included. The derivation uses
     <b>splitmix64</b> (the same hash used across every Supernova Arcade game):
     <br /><br />
     <code style="font-family:var(--mono);font-size:11px;color:var(--amber)">seed = mix64( vrf_first8 XOR caller_last8 XOR mix64(run_id XOR mix64(call_id)) )<br />MOON if (seed % 10000) &lt; moon_permil</code>
     <br /><br />
     Every call emits the seed that drove it in the transaction receipt. Click <b>verify on explorer</b>
-    to inspect the block and recompute the result yourself. The contract source is open — the formula
+    to inspect the block and recompute the result yourself. The contract source is open. The formula
     is always visible, not hidden in a black box.
     <br /><br />
     NOVA is a worthless testnet game token. No real money, ever.
@@ -601,7 +601,7 @@ async function onStartRun() {
       setStatus("ok", `Run started! <a href="${explorerUrl}" target="_blank" rel="noopener">View tx ↗</a>`);
     } catch (err) {
       G.phase = "idle";
-      setStatus("err", "Couldn't start the run onchain — playing in practice mode.");
+      setStatus("err", "Couldn't start the run onchain. Playing in practice mode.");
       G.onchain = false;
       applyMode(false, "Practice · fallback");
       startPracticeRun();
@@ -654,7 +654,7 @@ async function onCall() {
       }
     } catch (err) {
       G.phase = "active";
-      setStatus("err", "Call failed — try again.");
+      setStatus("err", "Call failed, try again.");
       updateUI();
     }
   } else {
@@ -715,7 +715,7 @@ function applyCallResult(moon, delta, newBankroll, seed, txHash, explorerUrl) {
   if (explorerUrl) {
     $("verifyLine").innerHTML = `<a href="${explorerUrl}" target="_blank" rel="noopener">Verify this call on the explorer ↗</a>`;
   } else if (seed) {
-    $("verifyLine").textContent = "Practice result — not onchain.";
+    $("verifyLine").textContent = "Practice result, not onchain.";
   } else {
     $("verifyLine").textContent = "";
   }
@@ -758,7 +758,7 @@ async function onCashOut() {
       refreshBoard();
     } catch (err) {
       G.phase = "active";
-      setStatus("err", "Couldn't cash out — try again.");
+      setStatus("err", "Couldn't cash out, try again.");
       updateUI();
       return;
     }
@@ -791,7 +791,7 @@ async function claimHandle() {
     for (let i = 0; i < 5; i++) { await new Promise(r => setTimeout(r,1500)); await refreshBoard(); }
   } catch {
     $("claimBtn").disabled = false;
-    setStatus("err", "Couldn't set your handle — try again.");
+    setStatus("err", "Couldn't set your handle, try again.");
   }
 }
 
@@ -858,7 +858,7 @@ function updateUI() {
     callBtn.disabled = true;
   } else if (G.phase === "active") {
     const wager = clampedWager();
-    const label = wager >= MIN_WAGER ? `Call it — ${fmt(wager)} NOVA` : "Bankroll too small";
+    const label = wager >= MIN_WAGER ? `Call it · ${fmt(wager)} NOVA` : "Bankroll too small";
     callBtn.textContent = label + (G.onchain ? "" : " (practice)");
     callBtn.disabled = wager < MIN_WAGER;
     callBtn.className = "btn btn-amber";
@@ -891,7 +891,7 @@ function updateUI() {
     $("hudEv").textContent = "";
   } else {
     hud.className = "callhud";
-    $("hudLabel").textContent = active ? "Calling…" : "Run over — cash out or start a new run.";
+    $("hudLabel").textContent = active ? "Calling…" : "Run over. Cash out or start a new run.";
     $("hudEv").textContent = "";
   }
 }
