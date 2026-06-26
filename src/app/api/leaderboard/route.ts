@@ -22,6 +22,7 @@ import {
   isPlaceholder,
 } from "@/lib/onchain/arcade.config";
 import { TAP_COUNTER_CONTRACT } from "@/lib/onchain/tap-counter.config";
+import { Address } from "@multiversx/sdk-core";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -73,7 +74,83 @@ async function countContract(contract: string, after: number, tally: Map<string,
 type Cache = { at: number; day: number; rows: Array<{ address: string; actions: number }> };
 let cache: Cache | null = null;
 
-export async function GET() {
+// ---- all-time per-game board (storage-parsed, no gas limit) ----
+// Every arcade-core game stores <scoreMapper>+address -> u64 score and
+// handle+address -> name. The onchain getTop* views SORT all players and run out
+// of query gas past ~120 players (tug-of-war + canvas are already broken), so we
+// read the raw storage via /keys and sort off-chain. Scales to any player count.
+const GAME_BOARDS: Record<string, { contract: string; scoreMapper: string }> = {
+  tugofwar: { contract: TUGOFWAR_CONTRACT, scoreMapper: "playerPulls" },
+  canvas: { contract: CANVAS_CONTRACT, scoreMapper: "playerPixels" },
+  button: { contract: BUTTON_CONTRACT, scoreMapper: "playerPoints" },
+  reaction: { contract: REACTION_CONTRACT, scoreMapper: "reactions" },
+};
+
+type GameRow = { address: string; handle: string; score: number };
+const boardCache = new Map<string, { at: number; rows: GameRow[] }>();
+
+function toBech32(addrHex: string): string {
+  try {
+    return new Address(Buffer.from(addrHex, "hex")).toBech32();
+  } catch {
+    return "";
+  }
+}
+
+async function gameBoard(game: string): Promise<GameRow[] | null> {
+  const cfg = GAME_BOARDS[game];
+  if (!cfg || isPlaceholder(cfg.contract)) return null;
+  const hit = boardCache.get(game);
+  if (hit && Date.now() - hit.at < CACHE_MS) return hit.rows;
+
+  let pairs: Record<string, string> = {};
+  try {
+    const r = await fetch(`${API}/address/${cfg.contract}/keys`, { cache: "no-store" });
+    if (!r.ok) return hit ? hit.rows : [];
+    pairs = (((await r.json()) as { data?: { pairs?: Record<string, string> } })?.data?.pairs) || {};
+  } catch {
+    return hit ? hit.rows : [];
+  }
+
+  // storage keys are hex(mapperName) + hex(address-32-bytes). Match by exact length + prefix.
+  const scorePrefix = Buffer.from(cfg.scoreMapper, "utf8").toString("hex");
+  const handlePrefix = Buffer.from("handle", "utf8").toString("hex");
+  const scoreKeyLen = (cfg.scoreMapper.length + 32) * 2;
+  const handleKeyLen = (6 + 32) * 2;
+
+  const byAddr = new Map<string, { handle: string; score: number }>();
+  const slot = (a: string) => byAddr.get(a) || { handle: "", score: 0 };
+  for (const [k, v] of Object.entries(pairs)) {
+    if (k.length === scoreKeyLen && k.startsWith(scorePrefix)) {
+      const a = k.slice(scorePrefix.length);
+      const e = slot(a);
+      e.score = v ? Number(BigInt("0x" + v)) : 0;
+      byAddr.set(a, e);
+    } else if (k.length === handleKeyLen && k.startsWith(handlePrefix)) {
+      const a = k.slice(handlePrefix.length);
+      const e = slot(a);
+      e.handle = v ? Buffer.from(v, "hex").toString("utf8") : "";
+      byAddr.set(a, e);
+    }
+  }
+
+  const rows = [...byAddr.entries()]
+    .filter(([, e]) => e.score > 0)
+    .map(([a, e]) => ({ address: toBech32(a), handle: e.handle, score: e.score }))
+    .filter((e) => e.address)
+    .sort((a, b) => b.score - a.score);
+  boardCache.set(game, { at: Date.now(), rows });
+  return rows;
+}
+
+export async function GET(request: Request) {
+  // ?game=canvas -> that game's all-time board (storage-parsed). No game -> daily.
+  const game = new URL(request.url).searchParams.get("game");
+  if (game) {
+    const rows = await gameBoard(game);
+    if (rows === null) return NextResponse.json({ error: "unknown_game" }, { status: 404 });
+    return NextResponse.json({ game, count: rows.length, rows });
+  }
   const after = utcMidnight();
   if (cache && cache.day === after && Date.now() - cache.at < CACHE_MS) {
     return NextResponse.json({ window: "daily", day: after, rows: cache.rows, cached: true });
