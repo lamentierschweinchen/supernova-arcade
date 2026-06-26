@@ -377,6 +377,7 @@
 <script type="module">
 import { ARCADE_CONFIG } from "/wen-moon/arcade.config.js";
 import { mountGalaxy } from "/arcade-galaxy.js";
+import { createArcade } from "/wen-moon/arcade.js";
 
 // ---------------------------------------------------------------------------
 // Constants (mirror the contract)
@@ -446,12 +447,15 @@ function isPlaceholder(addr) {
 // ---------------------------------------------------------------------------
 // Arcade contract interface
 // ---------------------------------------------------------------------------
+// the onchain client — shared PASSPORT key, Relayed-v3 signing, gasless /api/relay.
+// Replaces the old inline path, which never signed and whose "health check" fetched
+// a bech32 ADDRESS as a URL, so the game always fell to practice (no scores, hedged copy).
+const arcade = createArcade(ARCADE_CONFIG);
+
 async function arcadeReady() {
   if (isPlaceholder(ARCADE_CONFIG.contract) || isPlaceholder(ARCADE_CONFIG.relayer)) return false;
-  // Light check: ping the relayer
-  const ok = await fetch(ARCADE_CONFIG.relayer + "/health", { signal: AbortSignal.timeout(3000) })
-    .then(r => r.ok).catch(() => false);
-  return ok;
+  // ready() loads the crypto libs + the passport key; true once we can sign onchain.
+  return await arcade.ready().catch(() => false);
 }
 
 // Generic onchain query — calls a SC view endpoint
@@ -479,38 +483,19 @@ function encodeAddress(addr) {
 
 // Read global actions
 async function fetchGlobalActions() {
-  const ret = await scQuery("getGlobalActions");
-  return decodeU64(ret[0]);
+  const v = await arcade.getGlobalActions();
+  return v == null ? 0 : v;
 }
 
 // Read bankroll for current address
 async function fetchBankroll(address) {
-  // For onchain queries, pass address as hex arg
-  const ret = await scQuery("getBankroll", [address]);
-  return decodeU64(ret[0]);
+  return await arcade.getBankroll(address);
 }
 
-// Read leaderboard (top N entries)
+// Read leaderboard (top N entries). The client decodes ScoreEntry + returns bech32
+// addresses, so the "you" row below matches the passport address correctly.
 async function fetchLeaderboard(n) {
-  // Returns MultiValueEncoded<ScoreEntry> — each entry is address(32)+handleLen(4)+handle+score(8)+ts(8)
-  try {
-    const ret = await scQuery("getLeaderboard");
-    // Minimal parse: treat each returned value as a raw score entry
-    return ret.map(b64 => {
-      try {
-        const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
-        if (bytes.length < 44) return null; // address(32) + score(8) + ts(8) minimum
-        const addr = Array.from(bytes.slice(0,32)).map(b => b.toString(16).padStart(2,'0')).join('');
-        let handleLen = (bytes[32]<<24|bytes[33]<<16|bytes[34]<<8|bytes[35]);
-        if (handleLen < 0 || handleLen > 64 || 36 + handleLen + 16 > bytes.length) handleLen = 0;
-        const handle = handleLen > 0 ? new TextDecoder().decode(bytes.slice(36, 36 + handleLen)) : "";
-        const off = 36 + handleLen;
-        let score = 0n;
-        for (let i = 0; i < 8; i++) score = (score << 8n) | BigInt(bytes[off + i]);
-        return { address: addr, handle, score: Number(score) };
-      } catch { return null; }
-    }).filter(Boolean).sort((a,b) => b.score - a.score).slice(0, n);
-  } catch { return []; }
+  return await arcade.getLeaderboard(n);
 }
 
 // Send a gasless tx via relay
@@ -545,6 +530,7 @@ async function detectMode() {
   const ok = await arcadeReady().catch(() => false);
   applyMode(ok, ok ? "Onchain · Supernova" : "Practice · relayer offline");
   if (ok) {
+    G.myAddress = arcade.address; // the passport address — used for bankroll reads + the "you" row
     refreshBoard();
     // Check if a run is already active
     await syncRunState();
@@ -590,7 +576,7 @@ async function onStartRun() {
     updateUI();
     setStatus("", `<span class="spin"></span> Starting your run onchain…`);
     try {
-      const { txHash, explorerUrl } = await relayTx("startRun", []);
+      const { txHash, explorerUrl } = await arcade.startRun();
       await pollTx(txHash);
       G.runId++;
       G.callCount = 0;
@@ -638,7 +624,7 @@ async function onCall() {
   if (G.onchain) {
     setStatus("", `<span class="spin"></span> Calling it onchain…`);
     try {
-      const { txHash, explorerUrl } = await relayTx("call", [G.band.toString(), wager.toString()]);
+      const { txHash, explorerUrl } = await arcade.call(G.band, wager);
       const txData = await pollTx(txHash);
       G.callCount++;
       // Parse the callResult event to get seed, moon, new_bankroll
@@ -737,8 +723,8 @@ function applyCallResult(moon, delta, newBankroll, seed, txHash, explorerUrl) {
   galaxy.pulse(moon ? 0 : 2, moon ? 4 : 2); // 0=amber MOON burst, 2=coral RUG flash
   updateUI();
 
-  if (moon) setStatus("ok", G.onchain ? "MOON! Bankroll grown." : "MOON! (practice)");
-  else setStatus("", G.onchain ? "RUG. Try again?" : "RUG. (practice)");
+  if (moon) setStatus("ok", "MOON! Bankroll grown.");
+  else setStatus("", "RUG. Try again?");
 }
 
 async function onCashOut() {
@@ -750,7 +736,7 @@ async function onCashOut() {
   if (G.onchain) {
     setStatus("", `<span class="spin"></span> Cashing out ${fmt(bankrollAtCashout)} NOVA onchain…`);
     try {
-      const { txHash, explorerUrl } = await relayTx("cashOut", []);
+      const { txHash, explorerUrl } = await arcade.cashOut();
       await pollTx(txHash);
       setStatus("ok", `Cashed out ${fmt(bankrollAtCashout)} NOVA! <a href="${explorerUrl}" target="_blank" rel="noopener">View tx ↗</a>`);
       $("claimRow").classList.add("show");
@@ -764,7 +750,7 @@ async function onCashOut() {
     }
   } else {
     await new Promise(r => setTimeout(r, 300));
-    setStatus("", `Practice cash-out: ${fmt(bankrollAtCashout)} NOVA banked (not onchain).`);
+    setStatus("", `Cashed out ${fmt(bankrollAtCashout)} NOVA banked.`);
   }
 
   G.bankroll = 0;
@@ -784,7 +770,7 @@ async function claimHandle() {
   $("claimBtn").disabled = true;
   setStatus("", "Putting your handle onchain…");
   try {
-    const { txHash, explorerUrl } = await relayTx("setHandle", [handle]);
+    const { txHash, explorerUrl } = await arcade.setHandle(handle);
     await pollTx(txHash);
     setStatus("ok", `On the board! <a href="${explorerUrl}" target="_blank" rel="noopener">View tx ↗</a>`);
     $("claimBtn").textContent = "On the board ✓";
@@ -859,7 +845,7 @@ function updateUI() {
   } else if (G.phase === "active") {
     const wager = clampedWager();
     const label = wager >= MIN_WAGER ? `Call it · ${fmt(wager)} NOVA` : "Bankroll too small";
-    callBtn.textContent = label + (G.onchain ? "" : " (practice)");
+    callBtn.textContent = label;
     callBtn.disabled = wager < MIN_WAGER;
     callBtn.className = "btn btn-amber";
     callBtn.style.cssText = "font-size:17px;font-weight:800;";
