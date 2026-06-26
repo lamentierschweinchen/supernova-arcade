@@ -318,6 +318,8 @@
 
     <script type="module">
       import { createArcadeClient } from "/arcade-core.js";
+      import { fetchGameBoard, topPlusSelf, BOARD_GAP } from "/arcade-board.js";
+      import { getHandle } from "/passport.js";
       import { mountGalaxy } from "/arcade-galaxy.js";
 
       const client = createArcadeClient("tugofwar");
@@ -450,15 +452,14 @@
           ul.innerHTML = `<li><span class="empty">No pulls yet. Be the first.</span></li>`;
           return;
         }
-        const me = client.address;
-        ul.innerHTML = entries
-          .slice(0, 8)
-          .map((e, i) => {
-            const you = e.address === me;
-            const name = e.handle && e.handle.length ? e.handle : e.address.slice(0, 6) + "…" + e.address.slice(-4);
-            return `<li><span class="rank">${i + 1}</span><span class="who ${you ? "you" : ""}">${escapeHtml(name)}${you ? " (you)" : ""}</span><span class="sc">${fmt(e.score)}</span></li>`;
-          })
-          .join("");
+        const me = String(client.address || "").toLowerCase();
+        const row = (e) => {
+          const you = String(e.address).toLowerCase() === me;
+          const name = e.handle && e.handle.length ? e.handle : e.address.slice(0, 6) + "…" + e.address.slice(-4);
+          return `<li><span class="rank">${e.rank}</span><span class="who ${you ? "you" : ""}">${escapeHtml(name)}${you ? " (you)" : ""}</span><span class="sc">${fmt(e.score)}</span></li>`;
+        };
+        const { visible, self } = topPlusSelf(entries, client.address, 10); // top 10 + your own row if below
+        ul.innerHTML = visible.map(row).join("") + (self ? BOARD_GAP + row(self) : "");
       }
 
       function escapeHtml(s) {
@@ -728,8 +729,7 @@
           S.winsA = client.decodeU64(gw[0]);
           S.winsB = client.decodeU64(gw[1]);
         }
-        const top = await client.query("getTopPullers", ["08"]); // top 8
-        if (top) renderLeaderboard(client.decodeLeaderboard(top));
+        renderLeaderboard(await fetchGameBoard("tugofwar")); // off-chain board (onchain getTopPullers OOMs past ~120 players)
         const pc = await client.query("getPlayerCount", []);
         if (pc && pc.length) S.onchain.players = client.decodeU64(pc[0]);
         else S.onchain.players = S.onchain.playersA + S.onchain.playersB;
@@ -821,6 +821,7 @@
         }
         render();
         renderOverlay();
+        { const h = getHandle(); if (h && $("nameInput")) $("nameInput").value = h; } // pre-fill name from the passport — set once, shows everywhere
         poll();
         setInterval(poll, 1200); // fast onchain-state read (vm-query) keeps the rope responsive + identical for all players
         // smooth timer + knot + re-derive the synced phase (overlay + PULL button) from

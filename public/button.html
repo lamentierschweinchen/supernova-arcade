@@ -181,6 +181,8 @@
 
     <script type="module">
       import { createArcadeClient } from "/arcade-core.js";
+      import { fetchGameBoard, topPlusSelf, BOARD_GAP } from "/arcade-board.js";
+      import { getHandle } from "/passport.js";
       import { mountGalaxy } from "/arcade-galaxy.js";
 
       const client = createArcadeClient("button");
@@ -404,12 +406,14 @@
       function renderLeaderboard(entries) {
         const ul = $("leaderboard");
         if (!entries || !entries.length) { ul.innerHTML = `<li><span class="empty">No presses yet. Hold your nerve.</span></li>`; return; }
-        const me = client.address;
-        ul.innerHTML = entries.slice(0, 8).map((e, i) => {
-          const you = e.address === me;
+        const me = String(client.address || "").toLowerCase();
+        const row = (e) => {
+          const you = String(e.address).toLowerCase() === me;
           const name = e.handle && e.handle.length ? e.handle : e.address.slice(0, 6) + "…" + e.address.slice(-4);
-          return `<li><span class="rank">${i + 1}</span><span class="who ${you ? "you" : ""}">${escapeHtml(name)}${you ? " (you)" : ""}</span><span class="sc">${fmt(e.score)}s</span></li>`;
-        }).join("");
+          return `<li><span class="rank">${e.rank}</span><span class="who ${you ? "you" : ""}">${escapeHtml(name)}${you ? " (you)" : ""}</span><span class="sc">${fmt(e.score)}s</span></li>`;
+        };
+        const { visible, self } = topPlusSelf(entries, client.address, 10); // top 10 + your own row if below
+        ul.innerHTML = visible.map(row).join("") + (self ? BOARD_GAP + row(self) : "");
       }
       function escapeHtml(s) { return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
 
@@ -429,8 +433,7 @@
         if (g && g.length) S.onchain.global = client.decodeU64(g[0]);
         const last = await client.query("getLastResult", []);
         if (last && last.length) S.lastResult = decodeRoundResult(last[0]);
-        const top = await client.query("getTopPressers", ["08"]);
-        if (top) renderLeaderboard(client.decodeLeaderboard(top));
+        renderLeaderboard(await fetchGameBoard("button")); // off-chain board (onchain getTopPressers OOMs past ~120 players)
         const me = client.addressHex();
         if (me) {
           const entry = await client.query("getPlayerEntry", [me]);
@@ -472,6 +475,7 @@
           setStatus("ok", "One tap, no wallet. Every press is a real transaction that resets the shared timer.");
           client.ensureKey().then((ok) => { if (!ok) setStatus("warn", "Onchain layer unavailable right now. Your presses still show here."); });
         }
+        { const h = getHandle(); if (h && $("nameInput")) $("nameInput").value = h; } // pre-fill name from the passport — set once, shows everywhere
         poll();
         setInterval(poll, 2000);
         setInterval(tick, 100); // smooth countdown

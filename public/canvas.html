@@ -173,6 +173,8 @@
     <script type="module">
       import { createArcadeClient } from "/arcade-core.js";
       import { mountGalaxy } from "/arcade-galaxy.js";
+      import { fetchGameBoard, topPlusSelf, BOARD_GAP } from "/arcade-board.js";
+      import { getHandle } from "/passport.js";
 
       const client = createArcadeClient("canvas");
       const galaxy = mountGalaxy({ intensity: 0.5, focusShard: 1 });
@@ -374,15 +376,14 @@
           ul.innerHTML = `<li><span class="empty">No pixels yet. Place the first.</span></li>`;
           return;
         }
-        const me = client.address;
-        ul.innerHTML = entries
-          .slice(0, 8)
-          .map((e, i) => {
-            const you = e.address === me;
-            const name = e.handle && e.handle.length ? e.handle : e.address.slice(0, 6) + "…" + e.address.slice(-4);
-            return `<li><span class="rank">${i + 1}</span><span class="who ${you ? "you" : ""}">${escapeHtml(name)}${you ? " (you)" : ""}</span><span class="sc">${fmt(e.score)}</span></li>`;
-          })
-          .join("");
+        const me = String(client.address || "").toLowerCase();
+        const row = (e) => {
+          const you = String(e.address).toLowerCase() === me;
+          const name = e.handle && e.handle.length ? e.handle : e.address.slice(0, 6) + "…" + e.address.slice(-4);
+          return `<li><span class="rank">${e.rank}</span><span class="who ${you ? "you" : ""}">${escapeHtml(name)}${you ? " (you)" : ""}</span><span class="sc">${fmt(e.score)}</span></li>`;
+        };
+        const { visible, self } = topPlusSelf(entries, client.address, 10); // top 10 + your own row if you're below it
+        ul.innerHTML = visible.map(row).join("") + (self ? BOARD_GAP + row(self) : "");
       }
 
       function escapeHtml(s) {
@@ -413,8 +414,7 @@
         if (g && g.length) S.global = client.decodeU64(g[0]);
         const pc = await client.query("getPlayerCount", []);
         if (pc && pc.length) S.players = client.decodeU64(pc[0]);
-        const top = await client.query("getTopPainters", ["08"]);
-        if (top) renderLeaderboard(client.decodeLeaderboard(top));
+        renderLeaderboard(await fetchGameBoard("canvas")); // off-chain board (the onchain getTopPainters OOMs past ~120 players)
         render();
       }
 
@@ -453,6 +453,7 @@
         buildPalette();
         drawBoard();
         render();
+        { const h = getHandle(); if (h && $("nameInput")) $("nameInput").value = h; } // pre-fill name from the passport — set it once, it shows up everywhere
         if (!client.deployed) {
           setStatus("warn", "Local preview. Paint freely; placements go onchain as a shared board once the game is live.");
         } else {
