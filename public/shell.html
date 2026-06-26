@@ -55,23 +55,28 @@
       /* The single sound toggle, floated top-right over the iframe. Markup + look
          lifted verbatim from the hub (arcade.html ~95-109, 307-316) so it reads
          identically; mint accent (the shell has no per-game --c). */
-      .sound-toggle {
+      /* top-right chrome cluster, floated over the iframe: profile + sound. */
+      .shell-nav {
         position: fixed;
         top: calc(12px + env(safe-area-inset-top));
         right: calc(12px + env(safe-area-inset-right));
         z-index: 2147483000;
+        display: flex; gap: 8px; align-items: center;
+      }
+      .sound-toggle, .shell-prof {
         display: inline-flex; align-items: center; gap: 8px;
         font-family: 'Roobert PRO', system-ui, -apple-system, sans-serif;
         font-size: 11.5px; font-weight: 500;
         padding: 6px 12px; border-radius: 999px;
         border: 1px solid var(--border); background: rgba(14, 17, 23, 0.6); color: var(--text-dim);
-        cursor: pointer; white-space: nowrap;
+        cursor: pointer; white-space: nowrap; text-decoration: none;
         -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px);
         -webkit-user-select: none; user-select: none;
         transition: border-color .2s, color .2s, background .2s, box-shadow .35s;
       }
-      .sound-toggle:hover { border-color: rgba(35, 247, 221, .4); color: var(--text); }
-      .sound-toggle .st-ic { width: 14px; height: 14px; display: block; flex: 0 0 auto; }
+      .sound-toggle:hover, .shell-prof:hover { border-color: rgba(35, 247, 221, .4); color: var(--text); }
+      .shell-prof.active { border-color: rgba(35, 247, 221, .5); color: var(--mint); background: rgba(35, 247, 221, .06); }
+      .sound-toggle .st-ic, .shell-prof .sp-ic { width: 14px; height: 14px; display: block; flex: 0 0 auto; }
       .sound-toggle.on { border-color: rgba(35, 247, 221, .5); color: var(--mint); background: rgba(35, 247, 221, .06); box-shadow: 0 0 16px rgba(35, 247, 221, .16); }
       .sound-toggle.on .st-ic { color: var(--mint); }
       .sound-toggle.loading { opacity: .6; cursor: progress; }
@@ -90,16 +95,24 @@
   <body>
     <iframe id="stage" title="Supernova Arcade" allow="web-share" referrerpolicy="same-origin"></iframe>
 
-    <button class="sound-toggle" id="soundToggle" type="button" aria-pressed="false"
-      title="Play the live arcade score — the arcade sonifies its own onchain activity (off by default)">
-      <svg class="st-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <path d="M11 5 6 9H3v6h3l5 4V5Z"/>
-        <path class="st-wave" d="M15.5 8.5a5 5 0 0 1 0 7M18 6a8 8 0 0 1 0 12" style="display:none"/>
-        <path class="st-mute" d="M22 9.5l-5 5M17 9.5l5 5"/>
-      </svg>
-      <span class="st-label">Sound</span>
-      <span class="eq" aria-hidden="true"><i></i><i></i><i></i></span>
-    </button>
+    <div class="shell-nav">
+      <a class="shell-prof" id="profileBtn" href="/me" title="Your arcade profile — handle, scores, and points">
+        <svg class="sp-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="8.2" r="3.4"/><path d="M5.5 19.5a6.5 6.5 0 0 1 13 0"/>
+        </svg>
+        <span class="sp-label">Profile</span>
+      </a>
+      <button class="sound-toggle" id="soundToggle" type="button" aria-pressed="false"
+        title="Play the live arcade score — the arcade sonifies its own onchain activity (off by default)">
+        <svg class="st-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M11 5 6 9H3v6h3l5 4V5Z"/>
+          <path class="st-wave" d="M15.5 8.5a5 5 0 0 1 0 7M18 6a8 8 0 0 1 0 12" style="display:none"/>
+          <path class="st-mute" d="M22 9.5l-5 5M17 9.5l5 5"/>
+        </svg>
+        <span class="st-label">Sound</span>
+        <span class="eq" aria-hidden="true"><i></i><i></i><i></i></span>
+      </button>
+    </div>
 
     <script type="module">
       import { createArcadeScore } from "/arcade-score.js";
@@ -228,6 +241,8 @@
         if (stage.src !== want) stage.src = file;
         if (mode === "push") history.pushState({ g: g }, "", pretty);
         else if (mode === "replace") history.replaceState({ g: g }, "", pretty);
+        // highlight the profile chip when you're on your own page
+        var _pb = document.getElementById("profileBtn"); if (_pb) _pb.classList.toggle("active", g === "me");
         // give the iframe focus so games listening on document.keydown work
         try { if (stage.contentWindow) stage.contentWindow.focus(); } catch (e) {}
       }
@@ -237,6 +252,13 @@
         if (g === current) return;
         loadGame(g, "push");
       }
+
+      // the persistent Profile chip -> SPA-navigate to /me (no reload, audio persists).
+      // href="/me" stays as a no-JS / middle-click fallback.
+      (function () {
+        var pb = document.getElementById("profileBtn");
+        if (pb) pb.addEventListener("click", function (e) { e.preventDefault(); navigate("me"); });
+      })();
 
       // initial route: derive the game from the pretty PATH. A vercel rewrite keeps
       // the browser URL pretty (e.g. /canvas) and serves shell.html; a ?g= in the
