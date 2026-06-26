@@ -351,6 +351,10 @@ h1,h2,h3,p{text-wrap:balance;}
     .pl-marq .gd{width:7px;height:7px;border-radius:50%;background:var(--mint);box-shadow:0 0 8px var(--mint);}
     .pl-me{font-family:var(--mono);font-size:11px;letter-spacing:.03em;color:var(--text-faint);white-space:nowrap;transition:color .15s;}
     .pl-me:hover{color:var(--text);}
+    .pl-tabs{position:relative;z-index:1;display:flex;gap:6px;padding:0 18px 10px;}
+    .pl-tab{font-family:var(--mono);font-size:10.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text-faint);background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:999px;padding:5px 13px;cursor:pointer;transition:color .15s,border-color .15s,background .15s;}
+    .pl-tab:hover{color:var(--text);}
+    .pl-tab.active{color:var(--mint);border-color:rgba(35,247,221,.5);background:rgba(35,247,221,.07);}
     .pl-list{position:relative;z-index:1;list-style:none;margin:0;padding:6px 12px;}
     .pl-list li{display:flex;align-items:center;gap:12px;padding:9px 8px;font-size:14.5px;border-radius:9px;}
     .pl-list li + li{border-top:1px solid rgba(255,255,255,.05);}
@@ -373,6 +377,10 @@ h1,h2,h3,p{text-wrap:balance;}
     <div class="pl-head">
       <span class="pl-marq"><span class="gd"></span>Leaderboard</span>
       <a class="pl-me" href="/me">Your profile &rarr;</a>
+    </div>
+    <div class="pl-tabs">
+      <button class="pl-tab active" data-window="overall" type="button">All-time</button>
+      <button class="pl-tab" data-window="daily" type="button">Today</button>
     </div>
     <ol class="pl-list" id="playerBoard"><li class="pl-empty">Reading the boards&hellip;</li></ol>
     <p class="pl-note">Earn points by playing any game. The more you play, the higher you climb.</p>
@@ -856,6 +864,12 @@ const meBech = getAddress() || "";
 const meAddr = meBech.toLowerCase();
 const meHex = (() => { try { if (!meBech) return ""; const w = bech32.decode(meBech, 256).words; return Array.from(bech32.fromWords(w)).map((b) => b.toString(16).padStart(2, "0")).join(""); } catch (e) { return ""; } })();
 
+// daily-board state: which window is shown, and a bech32->handle map (built from the
+// all-time data) so the daily board (which returns bech32 senders) can show handles.
+let boardWindow = "overall";
+const handleByBech = new Map();
+function hexToBech(hex) { try { const bytes = new Uint8Array(hex.match(/.{1,2}/g).map((h) => parseInt(h, 16))); return bech32.encode("erd", bech32.toWords(bytes), 256); } catch (e) { return ""; } }
+
 const playerBoardEl = document.getElementById("playerBoard");
 
 function pbEscape(s) { return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
@@ -881,6 +895,8 @@ async function refreshPlayers() {
       agg.set(e.address, cur);
     }
   }
+  for (const [a, v] of agg) if (v.handle) { const b = hexToBech(a); if (b) handleByBech.set(b, v.handle); }
+  if (boardWindow !== "overall") return; // the Today tab renders itself
   const rankedAll = [...agg.entries()]
     .map(([address, v]) => ({ address, ...v }))
     .sort((a, b) => b.pts - a.pts);
@@ -912,8 +928,42 @@ async function refreshPlayers() {
   }
   playerBoardEl.innerHTML = html;
 }
+// the DAILY board — today's onchain actions per player, from /api/leaderboard.
+async function renderDaily() {
+  let rows = [];
+  try { const r = await fetch("/api/leaderboard?window=daily"); const d = await r.json(); rows = Array.isArray(d.rows) ? d.rows : []; } catch (e) { rows = []; }
+  if (boardWindow !== "daily") return; // tab switched mid-fetch
+  if (!rows.length) { playerBoardEl.innerHTML = '<li class="pl-empty">No onchain plays yet today. Be the first.</li>'; return; }
+  const isYouD = (addr) => { const ea = String(addr).toLowerCase(); return !!ea && ea === meAddr; };
+  const dRow = (p, rank) => {
+    const you = isYouD(p.address);
+    const name = handleByBech.get(p.address) || pbShort(p.address);
+    const top = rank === 1 ? "top1" : rank === 2 ? "top2" : rank === 3 ? "top3" : "";
+    const cls = [top, you ? "me-row" : ""].filter(Boolean).join(" ");
+    return `<li${cls ? ' class="' + cls + '"' : ""}>`
+      + `<span class="pl-rank">${rank}</span>`
+      + `<span class="pl-who ${you ? "you" : ""}">${pbEscape(name)}${you ? " (you)" : ""}</span>`
+      + `<span class="pl-games"></span>`
+      + `<span class="pl-pts">${(p.actions || 0).toLocaleString("en-US")}</span></li>`;
+  };
+  const gap = '<li aria-hidden="true" style="justify-content:center;color:var(--text-faint);letter-spacing:.4em;font-size:10px;padding:3px 8px;border-top:none;">&middot;&middot;&middot;</li>';
+  let html = rows.slice(0, 10).map((p, i) => dRow(p, i + 1)).join("");
+  const youIdx = rows.findIndex((p) => isYouD(p.address));
+  if (youIdx >= 10) html += gap + dRow(rows[youIdx], youIdx + 1);
+  else if (youIdx === -1 && meAddr) html += gap + '<li class="me-row"><span class="pl-rank">&mdash;</span><span class="pl-who you">You</span><span class="pl-games"></span><span class="pl-pts">go play</span></li>';
+  playerBoardEl.innerHTML = html;
+}
+
+// board-window toggle (All-time / Today)
+document.querySelectorAll(".pl-tab").forEach((b) => b.addEventListener("click", () => {
+  if (b.dataset.window === boardWindow) return;
+  boardWindow = b.dataset.window;
+  document.querySelectorAll(".pl-tab").forEach((x) => x.classList.toggle("active", x.dataset.window === boardWindow));
+  playerBoardEl.innerHTML = '<li class="pl-empty">Reading the board&hellip;</li>';
+  if (boardWindow === "daily") renderDaily(); else refreshPlayers();
+}));
 refreshPlayers();
-setInterval(refreshPlayers, 15000); // the player board moves slowly; poll lightly
+setInterval(() => { if (boardWindow === "overall") refreshPlayers(); else renderDaily(); }, 20000); // poll the active board lightly
 </script>
 <p style="position:relative;z-index:3;margin:22px auto 16px;text-align:center;font-family:&#39;JetBrains Mono&#39;,ui-monospace,monospace;font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:#6B7385;line-height:1.6;">Built with &#10084;&#65039; on MultiversX &middot; <a href="https://github.com/lamentierschweinchen/supernova-arcade" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;text-underline-offset:2px;">GitHub</a> &middot; <a href="https://github.com/lamentierschweinchen/supernova-arcade/issues/new?template=bug-report.yml" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;text-underline-offset:2px;">Report a bug</a></p></body>
 </html>
