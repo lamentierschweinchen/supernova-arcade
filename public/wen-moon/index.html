@@ -1,0 +1,969 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>Wen Moon · Supernova Arcade</title>
+<meta name="description" content="Call the moon. Pick your risk band, wager NOVA, and see the provably fair onchain result. Walk away rich or bust. Gasless, no wallet." />
+<meta property="og:type" content="website" />
+<meta property="og:title" content="Wen Moon · Supernova Arcade" />
+<meta property="og:description" content="Call the moon. Pick your risk band, wager NOVA, and see the provably fair onchain result. Walk away rich or bust." />
+<meta property="og:url" content="https://supernova-arcade.xyz/wen-moon" />
+<meta property="og:image" content="https://supernova-arcade.xyz/og/wen-moon-og.png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:image" content="https://supernova-arcade.xyz/og/wen-moon-og.png" />
+<link rel="icon" href="/favicon.svg" />
+<link rel="stylesheet" href="/arcade-shell.css" />
+<!--
+  WEN MOON — a Supernova Arcade game.
+
+  A provably-fair press-your-luck game. Pick a risk band (how likely a MOON is),
+  wager a chunk of your bankroll, call it — the contract draws the outcome from
+  get_block_random_seed() (MultiversX VRF-backed block seed). MOON grows your
+  bankroll. RUG shrinks it. Cash out any time. Bust and it resets.
+
+  THE PROOF: the outcome is derived from get_block_random_seed() + caller address
+  + run/call ids using mix64 (splitmix64). The derivation is open-source and
+  deterministic. Every call emits the seed that drove it — "verify on explorer"
+  is one click. Anyone can reproduce any outcome from the block hash alone.
+
+  Copy mandate: provably fair OUTCOMES, not gambling. Worthless NOVA, testnet,
+  no real money. Voice: plain, confident, US English. "onchain" one word.
+-->
+<style>
+  /* Wen Moon inherits the canon from /arcade-shell.css.
+     Accent = amber (--c:#F5B544). Moon outcomes glow amber; rugs flash coral. */
+  .wrap { max-width: 460px; display: flex; flex-direction: column; gap: 13px; }
+  header { text-align: center; }
+  h1 { margin: 0; font-size: 30px; letter-spacing: -0.01em; font-weight: 800; color: var(--text); }
+  h1 .moon { color: var(--amber); }
+  .sub { color: var(--text-dim); font-size: 13px; margin-top: 4px; line-height: 1.5; }
+
+  .mode { display: inline-flex; align-items: center; gap: 6px; margin-top: 8px; font-size: 11px; font-weight: 600;
+    letter-spacing: 0.05em; text-transform: uppercase; padding: 4px 11px; border-radius: 999px;
+    border: 1px solid var(--border); color: var(--text-dim); }
+  .mode.onchain { color: var(--amber); border-color: rgba(124,211,242,0.4); background: rgba(124,211,242,0.05); }
+  .mode.practice { color: var(--text-faint); border-color: rgba(124,211,242,0.2); }
+
+  /* ---- bankroll hero ---- */
+  .hero { background: radial-gradient(120% 80% at 80% -10%, rgba(124,211,242,0.10), transparent 55%), var(--surface);
+    border: 1px solid var(--border); border-radius: 18px; padding: 16px 18px 14px; text-align: center; position: relative; overflow: hidden; }
+  .hero .cap { color: var(--text-faint); font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em; font-weight: 600; }
+  .bal { font-family: var(--mono); font-size: 52px; font-weight: 800; font-variant-numeric: tabular-nums;
+    line-height: 1.05; letter-spacing: -0.02em; margin: 4px 0 0; transition: color 0.18s ease; color: var(--text); }
+  .bal .unit { font-family: 'Roobert PRO', system-ui, sans-serif; font-size: 16px; color: var(--text-dim); font-weight: 600; margin-left: 6px; letter-spacing: 0; }
+  .bal.flash-moon { color: var(--amber); text-shadow: 0 0 24px rgba(124,211,242,0.6); animation: moonflash 0.5s ease; }
+  .bal.flash-rug  { color: var(--coral); animation: rugshake 0.38s ease; }
+  @keyframes moonflash { 0% { transform: scale(1.02); } 50% { transform: scale(1.06); } 100% { transform: scale(1); } }
+  @keyframes rugshake { 0%,100%{transform:translateX(0)} 15%{transform:translateX(-7px)} 35%{transform:translateX(6px)} 55%{transform:translateX(-4px)} 75%{transform:translateX(3px)} }
+  .bar-row { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--text-faint); font-variant-numeric: tabular-nums; margin-top: 9px; }
+  .bar-row b { font-family: var(--mono); color: var(--text); }
+  .bar-row .moon-col b { color: var(--amber); }
+  .bar-row .rug-col  b { color: var(--coral); }
+  .bankbar { height: 6px; border-radius: 5px; background: #0c1119; margin: 7px 0 2px; overflow: hidden; border: 1px solid var(--border); }
+  .bankbar > i { display: block; height: 100%; width: 100%; border-radius: 5px;
+    background: linear-gradient(90deg, var(--coral) 0%, var(--amber) 50%, var(--amber) 100%);
+    transform-origin: left; transition: transform 0.25s cubic-bezier(.16,1,.3,1); }
+
+  /* ---- band picker ---- */
+  .bandpick { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+  .band-btn { cursor: pointer; background: var(--surface); border: 1px solid var(--border); border-radius: 13px;
+    padding: 11px 11px 10px; text-align: left; transition: border-color 0.14s, background 0.14s, transform 0.07s;
+    display: flex; flex-direction: column; gap: 3px; position: relative; }
+  .band-btn:active { transform: scale(0.97); }
+  .band-btn .bname { font-size: 13px; font-weight: 700; color: var(--text); display: flex; align-items: center; gap: 6px; }
+  .band-btn .bname .ic { font-size: 13px; }
+  .band-btn .bodds { font-size: 11px; font-weight: 600; color: var(--text-faint); letter-spacing: 0.02em; }
+  .band-btn .bpayout { font-size: 10.5px; color: var(--text-faint); }
+  .band-btn.sel { border-color: rgba(124,211,242,0.7); background: linear-gradient(150deg, rgba(124,211,242,0.10), var(--surface) 62%); }
+  .band-btn.sel .bname { color: var(--amber); }
+  .band-btn.sel .bodds { color: var(--amber); }
+  .band-btn .bcheck { position: absolute; top: 9px; right: 9px; width: 14px; height: 14px; border-radius: 50%;
+    border: 1px solid var(--border); opacity: 0; transition: opacity 0.14s; background: var(--amber); box-shadow: 0 0 8px rgba(124,211,242,0.5); }
+  .band-btn.sel .bcheck { opacity: 1; }
+  .band-btn.degen.sel,  .band-btn.degen.sel .bname,  .band-btn.degen.sel .bodds { color: var(--coral); border-color: rgba(255,107,157,0.7); }
+  .band-btn.degen.sel { background: linear-gradient(150deg, rgba(255,107,157,0.07), var(--surface) 62%); }
+  .band-btn.degen.sel .bcheck { background: var(--coral); border-color: var(--coral); box-shadow: 0 0 8px rgba(255,107,157,0.5); }
+  .band-btn.wenmoon.sel .bname, .band-btn.wenmoon.sel .bodds { color: var(--amber); }
+
+  /* ---- wager chips ---- */
+  .wagerpick { display: flex; gap: 7px; }
+  .chip { flex: 1; cursor: pointer; background: var(--surface); border: 1px solid var(--border); border-radius: 11px;
+    padding: 9px 4px; text-align: center; transition: border-color 0.14s, background 0.14s, transform 0.07s; }
+  .chip:active { transform: scale(0.96); }
+  .chip .cpct { font-size: 11.5px; font-weight: 700; color: var(--text-dim); }
+  .chip .camt { font-family: var(--mono); font-size: 12px; color: var(--text-faint); margin-top: 2px; }
+  .chip.sel { border-color: rgba(124,211,242,0.7); background: rgba(124,211,242,0.08); }
+  .chip.sel .cpct { color: var(--amber); }
+  .chip.sel .camt { color: var(--amber); }
+  .chip.disabled { opacity: 0.38; pointer-events: none; }
+
+  /* ---- call HUD ---- */
+  .callhud { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 11px 14px;
+    display: flex; justify-content: space-between; align-items: center; gap: 8px; min-height: 46px; }
+  .callhud .pick-label { font-size: 12.5px; color: var(--text-dim); }
+  .callhud .pick-label b { color: var(--text); }
+  .callhud .pick-ev { font-size: 11px; color: var(--text-faint); text-align: right; white-space: nowrap; }
+  .callhud.ready .pick-label b { color: var(--amber); }
+
+  /* ---- action buttons ---- */
+  .btn-amber { background: var(--amber); color: #2a1c02;
+    box-shadow: 0 0 0 1px rgba(124,211,242,0.4), 0 8px 24px rgba(124,211,242,0.24); border-bottom: 3px solid #b9842a; }
+  .btn-ghost { background: transparent; color: var(--text-dim); border: 1px solid var(--border);
+    border-bottom: 2px solid var(--border); box-shadow: none; }
+  .row { display: flex; gap: 8px; }
+
+  /* ---- result reveal ---- */
+  .result { display: none; border-radius: 14px; padding: 14px 16px; text-align: center;
+    border: 1px solid var(--border); background: var(--surface); }
+  .result.show { display: block; }
+  .result.moon-result { border-color: rgba(124,211,242,0.6); background: linear-gradient(150deg, rgba(124,211,242,0.09), var(--surface) 65%); }
+  .result.rug-result  { border-color: rgba(255,107,157,0.4); background: linear-gradient(150deg, rgba(255,107,157,0.06), var(--surface) 65%); }
+  .result .verdict { font-size: 20px; font-weight: 800; letter-spacing: -0.01em; }
+  .result.moon-result .verdict { color: var(--amber); text-shadow: 0 0 18px rgba(124,211,242,0.5); }
+  .result.rug-result  .verdict { color: var(--coral); }
+  .result .delta { font-family: var(--mono); font-size: 16px; font-weight: 800; font-variant-numeric: tabular-nums;
+    margin-top: 3px; }
+  .result.moon-result .delta { color: var(--amber); }
+  .result.rug-result  .delta { color: var(--coral); }
+  .result .verify { font-size: 11px; color: var(--text-faint); margin-top: 7px; }
+  .result .verify a { color: var(--mint); text-decoration: underline; text-underline-offset: 2px; }
+  .result .seed-line { font-family: var(--mono); font-size: 10.5px; color: var(--text-faint); margin-top: 4px; word-break: break-all; }
+
+  /* ---- cash-out + claim ---- */
+  .cashout-row { display: flex; gap: 8px; }
+
+  /* spinning indicator */
+  .spin { width: 22px; height: 22px; border-radius: 50%; border: 3px solid rgba(255,255,255,0.12); border-top-color: var(--amber); animation: spin 0.75s linear infinite; display: inline-block; vertical-align: middle; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* status */
+  .status { border: none; background: none; padding: 0; min-height: 17px; display: block;
+    font-size: 12.5px; text-align: center; }
+  .status.ok  { color: var(--mint); }
+  .status.err { color: var(--coral); }
+  .status a   { color: var(--mint); }
+
+  /* ---- claim handle row ---- */
+  .claim { display: none; gap: 8px; margin-top: 2px; }
+  .claim.show { display: flex; }
+  .claim input { flex: 1; background: #06070A; border: 1px solid var(--border); border-radius: 10px;
+    color: var(--text); padding: 11px 12px; font-size: 15px; outline: none; }
+  .claim input:focus { border-color: rgba(124,211,242,0.6); }
+
+  /* ---- panels ---- */
+  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 14px; }
+  .panel h2 { margin: 0 0 9px; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--text-dim); font-weight: 600; display: flex; align-items: center; gap: 6px; }
+  .global { text-align: center; }
+  .global .num { font-family: var(--mono); font-size: 32px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .global .num .g { color: var(--amber); }
+  .global .lbl { color: var(--text-faint); font-size: 12px; margin-top: 2px; }
+  .lb-row { display: grid; grid-template-columns: 26px 1fr auto; align-items: center; gap: 10px; padding: 8px 4px; font-size: 14px; }
+  .lb-row + .lb-row { border-top: 1px solid var(--border-soft); }
+  .lb-row .rank { color: var(--text-faint); font-family: var(--mono); }
+  .lb-row .handle { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-dim); }
+  .lb-row .score { font-family: var(--mono); font-weight: 700; color: var(--text-dim); }
+  .lb-row.you .handle { color: var(--amber); }
+  .lb-row.you .score  { color: var(--amber); }
+  .lb-empty { color: var(--text-faint); font-size: 13px; text-align: center; padding: 10px 0; }
+
+  /* ---- how it works ---- */
+  .how { font-size: 12.5px; color: var(--text-dim); line-height: 1.55; }
+  .how b { color: var(--text); }
+  .how .moon-hi { color: var(--amber); font-weight: 700; }
+  .how .rug-hi  { color: var(--coral); font-weight: 700; }
+  .tick { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--amber);
+    box-shadow: 0 0 7px var(--amber); margin-right: 5px; vertical-align: middle; animation: pulse 2s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{opacity:0.35} 50%{opacity:1} }
+
+  .screen .play { width: 100%; display: flex; flex-direction: column; gap: 11px; align-items: stretch; }
+
+  /* bust overlay in hero */
+  .bust-badge { display: none; position: absolute; inset: 0; background: rgba(6,7,10,0.82); border-radius: 18px;
+    align-items: center; justify-content: center; flex-direction: column; gap: 6px; text-align: center; padding: 16px; }
+  .bust-badge.show { display: flex; }
+  .bust-badge .bust-emoji { font-size: 32px; }
+  .bust-badge .bust-msg { font-size: 15px; font-weight: 700; color: var(--coral); }
+  .bust-badge .bust-sub  { font-size: 12px; color: var(--text-faint); }
+
+  /* phase lock (during tx wait) */
+  .lock { opacity: 0.5; pointer-events: none; }
+
+  /* "ONCHAIN / PRACTICE" tag on call button */
+  #callBtn .tag { font-size: 11px; font-weight: 600; letter-spacing: 0.04em; opacity: 0.7; margin-left: 5px; }
+</style>
+    <script defer src="/_vercel/insights/script.js"></script>
+</head>
+<body style="--c:#7CD3F2;--amber:#7CD3F2" data-shard="wen moon">
+<div class="scan"></div><div class="vignette"></div><div class="floor"></div>
+<div class="brk tl"></div><div class="brk tr"></div><div class="brk bl"></div><div class="brk br"></div>
+<div class="wrap">
+
+  <header class="abar">
+    <a class="back" href="/arcade"><span aria-hidden="true">&larr;</span> Arcade</a>
+    <span class="lockup"><img src="/mvx-wordmark.svg" alt="MultiversX" /><span class="shard">wen moon</span></span>
+  </header>
+
+  <h1>Wen <span class="moon">Moon</span></h1>
+  <p class="sub">Pick a risk band. Wager NOVA. One onchain tx. <b>MOON</b> or <b>rug</b>. Cash out before you bust.</p>
+  <span class="mode" id="modeBadge">connecting…</span>
+
+  <div class="onetap">
+    <span class="ic"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="#7CD3F2" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/></svg></span>
+    <span class="t"><b>No wallet, just play.</b> A key lives in your browser. Every call is a real gasless tx. The outcome is onchain before you see it.</span>
+  </div>
+
+  <div class="cabinet">
+    <div class="cab-marquee">Wen Moon · call the moon · prove the fairness</div>
+    <div class="screen">
+      <div class="play">
+
+        <!-- BANKROLL HERO -->
+        <section class="hero" id="heroSection">
+          <div class="cap">Bankroll</div>
+          <div class="bal" id="balDisplay"><span id="balNum">···</span><span class="unit">NOVA</span></div>
+          <div class="bankbar"><i id="bankbarFill"></i></div>
+          <div class="bar-row">
+            <span class="moon-col">run <b id="runStat">—</b></span>
+            <span>calls <b id="callStat">0</b></span>
+            <span class="rug-col">rugs <b id="rugStat">0</b></span>
+          </div>
+          <div class="bust-badge" id="bustBadge">
+            <span class="bust-emoji">💀</span>
+            <span class="bust-msg">Busted. Bankroll zeroed.</span>
+            <span class="bust-sub">Start a new run to play again.</span>
+          </div>
+        </section>
+
+        <!-- BAND PICKER -->
+        <div class="bandpick" id="bandpick" role="group" aria-label="Risk band">
+          <button class="band-btn sel" data-band="0" type="button">
+            <span class="bcheck"></span>
+            <span class="bname"><span class="ic">🌕</span>Safe</span>
+            <span class="bodds">69% MOON</span>
+            <span class="bpayout">profit ≈ 0.45×wager</span>
+          </button>
+          <button class="band-btn" data-band="1" type="button">
+            <span class="bcheck"></span>
+            <span class="bname"><span class="ic">🌔</span>Risky</span>
+            <span class="bodds">42% MOON</span>
+            <span class="bpayout">profit ≈ 1.38×wager</span>
+          </button>
+          <button class="band-btn degen" data-band="2" type="button">
+            <span class="bcheck"></span>
+            <span class="bname"><span class="ic">🌑</span>Degen</span>
+            <span class="bodds">6.9% MOON</span>
+            <span class="bpayout">profit ≈ 13.5×wager</span>
+          </button>
+          <button class="band-btn wenmoon" data-band="3" type="button">
+            <span class="bcheck"></span>
+            <span class="bname"><span class="ic">🚀</span>Wen Moon</span>
+            <span class="bodds">0.69% MOON</span>
+            <span class="bpayout">profit ≈ 144×wager</span>
+          </button>
+        </div>
+
+        <!-- WAGER CHIPS -->
+        <div class="wagerpick" id="wagerpick" role="group" aria-label="Wager size">
+          <button class="chip sel" data-pct="10" type="button">
+            <div class="cpct">10%</div>
+            <div class="camt" id="chip10">100</div>
+          </button>
+          <button class="chip" data-pct="25" type="button">
+            <div class="cpct">25%</div>
+            <div class="camt" id="chip25">250</div>
+          </button>
+          <button class="chip" data-pct="50" type="button">
+            <div class="cpct">50%</div>
+            <div class="camt" id="chip50">500</div>
+          </button>
+          <button class="chip" data-pct="100" type="button">
+            <div class="cpct">ALL-IN</div>
+            <div class="camt" id="chip100">1,000</div>
+          </button>
+        </div>
+
+        <!-- CALL HUD -->
+        <div class="callhud" id="callhud">
+          <span class="pick-label" id="hudLabel">Pick a band + wager to start.</span>
+          <span class="pick-ev" id="hudEv"></span>
+        </div>
+
+        <!-- CALL IT + NEW RUN buttons -->
+        <button class="btn btn-amber" id="callBtn" style="font-size:17px;font-weight:800;letter-spacing:0.01em;" disabled>
+          Start a run first
+        </button>
+        <div class="row" id="actionRow" style="display:none">
+          <button class="btn btn-ghost" id="cashoutBtn" style="flex:1">Cash Out</button>
+          <button class="btn btn-amber" id="newrunBtn" style="flex:1;display:none">New Run</button>
+        </div>
+
+        <!-- RESULT REVEAL -->
+        <div class="result" id="resultBox">
+          <div class="verdict" id="verdictText"></div>
+          <div class="delta"  id="deltaText"></div>
+          <div class="verify" id="verifyLine"></div>
+          <div class="seed-line" id="seedLine"></div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <a class="why" href="/why#randomness">
+    <span class="why-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.5c.6.6 1 1.5 1 2.5h6c0-1 .4-1.9 1-2.5A6 6 0 0 0 12 3Z"/></svg></span>
+    <span class="why-tx"><span class="why-k">Why it's fair</span>The outcome is derived from the block VRF seed before your tx is included. The derivation is open-source — anyone can recompute it from the block hash.</span>
+    <span class="why-go" aria-hidden="true">&rarr;</span>
+  </a>
+
+  <div class="status" id="status"></div>
+
+  <!-- CLAIM HANDLE -->
+  <div class="claim" id="claimRow">
+    <input id="handleInput" maxlength="32" placeholder="Pick a handle for the board" autocomplete="off" />
+    <button class="btn btn-amber" style="width:auto;padding:11px 16px" id="claimBtn">Claim spot</button>
+  </div>
+
+  <!-- GLOBAL ACTIONS -->
+  <section class="panel global">
+    <h2><span class="tick"></span>Global onchain calls</h2>
+    <div class="num"><span class="g" id="globalNum">···</span></div>
+    <div class="lbl">total MOON/RUG calls across everyone, from the chain</div>
+  </section>
+
+  <!-- LEADERBOARD -->
+  <section class="panel">
+    <h2><span class="tick"></span>Top scores · biggest single cash-out</h2>
+    <div id="lbRows"><div class="lb-empty">Reading the chain…</div></div>
+  </section>
+
+  <!-- HOW IT WORKS -->
+  <section class="panel how">
+    <h2>How it works</h2>
+    Start a run to get <b>1,000 NOVA</b>. Pick a <b>risk band</b> — how likely a
+    <span class="moon-hi">MOON</span> is — and a <b>wager</b> (percentage of your bankroll).
+    Hit <b>Call it</b> to fire a real gasless tx onchain. The contract draws the result from
+    <b>get_block_random_seed()</b> — the MultiversX VRF-backed block seed — and applies it
+    immediately: <span class="moon-hi">MOON</span> grows your bankroll by the payout, <span class="rug-hi">RUG</span>
+    takes the wager. <b>Press your luck</b> and call again, or hit <b>Cash Out</b> to bank your
+    score. Bust (bankroll hits 0) and the run is over.
+    <br /><br />
+    <b>Highscore</b> = biggest single cash-out. <b>Hub points</b> accumulate across all your runs
+    and count toward the Supernova leaderboard.
+  </section>
+
+  <!-- WHY IT'S FAIR -->
+  <section class="panel how">
+    <h2>Why it's provably fair</h2>
+    The outcome is determined by <b>get_block_random_seed()</b> — a VRF-backed seed that is
+    fixed by the block before your transaction is included. The derivation uses
+    <b>splitmix64</b> (the same hash used across every Supernova Arcade game):
+    <br /><br />
+    <code style="font-family:var(--mono);font-size:11px;color:var(--amber)">seed = mix64( vrf_first8 XOR caller_last8 XOR mix64(run_id XOR mix64(call_id)) )<br />MOON if (seed % 10000) &lt; moon_permil</code>
+    <br /><br />
+    Every call emits the seed that drove it in the transaction receipt. Click <b>verify on explorer</b>
+    to inspect the block and recompute the result yourself. The contract source is open — the formula
+    is always visible, not hidden in a black box.
+    <br /><br />
+    NOVA is a worthless testnet game token. No real money, ever.
+  </section>
+
+  <footer class="afoot"><span class="sn">Supernova · live on testnet</span> · 600ms blocks · gasless, no wallet · provably fair onchain outcomes</footer>
+</div>
+
+<script type="module">
+import { ARCADE_CONFIG } from "/wen-moon/arcade.config.js";
+import { mountGalaxy } from "/arcade-galaxy.js";
+
+// ---------------------------------------------------------------------------
+// Constants (mirror the contract)
+// ---------------------------------------------------------------------------
+const STARTING_BANKROLL = 1_000;
+const MIN_WAGER = 10;
+const BAND_MOON_PERMIL = [6900n, 4200n, 690n, 69n];
+const BAND_NAMES = ["Safe", "Risky", "Degen", "Wen Moon"];
+// Profit fraction: wager × (10000 - p) / p  (floor integer division)
+function bandProfit(band, wager) {
+  const p = BAND_MOON_PERMIL[band];
+  return (BigInt(wager) * (10000n - p) / p);
+}
+function bandProfitNum(band, wager) { return Number(bandProfit(band, wager)); }
+
+// splitmix64 — same as the contract's mix64
+function mix64(z) {
+  z = BigInt.asUintN(64, z + 0x9E3779B97F4A7C15n);
+  z = BigInt.asUintN(64, BigInt.asUintN(64, z ^ (z >> 30n)) * 0xBF58476D1CE4E5B9n);
+  z = BigInt.asUintN(64, BigInt.asUintN(64, z ^ (z >> 27n)) * 0x94D049BB133111EBn);
+  return BigInt.asUintN(64, z ^ (z >> 31n));
+}
+
+// Practice-mode seed: mix of current time + random bytes
+function practiceSeed(runId, callId) {
+  const buf = new Uint8Array(8);
+  (self.crypto || window.crypto).getRandomValues(buf);
+  let vrf = 0n;
+  for (const b of buf) vrf = BigInt.asUintN(64, (vrf << 8n) | BigInt(b));
+  return mix64(BigInt.asUintN(64, vrf ^ mix64(BigInt(runId) ^ mix64(BigInt(callId)))));
+}
+
+function isMoon(seed, band) { return (seed % 10000n) < BAND_MOON_PERMIL[band]; }
+
+// ---------------------------------------------------------------------------
+// State
+// ---------------------------------------------------------------------------
+const G = {
+  bankroll: 0,
+  startingBankroll: STARTING_BANKROLL,
+  runId: 0,
+  callCount: 0,
+  rugCount: 0,
+  phase: "idle", // idle | starting | calling | cashingout | bust | done
+  band: 0,
+  wagerPct: 10,
+  onchain: false,
+  myAddress: null,
+};
+
+// ---------------------------------------------------------------------------
+// DOM helpers
+// ---------------------------------------------------------------------------
+const $ = (id) => document.getElementById(id);
+const galaxy = mountGalaxy({ intensity: 0.45, focusShard: 0 }); // 0=amber, 1=mint, 2=coral
+
+function fmt(n) { return Math.round(Number(n)).toLocaleString("en-US"); }
+function shortAddr(a) { return a ? a.slice(0,6) + "…" + a.slice(-4) : "anon"; }
+function escHtml(s) { return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+
+function setStatus(kind, html) { const el = $("status"); el.className = "status " + kind; el.innerHTML = html; }
+
+function isPlaceholder(addr) {
+  return !addr || addr.includes("qqqqqqqqqqqqqpgq0000") || /^erd1?0{20,}/.test(addr) || addr.includes("000000000000000000000000000000");
+}
+
+// ---------------------------------------------------------------------------
+// Arcade contract interface
+// ---------------------------------------------------------------------------
+async function arcadeReady() {
+  if (isPlaceholder(ARCADE_CONFIG.contract) || isPlaceholder(ARCADE_CONFIG.relayer)) return false;
+  // Light check: ping the relayer
+  const ok = await fetch(ARCADE_CONFIG.relayer + "/health", { signal: AbortSignal.timeout(3000) })
+    .then(r => r.ok).catch(() => false);
+  return ok;
+}
+
+// Generic onchain query — calls a SC view endpoint
+async function scQuery(func, args = []) {
+  const url = `${ARCADE_CONFIG.apiBase}/vm-values/query`;
+  const body = { scAddress: ARCADE_CONFIG.contract, funcName: func, args };
+  const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  if (!r.ok) throw new Error("query failed: " + r.status);
+  const data = await r.json();
+  return data.data?.data?.returnData || [];
+}
+
+function decodeU64(b64) {
+  if (!b64) return 0;
+  const bytes = atob(b64);
+  let v = 0n;
+  for (let i = 0; i < bytes.length; i++) v = (v << 8n) | BigInt(bytes.charCodeAt(i));
+  return Number(v);
+}
+
+function encodeAddress(addr) {
+  // bech32 decode → hex. For now, pass as hex arg to query.
+  return ""; // placeholder — queries that need address use a different path
+}
+
+// Read global actions
+async function fetchGlobalActions() {
+  const ret = await scQuery("getGlobalActions");
+  return decodeU64(ret[0]);
+}
+
+// Read bankroll for current address
+async function fetchBankroll(address) {
+  // For onchain queries, pass address as hex arg
+  const ret = await scQuery("getBankroll", [address]);
+  return decodeU64(ret[0]);
+}
+
+// Read leaderboard (top N entries)
+async function fetchLeaderboard(n) {
+  // Returns MultiValueEncoded<ScoreEntry> — each entry is address(32)+handleLen(4)+handle+score(8)+ts(8)
+  try {
+    const ret = await scQuery("getLeaderboard");
+    // Minimal parse: treat each returned value as a raw score entry
+    return ret.map(b64 => {
+      try {
+        const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+        if (bytes.length < 44) return null; // address(32) + score(8) + ts(8) minimum
+        const addr = Array.from(bytes.slice(0,32)).map(b => b.toString(16).padStart(2,'0')).join('');
+        let handleLen = (bytes[32]<<24|bytes[33]<<16|bytes[34]<<8|bytes[35]);
+        if (handleLen < 0 || handleLen > 64 || 36 + handleLen + 16 > bytes.length) handleLen = 0;
+        const handle = handleLen > 0 ? new TextDecoder().decode(bytes.slice(36, 36 + handleLen)) : "";
+        const off = 36 + handleLen;
+        let score = 0n;
+        for (let i = 0; i < 8; i++) score = (score << 8n) | BigInt(bytes[off + i]);
+        return { address: addr, handle, score: Number(score) };
+      } catch { return null; }
+    }).filter(Boolean).sort((a,b) => b.score - a.score).slice(0, n);
+  } catch { return []; }
+}
+
+// Send a gasless tx via relay
+async function relayTx(endpoint, args) {
+  const body = JSON.stringify({ game: "wenmoon", endpoint, args, chainId: ARCADE_CONFIG.chainId });
+  const r = await fetch("/api/relay", { method: "POST", headers: { "Content-Type": "application/json" }, body,
+    signal: AbortSignal.timeout(15000) });
+  if (!r.ok) { const t = await r.text().catch(()=>""); throw new Error("relay error: " + r.status + " " + t); }
+  return r.json(); // { txHash, explorerUrl, result? }
+}
+
+async function pollTx(txHash, maxMs = 12000) {
+  const url = `${ARCADE_CONFIG.apiBase}/transactions/${txHash}`;
+  const t0 = Date.now();
+  while (Date.now() - t0 < maxMs) {
+    await new Promise(r => setTimeout(r, 1200));
+    const r = await fetch(url).catch(() => null);
+    if (!r?.ok) continue;
+    const d = await r.json();
+    if (d.status === "success" || d.status === "executed") return d;
+    if (d.status === "fail" || d.status === "invalid") throw new Error("tx failed: " + (d.errorCode || d.status));
+  }
+  throw new Error("tx not confirmed in time");
+}
+
+// ---------------------------------------------------------------------------
+// Mode detection
+// ---------------------------------------------------------------------------
+async function detectMode() {
+  const configured = !isPlaceholder(ARCADE_CONFIG.contract) && !isPlaceholder(ARCADE_CONFIG.relayer);
+  if (!configured) { applyMode(false, "Practice · not yet deployed"); return; }
+  const ok = await arcadeReady().catch(() => false);
+  applyMode(ok, ok ? "Onchain · Supernova" : "Practice · relayer offline");
+  if (ok) {
+    refreshBoard();
+    // Check if a run is already active
+    await syncRunState();
+  }
+}
+
+function applyMode(on, label) {
+  G.onchain = on;
+  const b = $("modeBadge");
+  b.textContent = label;
+  b.className = "mode " + (on ? "onchain" : "practice");
+  updateUI();
+}
+
+// ---------------------------------------------------------------------------
+// Run state
+// ---------------------------------------------------------------------------
+async function syncRunState() {
+  if (!G.onchain || !G.myAddress) return;
+  try {
+    const bankroll = await fetchBankroll(G.myAddress);
+    if (bankroll > 0) {
+      // Active run — restore state
+      G.bankroll = bankroll;
+      G.phase = "active";
+      G.startingBankroll = STARTING_BANKROLL;
+      updateUI();
+    }
+  } catch {}
+}
+
+// ---------------------------------------------------------------------------
+// Game flow
+// ---------------------------------------------------------------------------
+async function onStartRun() {
+  if (G.phase !== "idle" && G.phase !== "done" && G.phase !== "bust") return;
+  setStatus("", "");
+  hideResult();
+  $("bustBadge").classList.remove("show");
+
+  if (G.onchain) {
+    G.phase = "starting";
+    updateUI();
+    setStatus("", `<span class="spin"></span> Starting your run onchain…`);
+    try {
+      const { txHash, explorerUrl } = await relayTx("startRun", []);
+      await pollTx(txHash);
+      G.runId++;
+      G.callCount = 0;
+      G.rugCount = 0;
+      G.bankroll = STARTING_BANKROLL;
+      G.startingBankroll = STARTING_BANKROLL;
+      G.phase = "active";
+      setStatus("ok", `Run started! <a href="${explorerUrl}" target="_blank" rel="noopener">View tx ↗</a>`);
+    } catch (err) {
+      G.phase = "idle";
+      setStatus("err", "Couldn't start the run onchain — playing in practice mode.");
+      G.onchain = false;
+      applyMode(false, "Practice · fallback");
+      startPracticeRun();
+      return;
+    }
+  } else {
+    startPracticeRun();
+  }
+  updateUI();
+}
+
+function startPracticeRun() {
+  G.runId++;
+  G.callCount = 0;
+  G.rugCount = 0;
+  G.bankroll = STARTING_BANKROLL;
+  G.startingBankroll = STARTING_BANKROLL;
+  G.phase = "active";
+}
+
+async function onCall() {
+  if (G.phase !== "active") return;
+  if (G.bankroll <= 0) return;
+
+  const wager = Math.max(MIN_WAGER, Math.floor(G.bankroll * G.wagerPct / 100));
+  if (wager > G.bankroll) { setStatus("err", "Wager exceeds bankroll."); return; }
+  if (wager < MIN_WAGER) { setStatus("err", "Bankroll too small to wager."); return; }
+
+  hideResult();
+  setStatus("", "");
+  G.phase = "calling";
+  updateUI();
+
+  if (G.onchain) {
+    setStatus("", `<span class="spin"></span> Calling it onchain…`);
+    try {
+      const { txHash, explorerUrl } = await relayTx("call", [G.band.toString(), wager.toString()]);
+      const txData = await pollTx(txHash);
+      G.callCount++;
+      // Parse the callResult event to get seed, moon, new_bankroll
+      const result = parseCallResult(txData);
+      if (result) {
+        applyCallResult(result.moon, result.delta, result.newBankroll, result.seed, txHash, explorerUrl);
+      } else {
+        // Fallback: re-read bankroll from chain
+        const newBankroll = await fetchBankroll(G.myAddress).catch(() => G.bankroll - wager);
+        const moon = newBankroll > G.bankroll;
+        const delta = moon ? newBankroll - G.bankroll : G.bankroll - newBankroll;
+        applyCallResult(moon, delta, newBankroll, null, txHash, explorerUrl);
+      }
+    } catch (err) {
+      G.phase = "active";
+      setStatus("err", "Call failed — try again.");
+      updateUI();
+    }
+  } else {
+    // Practice: simulate onchain outcome using same math
+    await new Promise(r => setTimeout(r, 400 + Math.random() * 300)); // fake latency
+    const seed = practiceSeed(G.runId, G.callCount + 1);
+    const moon = isMoon(seed, G.band);
+    G.callCount++;
+    let delta, newBankroll;
+    if (moon) {
+      delta = bandProfitNum(G.band, wager);
+      newBankroll = G.bankroll + delta;
+    } else {
+      delta = wager;
+      newBankroll = Math.max(0, G.bankroll - wager);
+    }
+    applyCallResult(moon, delta, newBankroll, seed, null, null);
+  }
+}
+
+function parseCallResult(txData) {
+  // Parse callResult event from the transaction logs
+  try {
+    const logs = txData.logs?.events || [];
+    for (const ev of logs) {
+      if (ev.identifier === "callResult") {
+        // topics: [player, run_id, call_id, band] — data has remaining fields
+        // For now, just read the new bankroll from chain state after the tx
+        return null; // let the caller do a chain read
+      }
+    }
+  } catch {}
+  return null;
+}
+
+function applyCallResult(moon, delta, newBankroll, seed, txHash, explorerUrl) {
+  const prevBankroll = G.bankroll;
+  G.bankroll = newBankroll;
+
+  if (!moon) G.rugCount++;
+
+  // Animate bankroll
+  const balEl = $("balDisplay");
+  balEl.classList.remove("flash-moon", "flash-rug");
+  void balEl.offsetWidth;
+  balEl.classList.add(moon ? "flash-moon" : "flash-rug");
+  setTimeout(() => balEl.classList.remove("flash-moon", "flash-rug"), 600);
+
+  // Show result box
+  const resultBox = $("resultBox");
+  resultBox.className = "result show " + (moon ? "moon-result" : "rug-result");
+  $("verdictText").textContent = moon ? "MOON" : "RUG";
+  if (moon) {
+    $("deltaText").textContent = `+${fmt(delta)} NOVA profit · new bankroll: ${fmt(newBankroll)}`;
+  } else {
+    $("deltaText").textContent = `−${fmt(delta)} NOVA · new bankroll: ${fmt(newBankroll)}`;
+  }
+  if (explorerUrl) {
+    $("verifyLine").innerHTML = `<a href="${explorerUrl}" target="_blank" rel="noopener">Verify this call on the explorer ↗</a>`;
+  } else if (seed) {
+    $("verifyLine").textContent = "Practice result — not onchain.";
+  } else {
+    $("verifyLine").textContent = "";
+  }
+  if (seed) {
+    $("seedLine").textContent = `seed: 0x${seed.toString(16).padStart(16,'0')}`;
+  } else {
+    $("seedLine").textContent = "";
+  }
+
+  if (newBankroll === 0) {
+    G.phase = "bust";
+    $("bustBadge").classList.add("show");
+    if (!G.onchain) setStatus("", "Bust! Bankroll hit zero.");
+    // Add to leaderboard locally with 0 score
+  } else {
+    G.phase = "active";
+  }
+
+  galaxy.pulse(moon ? 0 : 2, moon ? 4 : 2); // 0=amber MOON burst, 2=coral RUG flash
+  updateUI();
+
+  if (moon) setStatus("ok", G.onchain ? "MOON! Bankroll grown." : "MOON! (practice)");
+  else setStatus("", G.onchain ? "RUG. Try again?" : "RUG. (practice)");
+}
+
+async function onCashOut() {
+  if (G.phase !== "active" || G.bankroll <= 0) return;
+  const bankrollAtCashout = G.bankroll;
+  G.phase = "cashingout";
+  updateUI();
+
+  if (G.onchain) {
+    setStatus("", `<span class="spin"></span> Cashing out ${fmt(bankrollAtCashout)} NOVA onchain…`);
+    try {
+      const { txHash, explorerUrl } = await relayTx("cashOut", []);
+      await pollTx(txHash);
+      setStatus("ok", `Cashed out ${fmt(bankrollAtCashout)} NOVA! <a href="${explorerUrl}" target="_blank" rel="noopener">View tx ↗</a>`);
+      $("claimRow").classList.add("show");
+      $("handleInput").focus({ preventScroll: true });
+      refreshBoard();
+    } catch (err) {
+      G.phase = "active";
+      setStatus("err", "Couldn't cash out — try again.");
+      updateUI();
+      return;
+    }
+  } else {
+    await new Promise(r => setTimeout(r, 300));
+    setStatus("", `Practice cash-out: ${fmt(bankrollAtCashout)} NOVA banked (not onchain).`);
+  }
+
+  G.bankroll = 0;
+  G.phase = "done";
+  updateUI();
+}
+
+// ---------------------------------------------------------------------------
+// Claim handle
+// ---------------------------------------------------------------------------
+$("claimBtn").addEventListener("click", claimHandle);
+$("handleInput").addEventListener("keydown", e => { if (e.key === "Enter") claimHandle(); });
+async function claimHandle() {
+  const handle = ($("handleInput").value || "").trim();
+  if (!handle) return setStatus("err", "Type a handle first.");
+  if (new TextEncoder().encode(handle).length > 32) return setStatus("err", "Keep it under 32 bytes.");
+  $("claimBtn").disabled = true;
+  setStatus("", "Putting your handle onchain…");
+  try {
+    const { txHash, explorerUrl } = await relayTx("setHandle", [handle]);
+    await pollTx(txHash);
+    setStatus("ok", `On the board! <a href="${explorerUrl}" target="_blank" rel="noopener">View tx ↗</a>`);
+    $("claimBtn").textContent = "On the board ✓";
+    for (let i = 0; i < 5; i++) { await new Promise(r => setTimeout(r,1500)); await refreshBoard(); }
+  } catch {
+    $("claimBtn").disabled = false;
+    setStatus("err", "Couldn't set your handle — try again.");
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Board refresh
+// ---------------------------------------------------------------------------
+async function refreshBoard() {
+  if (!G.onchain) return;
+  try {
+    const [global, board] = await Promise.all([
+      fetchGlobalActions(),
+      fetchLeaderboard(10),
+    ]);
+    if (global != null) $("globalNum").textContent = fmt(global);
+    renderLeaderboard(board);
+  } catch {}
+}
+setInterval(refreshBoard, 2200);
+
+function renderLeaderboard(entries) {
+  const box = $("lbRows");
+  if (!G.onchain) { box.innerHTML = '<div class="lb-empty">Live once the game is deployed onchain.</div>'; return; }
+  if (!entries || entries.length === 0) { box.innerHTML = '<div class="lb-empty">No scores yet. Be the first to cash out.</div>'; return; }
+  box.innerHTML = entries.map((e, i) => {
+    const isMine = G.myAddress && e.address && e.address.endsWith(G.myAddress.slice(-8));
+    const cls = isMine ? " you" : "";
+    const name = e.handle ? escHtml(e.handle) : shortAddr(e.address);
+    return `<div class="lb-row${cls}"><span class="rank">${i+1}</span><span class="handle">${name}</span><span class="score">${fmt(e.score)}</span></div>`;
+  }).join("");
+}
+
+// ---------------------------------------------------------------------------
+// UI rendering
+// ---------------------------------------------------------------------------
+function updateUI() {
+  const active = G.phase === "active";
+  const idle   = G.phase === "idle" || G.phase === "done" || G.phase === "bust";
+  const calling = G.phase === "calling" || G.phase === "starting" || G.phase === "cashingout";
+
+  // Bankroll display
+  const balEl = $("balDisplay");
+  $("balNum").textContent = G.bankroll > 0 ? fmt(G.bankroll) : (idle && G.phase !== "bust" ? "···" : "0");
+  $("bankbarFill").style.transform = `scaleX(${Math.max(0, Math.min(1, G.bankroll / G.startingBankroll)).toFixed(3)})`;
+  $("runStat").textContent = G.runId > 0 ? "#" + G.runId : "—";
+  $("callStat").textContent = G.callCount;
+  $("rugStat").textContent = G.rugCount;
+
+  // Wager chip amounts
+  updateChipAmounts();
+
+  // Band picker + wager picker: locked while calling
+  $("bandpick").classList.toggle("lock", calling);
+  $("wagerpick").classList.toggle("lock", calling);
+
+  // Main call button
+  const callBtn = $("callBtn");
+  if (G.phase === "idle" || G.phase === "done" || G.phase === "bust") {
+    callBtn.textContent = G.phase === "bust" ? "New Run" : (G.runId === 0 ? "Start a run" : "New Run");
+    callBtn.disabled = false;
+    callBtn.className = "btn btn-amber";
+    callBtn.style.cssText = "font-size:17px;font-weight:800;letter-spacing:0.01em;";
+  } else if (G.phase === "starting") {
+    callBtn.innerHTML = `<span class="spin"></span> Starting…`;
+    callBtn.disabled = true;
+  } else if (G.phase === "active") {
+    const wager = clampedWager();
+    const label = wager >= MIN_WAGER ? `Call it — ${fmt(wager)} NOVA` : "Bankroll too small";
+    callBtn.textContent = label + (G.onchain ? "" : " (practice)");
+    callBtn.disabled = wager < MIN_WAGER;
+    callBtn.className = "btn btn-amber";
+    callBtn.style.cssText = "font-size:17px;font-weight:800;";
+  } else if (G.phase === "calling") {
+    callBtn.innerHTML = `<span class="spin"></span> Calling…`;
+    callBtn.disabled = true;
+  } else if (G.phase === "cashingout") {
+    callBtn.innerHTML = `<span class="spin"></span> Cashing out…`;
+    callBtn.disabled = true;
+  }
+
+  // Action row (cash out / new run)
+  const actionRow = $("actionRow");
+  actionRow.style.display = active ? "flex" : "none";
+  $("cashoutBtn").disabled = calling;
+
+  // Call HUD
+  const hud = $("callhud");
+  if (active && !calling) {
+    const wager = clampedWager();
+    const profit = bandProfitNum(G.band, wager);
+    const ev = ((bandProfitNum(G.band, 1000) / 1000) + 1).toFixed(2);
+    hud.className = "callhud ready";
+    $("hudLabel").innerHTML = `<b>${BAND_NAMES[G.band]}</b> · wager <b>${fmt(wager)} NOVA</b>`;
+    $("hudEv").textContent = `profit if MOON: ${fmt(profit)} · EV ≈ ${ev}×`;
+  } else if (idle && G.runId === 0) {
+    hud.className = "callhud";
+    $("hudLabel").textContent = "Start a run to begin.";
+    $("hudEv").textContent = "";
+  } else {
+    hud.className = "callhud";
+    $("hudLabel").textContent = active ? "Calling…" : "Run over — cash out or start a new run.";
+    $("hudEv").textContent = "";
+  }
+}
+
+function clampedWager() {
+  const raw = Math.floor(G.bankroll * G.wagerPct / 100);
+  return Math.min(G.bankroll, Math.max(MIN_WAGER, raw));
+}
+
+function updateChipAmounts() {
+  const b = G.bankroll > 0 ? G.bankroll : STARTING_BANKROLL;
+  [
+    ["chip10",  10,  "10%"],
+    ["chip25",  25,  "25%"],
+    ["chip50",  50,  "50%"],
+    ["chip100", 100, "ALL-IN"],
+  ].forEach(([id, pct]) => {
+    const amt = Math.max(MIN_WAGER, Math.floor(b * pct / 100));
+    $(id).textContent = fmt(amt);
+  });
+  // Disable chips where wager > bankroll or bankroll = 0 in idle
+  $("wagerpick").querySelectorAll(".chip").forEach(ch => {
+    const pct = Number(ch.dataset.pct);
+    const amt = Math.floor((G.bankroll > 0 ? G.bankroll : STARTING_BANKROLL) * pct / 100);
+    ch.classList.toggle("disabled", G.phase === "active" && amt < MIN_WAGER);
+  });
+}
+
+function hideResult() { $("resultBox").className = "result"; }
+
+// ---------------------------------------------------------------------------
+// Band + wager pickers
+// ---------------------------------------------------------------------------
+$("bandpick").addEventListener("click", e => {
+  const btn = e.target.closest(".band-btn");
+  if (!btn) return;
+  G.band = Number(btn.dataset.band);
+  $("bandpick").querySelectorAll(".band-btn").forEach(b => b.classList.toggle("sel", b === btn));
+  updateUI();
+});
+
+$("wagerpick").addEventListener("click", e => {
+  const chip = e.target.closest(".chip");
+  if (!chip) return;
+  G.wagerPct = Number(chip.dataset.pct);
+  $("wagerpick").querySelectorAll(".chip").forEach(c => c.classList.toggle("sel", c === chip));
+  updateUI();
+});
+
+// ---------------------------------------------------------------------------
+// Call button (dual-purpose: start run OR call it)
+// ---------------------------------------------------------------------------
+$("callBtn").addEventListener("click", () => {
+  if (G.phase === "idle" || G.phase === "done" || G.phase === "bust") onStartRun();
+  else if (G.phase === "active") onCall();
+});
+$("cashoutBtn").addEventListener("click", onCashOut);
+
+// ---------------------------------------------------------------------------
+// Boot
+// ---------------------------------------------------------------------------
+$("balNum").textContent = "···";
+$("bankbarFill").style.transform = "scaleX(0)";
+try { const h = localStorage.getItem("wenmoon_handle"); if (h) $("handleInput").value = h; } catch {}
+
+updateUI();
+detectMode();
+</script>
+<p style="position:relative;z-index:3;margin:22px auto 16px;text-align:center;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:#6B7385;line-height:1.6;">Built with &#10084;&#65039; on MultiversX &middot; <a href="https://github.com/multiversx/supernova-arcade" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;text-underline-offset:2px;">GitHub</a> &middot; <a href="https://github.com/multiversx/supernova-arcade/issues/new?template=bug-report.yml" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;text-underline-offset:2px;">Report a bug</a></p>
+<script src="/arcade-lock.js"></script>
+<script type="module" src="/arcade-share.js"></script>
+<script src="/arcade-info.js"></script>
+<script type="module" src="/arcade-sound.js"></script>
+</body>
+</html>

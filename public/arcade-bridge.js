@@ -46,6 +46,7 @@
   function gameFromPath(p) {
     p = (p || "").toLowerCase();
     if (/degen[-_]?dash/.test(p)) return "degendash";
+    if (/wen[-_]?moon/.test(p)) return "wenmoon";
     if (/clawback/.test(p)) return "clawback";
     if (/reaction/.test(p)) return "reaction";
     if (/button/.test(p)) return "button";

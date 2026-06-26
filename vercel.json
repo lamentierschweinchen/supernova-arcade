@@ -8,6 +8,7 @@
     { "source": "/reaction", "destination": "/shell.html" },
     { "source": "/clawback", "destination": "/shell.html" },
     { "source": "/degen-dash", "destination": "/shell.html" },
+    { "source": "/wen-moon", "destination": "/shell.html" },
     { "source": "/sprint", "destination": "/shell.html" },
     { "source": "/supernova-sprint", "destination": "/shell.html" },
     { "source": "/why", "destination": "/shell.html" },

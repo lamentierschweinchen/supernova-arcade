@@ -79,6 +79,13 @@ import {
   END_ROUND_GAS_LIMIT,
   CLAIM_GAS_LIMIT,
   COLLECT_GAS_LIMIT,
+  WENMOON_CONTRACT,
+  STARTRUN_FUNCTION,
+  CALL_FUNCTION,
+  CASHOUT_FUNCTION,
+  STARTRUN_GAS_LIMIT,
+  CALL_GAS_LIMIT,
+  CASHOUT_GAS_LIMIT,
   isPlaceholder,
 } from "@/lib/onchain/arcade.config";
 
@@ -92,6 +99,7 @@ const ARCADE_RECEIVERS = [
   REACTION_CONTRACT,
   CLAWBACK_CONTRACT,
   DEGENDASH_CONTRACT,
+  WENMOON_CONTRACT,
 ].filter((addr) => !isPlaceholder(addr));
 
 // The plain-object shape accepted by Transaction.newFromPlainObject, derived
@@ -225,8 +233,27 @@ const RELAY_OPS: Record<string, RelayOp> = {
     rateMax: 60,
   },
   [CLAIM_FUNCTION]: {
-    receivers: [CLAWBACK_CONTRACT, DEGENDASH_CONTRACT].filter((a) => !isPlaceholder(a)),
+    receivers: [CLAWBACK_CONTRACT, DEGENDASH_CONTRACT, WENMOON_CONTRACT].filter((a) => !isPlaceholder(a)),
     maxGasLimit: CLAIM_GAS_LIMIT + 100_000,
+    rateMax: 60,
+  },
+  // --- Wen Moon (provably-fair press-your-luck; its own contract + ops) ---
+  // startRun mints the bankroll + seeds the run; `call` is the per-call VRF draw
+  // (high-frequency, tap-sized budget); cashOut banks. claim (above) + setHandle
+  // (ARCADE_RECEIVERS) already include this contract.
+  [STARTRUN_FUNCTION]: {
+    receivers: isPlaceholder(WENMOON_CONTRACT) ? [] : [WENMOON_CONTRACT],
+    maxGasLimit: STARTRUN_GAS_LIMIT + 100_000,
+    rateMax: 60,
+  },
+  [CALL_FUNCTION]: {
+    receivers: isPlaceholder(WENMOON_CONTRACT) ? [] : [WENMOON_CONTRACT],
+    maxGasLimit: CALL_GAS_LIMIT + 100_000,
+    rateMax: 1200,
+  },
+  [CASHOUT_FUNCTION]: {
+    receivers: isPlaceholder(WENMOON_CONTRACT) ? [] : [WENMOON_CONTRACT],
+    maxGasLimit: CASHOUT_GAS_LIMIT + 100_000,
     rateMax: 60,
   },
 };

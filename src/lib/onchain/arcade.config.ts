@@ -94,6 +94,15 @@ export const DEGENDASH_CONTRACT =
   process.env.NEXT_PUBLIC_DEGENDASH_CONTRACT ||
   "erd1qqqqqqqqqqqqqpgqs7wzfzuc0wju7kdna4528ntz4hcywdrlppuqtn4h8w"; // testnet, shard 0
 
+/**
+ * THE WEN MOON contract (shard 0). Deployed; owner = the relayer. NOVA-558b9d is
+ * configured and the contract holds ESDTLocalMint, so startRun mints the bankroll
+ * and claim mints kept NOVA. See marketing/games/onchain/wen-moon-contract.
+ */
+export const WENMOON_CONTRACT =
+  process.env.NEXT_PUBLIC_WENMOON_CONTRACT ||
+  "erd1qqqqqqqqqqqqqpgq83errjg5avj4d8tmpwpc33ckl9ywp0erppuqna027f"; // testnet, shard 0
+
 /** Relayed endpoints for the cabinets. */
 export const PULL_FUNCTION = "pull";
 export const PLACE_PIXEL_FUNCTION = "placePixel";
@@ -109,6 +118,11 @@ export const CLAIM_FUNCTION = "claim";
 // own contract, so a startRound/endRound/claim for Degen Dash is authorized only
 // against the Degen Dash contract (and vice versa). `collect` is its per-tap path.
 export const COLLECT_FUNCTION = "collect";
+// Wen Moon: provably-fair press-your-luck. startRun mints the bankroll; `call` is the
+// per-call VRF draw (high-frequency path); cashOut banks; claim mints kept NOVA.
+export const STARTRUN_FUNCTION = "startRun";
+export const CALL_FUNCTION = "call";
+export const CASHOUT_FUNCTION = "cashOut";
 
 /**
  * Gas ceilings. `pull` does a handful of small storage writes (plus, on a round
@@ -131,6 +145,12 @@ export const CLAIM_GAS_LIMIT = 10_000_000;
 // up front (heaviest); `collect` is the per-tap grab; `endRound` tallies; `claim`
 // mints the collected NOVA. Same caps; the relayer only pays gas actually consumed.
 export const COLLECT_GAS_LIMIT = 8_000_000;
+// Wen Moon: startRun mints the bankroll (ESDT localMint) + seeds the run; `call`
+// draws the VRF outcome + settles; cashOut banks. Generous caps; the relayer only
+// pays gas actually consumed.
+export const STARTRUN_GAS_LIMIT = 20_000_000;
+export const CALL_GAS_LIMIT = 12_000_000;
+export const CASHOUT_GAS_LIMIT = 12_000_000;
 
 /**
  * True when an address is still the undeployed placeholder. The relayer uses

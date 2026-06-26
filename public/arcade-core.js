@@ -87,6 +87,13 @@ export const GAMES = {
     contract: "erd1qqqqqqqqqqqqqpgqs7wzfzuc0wju7kdna4528ntz4hcywdrlppuqtn4h8w", // testnet, shard 0
     gasLimit: 8000000,
   },
+  wenmoon: {
+    // Provably-fair press-your-luck on NOVA; client at public/wen-moon/. The hub
+    // odometer sums its getGlobalActions; the points board reads getTopPoints.
+    label: "Wen Moon",
+    contract: "erd1qqqqqqqqqqqqqpgq83errjg5avj4d8tmpwpc33ckl9ywp0erppuqna027f", // testnet, shard 0
+    gasLimit: 12000000,
+  },
 };
 
 /* ---------- tiny encoders (SC call argument hex) ---------- */

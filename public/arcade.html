@@ -476,6 +476,14 @@ const CABINETS = [
     counter: { address: GAMES.degendash.contract, view: "getGlobalActions" },
   },
   {
+    id: "wenmoon", name: "Wen Moon", status: "live", href: "/wen-moon", art: "wenmoon",
+    color: "#7CD3F2", shard: "shard 0",
+    line: "Pick a risk band, wager NOVA, and call it. The moon or the rug, drawn from the block's VRF seed so it's provably fair. Cash out before you bust.",
+    meta: "provably fair",
+    metaSuffix: "calls onchain",
+    counter: { address: GAMES.wenmoon.contract, view: "getGlobalActions" },
+  },
+  {
     id: "reaction", name: "Reaction Arcade", status: "live", href: "/reaction", art: "reaction",
     color: "#F5B544", shard: "shard 0",
     line: "When the X flashes, tap. Land as many as you can before your reflexes give out.",
@@ -838,6 +846,7 @@ const PB_SOURCES = [
   { game: "Degen Dash", view: "getTopPoints", address: GAMES.degendash.contract,  args: [], weight: 1 },
   { game: "Clawback",   view: "getTopPoints", address: GAMES.clawback.contract,   args: [], weight: 1 },
   { game: "The Button", view: "getTopPoints", address: GAMES.button.contract,     args: [], weight: 1 },
+  { game: "Wen Moon",   view: "getTopPoints", address: GAMES.wenmoon.contract,    args: [], weight: 1 },
 ].filter((s) => s.address && !/^erd1qqqqqqqqqqqqqqqqqqqqqqqqqqqq/.test(s.address)); // drop placeholders
 
 // the current player's passport address, for the "you" highlight (read-only, no key grind).
