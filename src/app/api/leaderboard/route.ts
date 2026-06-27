@@ -97,6 +97,37 @@ function toBech32(addrHex: string): string {
   }
 }
 
+// global handle map — a player's chosen name from ANY arcade-core game, so a name
+// set in one game shows on EVERY board (name persistence). Cached like the boards.
+let handleCache: { at: number; map: Map<string, string> } | null = null;
+async function globalHandles(): Promise<Map<string, string>> {
+  if (handleCache && Date.now() - handleCache.at < CACHE_MS) return handleCache.map;
+  const map = new Map<string, string>();
+  const handlePrefix = Buffer.from("handle", "utf8").toString("hex");
+  const handleKeyLen = (6 + 32) * 2;
+  await Promise.all(
+    Object.values(GAME_BOARDS).map(async (cfg) => {
+      if (isPlaceholder(cfg.contract)) return;
+      try {
+        const r = await fetch(`${API}/address/${cfg.contract}/keys`, { cache: "no-store" });
+        if (!r.ok) return;
+        const pairs = (((await r.json()) as { data?: { pairs?: Record<string, string> } })?.data?.pairs) || {};
+        for (const [k, v] of Object.entries(pairs)) {
+          if (k.length === handleKeyLen && k.startsWith(handlePrefix) && v) {
+            const a = k.slice(handlePrefix.length);
+            const h = Buffer.from(v, "hex").toString("utf8");
+            if (h && !map.has(a)) map.set(a, h); // first non-empty name wins
+          }
+        }
+      } catch {
+        /* skip this game */
+      }
+    }),
+  );
+  handleCache = { at: Date.now(), map };
+  return map;
+}
+
 async function gameBoard(game: string): Promise<GameRow[] | null> {
   const cfg = GAME_BOARDS[game];
   if (!cfg || isPlaceholder(cfg.contract)) return null;
@@ -132,6 +163,12 @@ async function gameBoard(game: string): Promise<GameRow[] | null> {
       e.handle = v ? Buffer.from(v, "hex").toString("utf8") : "";
       byAddr.set(a, e);
     }
+  }
+
+  // overlay the global handle so a name set on ANY game shows on this board too
+  const gh = await globalHandles();
+  for (const [a, e] of byAddr) {
+    if (!e.handle && gh.has(a)) e.handle = gh.get(a) as string;
   }
 
   const rows = [...byAddr.entries()]
