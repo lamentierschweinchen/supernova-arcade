@@ -16,7 +16,7 @@ const API = "https://testnet-api.multiversx.com";
 const EXPLORER = "https://testnet-explorer.multiversx.com";
 const MAX_DOTS = 18; // recent txs shown around the ring
 const POLL_MS = 1500;
-const POLL_TRIES = 40; // ~60s before a tx is called unknown
+const POLL_TRIES = 16; // ~24s; Supernova finalizes in ~1-2s, this just bounds the unknown case
 const CONFIRMING_MS = 700; // brief blue->purple->green flourish on settle
 
 const STATUS = {
@@ -102,14 +102,14 @@ export function mountTxRing() {
   }
 
   function renderRing() {
-    let out = "";
-    for (let i = 0; i < MAX_DOTS; i++) {
+    // a faint TRACK ring IS the empty state (clearly "no activity"); real txs
+    // appear as dots ON the track, so a dot only ever means a real transaction
+    // (no more placeholder dots that read as activity when the ring is empty).
+    let out = `<circle cx="22" cy="22" r="16" fill="none" stroke="#222836" stroke-width="1"/>`;
+    const n = Math.min(txs.length, MAX_DOTS);
+    for (let i = 0; i < n; i++) {
       const [x, y] = dotXY(i);
       const tx = txs[i];
-      if (!tx) {
-        out += `<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="1.7" fill="none" stroke="#2b3242" stroke-width="1.1"/>`;
-        continue;
-      }
       const s = STATUS[tx.status] || STATUS.unknown;
       const cls = i === 0 ? "atr-dot-new" : "";
       const r = i === 0 ? 2.6 : 2.2;
@@ -137,11 +137,22 @@ export function mountTxRing() {
     }).join("");
   }
 
-  function render() { renderRing(); renderPanel(); }
+  // coalesce rapid updates (canvas can fire ~7 tx/s) into one render per frame
+  let renderQueued = false;
+  function render() {
+    if (renderQueued) return;
+    renderQueued = true;
+    requestAnimationFrame(() => { renderQueued = false; renderRing(); renderPanel(); });
+  }
 
+  // pulse is throttled so a burst of txs doesn't strobe the corner
+  let lastPulse = 0;
   function pulse() {
+    const now = Date.now();
+    if (now - lastPulse < 450) return;
+    lastPulse = now;
     wrap.classList.add("pulse");
-    setTimeout(() => wrap.classList.remove("pulse"), 480);
+    setTimeout(() => wrap.classList.remove("pulse"), 420);
   }
 
   async function poll(tx) {
