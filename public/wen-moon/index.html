@@ -378,7 +378,7 @@
 import { ARCADE_CONFIG } from "/wen-moon/arcade.config.js";
 import { mountGalaxy } from "/arcade-galaxy.js";
 import { createArcade } from "/wen-moon/arcade.js";
-import { topPlusSelf } from "/arcade-board.js";
+import { topPlusSelf, fetchGameBoard } from "/arcade-board.js";
 import { getHandle } from "/passport.js";
 
 // ---------------------------------------------------------------------------
@@ -791,7 +791,7 @@ async function refreshBoard() {
   try {
     const [global, board] = await Promise.all([
       fetchGlobalActions(),
-      fetchLeaderboard(100),
+      fetchGameBoard("wenmoon"),
     ]);
     if (global != null) $("globalNum").textContent = fmt(global);
     renderLeaderboard(board);

@@ -360,7 +360,7 @@
 
 <script type="module">
 import { createArcade } from "/degen-dash/arcade.js";
-import { topPlusSelf } from "/arcade-board.js";
+import { topPlusSelf, fetchGameBoard } from "/arcade-board.js";
 import { getHandle } from "/passport.js";
 import { ARCADE_CONFIG } from "/degen-dash/arcade.config.js";
 import { buildSchedule } from "/degen-dash/schedule.js";
@@ -840,7 +840,7 @@ async function claimHandle() {
 // ---------- onchain reads on a ~2s tick ----------
 async function refreshBoard() {
   if (!onchain) return;
-  const [global, board] = await Promise.all([arcade.getGlobalActions(), arcade.getLeaderboard(100)]); // full board for the self-row
+  const [global, board] = await Promise.all([arcade.getGlobalActions(), fetchGameBoard("degendash")]); // scalable off-chain board + global names
   if (global != null) $("globalNum").textContent = fmt(global);
   renderLeaderboard(board);
 }

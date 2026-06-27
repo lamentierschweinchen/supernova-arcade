@@ -79,15 +79,26 @@ let cache: Cache | null = null;
 // handle+address -> name. The onchain getTop* views SORT all players and run out
 // of query gas past ~120 players (tug-of-war + canvas are already broken), so we
 // read the raw storage via /keys and sort off-chain. Scales to any player count.
-const GAME_BOARDS: Record<string, { contract: string; scoreMapper: string }> = {
+type GameCfg = { contract: string; scoreMapper?: string; view?: string };
+// How each game's board is read off-chain (no onchain getTop* gas ceiling):
+//  - scoreMapper: parse raw storage (<mapper>+addr). Scales to any size — used by the
+//    arcade-core games + degen-dash (bestScore), whose getLeaderboard OOMs past ~120.
+//  - view: call the contract's getLeaderboard + decode ScoreEntry. For the small
+//    per-game games (wen-moon, clawback) — correct scores, no OOM at their size.
+const GAME_BOARDS: Record<string, GameCfg> = {
   tugofwar: { contract: TUGOFWAR_CONTRACT, scoreMapper: "playerPulls" },
   canvas: { contract: CANVAS_CONTRACT, scoreMapper: "playerPixels" },
   button: { contract: BUTTON_CONTRACT, scoreMapper: "playerPoints" },
   reaction: { contract: REACTION_CONTRACT, scoreMapper: "reactions" },
+  degendash: { contract: DEGENDASH_CONTRACT, scoreMapper: "bestScore" },
+  wenmoon: { contract: WENMOON_CONTRACT, view: "getLeaderboard" },
+  clawback: { contract: CLAWBACK_CONTRACT, view: "getLeaderboard" },
 };
 
 type GameRow = { address: string; handle: string; score: number };
+type RawRow = { addrHex: string; handle: string; score: number };
 const boardCache = new Map<string, { at: number; rows: GameRow[] }>();
+const rawCache = new Map<string, { at: number; rows: RawRow[] }>();
 
 function toBech32(addrHex: string): string {
   try {
@@ -97,31 +108,81 @@ function toBech32(addrHex: string): string {
   }
 }
 
-// global handle map — a player's chosen name from ANY arcade-core game, so a name
-// set in one game shows on EVERY board (name persistence). Cached like the boards.
+// one base64 ScoreEntry: address(32) + handleLen(4 BE) + handle + score(8 BE) + ts(8 BE)
+function decodeScoreEntry(b64: string): RawRow | null {
+  try {
+    const b = Buffer.from(b64, "base64");
+    if (b.length < 32 + 4 + 8 + 8) return null;
+    const addrHex = b.subarray(0, 32).toString("hex");
+    const hlen = b.readUInt32BE(32);
+    const handle = b.subarray(36, 36 + hlen).toString("utf8");
+    const score = Number(b.readBigUInt64BE(36 + hlen));
+    return { addrHex, handle, score };
+  } catch {
+    return null;
+  }
+}
+
+// fetch one game's raw rows (addrHex, handle, score), cached. Storage-parse or view.
+async function fetchRows(game: string, cfg: GameCfg): Promise<RawRow[]> {
+  const hit = rawCache.get(game);
+  if (hit && Date.now() - hit.at < CACHE_MS) return hit.rows;
+  let rows: RawRow[] = [];
+  try {
+    if (cfg.view) {
+      const r = await fetch(`${API}/vm-values/query`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scAddress: cfg.contract, funcName: cfg.view, args: [] }),
+        cache: "no-store",
+      });
+      if (!r.ok) return hit ? hit.rows : [];
+      const parts = (((await r.json()) as { data?: { data?: { returnData?: string[] } } })?.data?.data?.returnData) || [];
+      rows = parts.map(decodeScoreEntry).filter((e): e is RawRow => e !== null);
+    } else {
+      const r = await fetch(`${API}/address/${cfg.contract}/keys`, { cache: "no-store" });
+      if (!r.ok) return hit ? hit.rows : [];
+      const pairs = (((await r.json()) as { data?: { pairs?: Record<string, string> } })?.data?.pairs) || {};
+      const sm = cfg.scoreMapper as string;
+      const sp = Buffer.from(sm, "utf8").toString("hex");
+      const hp = Buffer.from("handle", "utf8").toString("hex");
+      const sl = (sm.length + 32) * 2;
+      const hl = (6 + 32) * 2;
+      const by = new Map<string, { handle: string; score: number }>();
+      const slot = (a: string) => by.get(a) || { handle: "", score: 0 };
+      for (const [k, v] of Object.entries(pairs)) {
+        if (k.length === sl && k.startsWith(sp)) {
+          const a = k.slice(sp.length);
+          const e = slot(a);
+          e.score = v ? Number(BigInt("0x" + v)) : 0;
+          by.set(a, e);
+        } else if (k.length === hl && k.startsWith(hp)) {
+          const a = k.slice(hp.length);
+          const e = slot(a);
+          e.handle = v ? Buffer.from(v, "hex").toString("utf8") : "";
+          by.set(a, e);
+        }
+      }
+      rows = [...by.entries()].map(([addrHex, e]) => ({ addrHex, handle: e.handle, score: e.score }));
+    }
+  } catch {
+    return hit ? hit.rows : [];
+  }
+  rawCache.set(game, { at: Date.now(), rows });
+  return rows;
+}
+
+// global handle map — a player's chosen name from ANY game, so a name set in one
+// game shows on EVERY board (name persistence). Cached.
 let handleCache: { at: number; map: Map<string, string> } | null = null;
 async function globalHandles(): Promise<Map<string, string>> {
   if (handleCache && Date.now() - handleCache.at < CACHE_MS) return handleCache.map;
   const map = new Map<string, string>();
-  const handlePrefix = Buffer.from("handle", "utf8").toString("hex");
-  const handleKeyLen = (6 + 32) * 2;
   await Promise.all(
-    Object.values(GAME_BOARDS).map(async (cfg) => {
+    Object.entries(GAME_BOARDS).map(async ([game, cfg]) => {
       if (isPlaceholder(cfg.contract)) return;
-      try {
-        const r = await fetch(`${API}/address/${cfg.contract}/keys`, { cache: "no-store" });
-        if (!r.ok) return;
-        const pairs = (((await r.json()) as { data?: { pairs?: Record<string, string> } })?.data?.pairs) || {};
-        for (const [k, v] of Object.entries(pairs)) {
-          if (k.length === handleKeyLen && k.startsWith(handlePrefix) && v) {
-            const a = k.slice(handlePrefix.length);
-            const h = Buffer.from(v, "hex").toString("utf8");
-            if (h && !map.has(a)) map.set(a, h); // first non-empty name wins
-          }
-        }
-      } catch {
-        /* skip this game */
-      }
+      const rows = await fetchRows(game, cfg);
+      for (const r of rows) if (r.handle && !map.has(r.addrHex)) map.set(r.addrHex, r.handle);
     }),
   );
   handleCache = { at: Date.now(), map };
@@ -134,46 +195,11 @@ async function gameBoard(game: string): Promise<GameRow[] | null> {
   const hit = boardCache.get(game);
   if (hit && Date.now() - hit.at < CACHE_MS) return hit.rows;
 
-  let pairs: Record<string, string> = {};
-  try {
-    const r = await fetch(`${API}/address/${cfg.contract}/keys`, { cache: "no-store" });
-    if (!r.ok) return hit ? hit.rows : [];
-    pairs = (((await r.json()) as { data?: { pairs?: Record<string, string> } })?.data?.pairs) || {};
-  } catch {
-    return hit ? hit.rows : [];
-  }
-
-  // storage keys are hex(mapperName) + hex(address-32-bytes). Match by exact length + prefix.
-  const scorePrefix = Buffer.from(cfg.scoreMapper, "utf8").toString("hex");
-  const handlePrefix = Buffer.from("handle", "utf8").toString("hex");
-  const scoreKeyLen = (cfg.scoreMapper.length + 32) * 2;
-  const handleKeyLen = (6 + 32) * 2;
-
-  const byAddr = new Map<string, { handle: string; score: number }>();
-  const slot = (a: string) => byAddr.get(a) || { handle: "", score: 0 };
-  for (const [k, v] of Object.entries(pairs)) {
-    if (k.length === scoreKeyLen && k.startsWith(scorePrefix)) {
-      const a = k.slice(scorePrefix.length);
-      const e = slot(a);
-      e.score = v ? Number(BigInt("0x" + v)) : 0;
-      byAddr.set(a, e);
-    } else if (k.length === handleKeyLen && k.startsWith(handlePrefix)) {
-      const a = k.slice(handlePrefix.length);
-      const e = slot(a);
-      e.handle = v ? Buffer.from(v, "hex").toString("utf8") : "";
-      byAddr.set(a, e);
-    }
-  }
-
-  // overlay the global handle so a name set on ANY game shows on this board too
-  const gh = await globalHandles();
-  for (const [a, e] of byAddr) {
-    if (!e.handle && gh.has(a)) e.handle = gh.get(a) as string;
-  }
-
-  const rows = [...byAddr.entries()]
-    .filter(([, e]) => e.score > 0)
-    .map(([a, e]) => ({ address: toBech32(a), handle: e.handle, score: e.score }))
+  const raw = await fetchRows(game, cfg);
+  const gh = await globalHandles(); // a name set on ANY game shows on this board too
+  const rows = raw
+    .filter((e) => e.score > 0)
+    .map((e) => ({ address: toBech32(e.addrHex), handle: e.handle || gh.get(e.addrHex) || "", score: e.score }))
     .filter((e) => e.address)
     .sort((a, b) => b.score - a.score);
   boardCache.set(game, { at: Date.now(), rows });
