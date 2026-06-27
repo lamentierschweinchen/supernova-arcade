@@ -841,21 +841,22 @@ featAdd.addEventListener("click", () => window.open(SUBMIT_URL, "_blank", "noope
    =========================================================================== */
 const SPRINT_LEADERBOARD = "erd1qqqqqqqqqqqqqpgqh9wpfl0mt337h68z8cuv6w6mkfucqv5tppuqsxz6sp"; // /onchain Sprint board
 const PB_SOURCES = [
-  // Tug + Canvas: the leaderboard score already equals your play count (one pull /
-  // one pixel = one point), so no accumulator needed. These views take a count arg.
-  { game: "Tug of War", view: "getTopPullers",  address: GAMES.tugofwar.contract, args: ["64"], weight: 1 }, // top 100 (wide enough that most players find themselves)
-  { game: "Canvas",     view: "getTopPainters", address: GAMES.canvas.contract,   args: ["64"], weight: 1 }, // top 100 (wide enough that most players find themselves)
-  { game: "Reaction",   view: "getTopReactors", address: GAMES.reaction.contract, args: ["64"], weight: 1 }, // top 100 (wide enough that most players find themselves)
-  // The score games bank CUMULATIVE points via getTopPoints (added by an in-place
-  // contract upgrade; the view takes no args, returns every player unsorted):
-  // Sprint = each run's finalized tx count, Degen Dash = each run's stack, Clawback
-  // = each run's kept balance, The Button = each wait you bank.
+  // Arcade-core games: read the SCALABLE off-chain board (/api/leaderboard?game=X).
+  // The onchain getTop* views OOM past ~120 players, so tug + canvas were silently
+  // dropping out of this aggregate. The off-chain board also carries the GLOBAL
+  // handle (a name set on any game), keeping the global board's names consistent.
+  { game: "Tug of War", offchain: "tugofwar", weight: 1 },
+  { game: "Canvas",     offchain: "canvas",   weight: 1 },
+  { game: "Reaction",   offchain: "reaction", weight: 1 },
+  { game: "The Button", offchain: "button",   weight: 1 },
+  // Score games bank CUMULATIVE points via getTopPoints (no-arg view): Sprint = each
+  // run's finalized tx count, Degen Dash = each run's stack, Clawback = each run's
+  // kept balance, Wen Moon = biggest cash-out. (Still onchain until folded into the service.)
   { game: "Sprint",     view: "getTopPoints", address: SPRINT_LEADERBOARD,        args: [], weight: 1 },
   { game: "Degen Dash", view: "getTopPoints", address: GAMES.degendash.contract,  args: [], weight: 1 },
   { game: "Clawback",   view: "getTopPoints", address: GAMES.clawback.contract,   args: [], weight: 1 },
-  { game: "The Button", view: "getTopPoints", address: GAMES.button.contract,     args: [], weight: 1 },
   { game: "Wen Moon",   view: "getTopPoints", address: GAMES.wenmoon.contract,    args: [], weight: 1 },
-].filter((s) => s.address && !/^erd1qqqqqqqqqqqqqqqqqqqqqqqqqqqq/.test(s.address)); // drop placeholders
+].filter((s) => s.offchain || (s.address && !/^erd1qqqqqqqqqqqqqqqqqqqqqqqqqqqq/.test(s.address))); // drop placeholders
 
 // the current player's passport address, for the "you" highlight (read-only, no key grind).
 // decodeLeaderboard returns bech32 only when the crypto libs are loaded (not on the hub),
@@ -869,6 +870,9 @@ const meHex = (() => { try { if (!meBech) return ""; const w = bech32.decode(meB
 let boardWindow = "overall";
 const handleByBech = new Map();
 function hexToBech(hex) { try { const bytes = new Uint8Array(hex.match(/.{1,2}/g).map((h) => parseInt(h, 16))); return bech32.encode("erd", bech32.toWords(bytes), 256); } catch (e) { return ""; } }
+// the off-chain service returns bech32; the onchain views decode to pubkey hex. Normalize
+// the service rows to hex so a player aggregates across both source types by one key.
+function bechToHex(b) { try { const w = bech32.decode(b, 256).words; return Array.from(bech32.fromWords(w)).map((x) => x.toString(16).padStart(2, "0")).join(""); } catch (e) { return ""; } }
 
 const playerBoardEl = document.getElementById("playerBoard");
 
@@ -877,7 +881,14 @@ function pbShort(a) { return a ? a.slice(0, 6) + "…" + a.slice(-4) : "player";
 
 async function pbRead(src) {
   try {
-    const rd = await client.query(src.view, src.args || [], src.address); // count-arg views vs no-arg getTopPoints
+    if (src.offchain) {
+      // the scalable off-chain board (already top-sorted, with global handles)
+      const r = await fetch(`/api/leaderboard?game=${src.offchain}`);
+      if (!r.ok) return [];
+      const d = await r.json();
+      return (d.rows || []).map((e) => ({ address: bechToHex(e.address), handle: e.handle || "", score: e.score }));
+    }
+    const rd = await client.query(src.view, src.args || [], src.address); // no-arg getTopPoints
     return rd && rd.length ? client.decodeLeaderboard(rd) : [];
   } catch (e) { return []; }
 }
