@@ -241,6 +241,7 @@ export function createArcade(config) {
     if (!res.ok || out.error) {
       throw new ArcadeError(out.error || `http_${res.status}`, out.message || "relay rejected the transaction");
     }
+    try { if (window.parent !== window) window.parent.postMessage({ type: "arcade:tx", hash: out.txHash }, location.origin); } catch (_e) {} // feed the shell's live tx ring
     return { txHash: out.txHash, explorerUrl: out.explorerUrl || explorerTx(out.txHash), sender: out.sender };
   }
 

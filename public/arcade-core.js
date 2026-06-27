@@ -338,6 +338,7 @@ export function createArcadeClient(gameKey) {
         throw { code: "network", message: "could not reach the relayer" };
       }
       if (res.ok && !out.error) {
+        try { if (window.parent !== window) window.parent.postMessage({ type: "arcade:tx", hash: out.txHash }, location.origin); } catch (_e) {} // feed the shell's live tx ring
         return { txHash: out.txHash, explorerUrl: out.explorerUrl || net.explorer + "/transactions/" + out.txHash };
       }
       lastErr = { code: out.error || "relay_error", message: out.message || "", status: res.status };

@@ -116,6 +116,7 @@
 
     <script type="module">
       import { createArcadeScore } from "/arcade-score.js";
+      import { mountTxRing } from "/arcade-tx-ring.js";
 
       "use strict";
 
@@ -168,6 +169,10 @@
          engine supports it (see marketing/games/arcade-audio-engine-perf-brief.md). ---- */
       var score = createArcadeScore({ momentStep: 25000, lite: true });
       try { window.arcadeScore = window.arcadeScore || score; } catch (e) {}
+
+      /* the live tx ring — the VISUAL twin of the sound, fed by each game's real
+         tx hashes (the games postMessage `arcade:tx`; we tag the current game). */
+      var txRing = mountTxRing();
 
       /* ===================================================================
          SOUND TOGGLE — lifted from the hub (arcade.html ~732-773): persist the
@@ -300,6 +305,11 @@
             var per = {};
             per[d.game] = +d.total || 0;
             try { score.feed({ perCabinet: per, total: +d.total || 0 }); } catch (err) {}
+            break;
+          }
+          case "arcade:tx": {
+            // a real onchain tx fired in the current game -> feed the live ring
+            if (d.hash) txRing.addTx(d.hash, current);
             break;
           }
           case "arcade:navigate": {
