@@ -79,20 +79,23 @@ let cache: Cache | null = null;
 // handle+address -> name. The onchain getTop* views SORT all players and run out
 // of query gas past ~120 players (tug-of-war + canvas are already broken), so we
 // read the raw storage via /keys and sort off-chain. Scales to any player count.
-type GameCfg = { contract: string; scoreMapper?: string; view?: string };
+type GameCfg = { contract: string; scoreMapper?: string; view?: string; pointsView?: string };
 // How each game's board is read off-chain (no onchain getTop* gas ceiling):
-//  - scoreMapper: parse raw storage (<mapper>+addr). Scales to any size — used by the
-//    arcade-core games + degen-dash (bestScore), whose getLeaderboard OOMs past ~120.
-//  - view: call the contract's getLeaderboard + decode ScoreEntry. For the small
-//    per-game games (wen-moon, clawback) — correct scores, no OOM at their size.
+//  - scoreMapper: parse raw storage (<mapper>+addr). For the ARCADE-CORE games, whose
+//    getTop* views OOM past ~120 players and whose /keys scales with players only (cheap).
+//  - view: call the contract's getLeaderboard + decode ScoreEntry. For the SCORE games
+//    (degen/wen-moon/clawback): getLeaderboard scales with players (works at our sizes),
+//    while their raw /keys is dominated by action-scaling mappers (would grow unbounded).
+//  - pointsView: the cabinet board is best-single-run (scoreMapper/view); the HUB board
+//    is CUMULATIVE points (getTopPoints). ?metric=points reads this instead.
 const GAME_BOARDS: Record<string, GameCfg> = {
   tugofwar: { contract: TUGOFWAR_CONTRACT, scoreMapper: "playerPulls" },
   canvas: { contract: CANVAS_CONTRACT, scoreMapper: "playerPixels" },
   button: { contract: BUTTON_CONTRACT, scoreMapper: "playerPoints" },
   reaction: { contract: REACTION_CONTRACT, scoreMapper: "reactions" },
-  degendash: { contract: DEGENDASH_CONTRACT, scoreMapper: "bestScore" },
-  wenmoon: { contract: WENMOON_CONTRACT, view: "getLeaderboard" },
-  clawback: { contract: CLAWBACK_CONTRACT, view: "getLeaderboard" },
+  degendash: { contract: DEGENDASH_CONTRACT, view: "getLeaderboard", pointsView: "getTopPoints" },
+  wenmoon: { contract: WENMOON_CONTRACT, view: "getLeaderboard", pointsView: "getTopPoints" },
+  clawback: { contract: CLAWBACK_CONTRACT, view: "getLeaderboard", pointsView: "getTopPoints" },
 };
 
 type GameRow = { address: string; handle: string; score: number };
@@ -206,13 +209,35 @@ async function gameBoard(game: string): Promise<GameRow[] | null> {
   return rows;
 }
 
+// the HUB "points board" metric: cumulative points (getTopPoints) per player, decoded
+// + global-handle overlaid + sorted, cached. Distinct from the cabinet's best-run board.
+async function pointsBoard(game: string): Promise<GameRow[] | null> {
+  const cfg = GAME_BOARDS[game];
+  if (!cfg || !cfg.pointsView || isPlaceholder(cfg.contract)) return null;
+  const key = `${game}:points`;
+  const hit = boardCache.get(key);
+  if (hit && Date.now() - hit.at < CACHE_MS) return hit.rows;
+  const raw = await fetchRows(key, { contract: cfg.contract, view: cfg.pointsView });
+  const gh = await globalHandles();
+  const rows = raw
+    .filter((e) => e.score > 0)
+    .map((e) => ({ address: toBech32(e.addrHex), handle: e.handle || gh.get(e.addrHex) || "", score: e.score }))
+    .filter((e) => e.address)
+    .sort((a, b) => b.score - a.score);
+  boardCache.set(key, { at: Date.now(), rows });
+  return rows;
+}
+
 export async function GET(request: Request) {
-  // ?game=canvas -> that game's all-time board (storage-parsed). No game -> daily.
-  const game = new URL(request.url).searchParams.get("game");
+  // ?game=X -> that game's cabinet board (best run); &metric=points -> the hub's
+  // cumulative-points board for that game. No game -> the daily board.
+  const params = new URL(request.url).searchParams;
+  const game = params.get("game");
   if (game) {
-    const rows = await gameBoard(game);
+    const metric = params.get("metric");
+    const rows = metric === "points" ? await pointsBoard(game) : await gameBoard(game);
     if (rows === null) return NextResponse.json({ error: "unknown_game" }, { status: 404 });
-    return NextResponse.json({ game, count: rows.length, rows });
+    return NextResponse.json({ game, metric: metric === "points" ? "points" : "best", count: rows.length, rows });
   }
   const after = utcMidnight();
   if (cache && cache.day === after && Date.now() - cache.at < CACHE_MS) {

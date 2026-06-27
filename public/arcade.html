@@ -849,13 +849,15 @@ const PB_SOURCES = [
   { game: "Canvas",     offchain: "canvas",   weight: 1 },
   { game: "Reaction",   offchain: "reaction", weight: 1 },
   { game: "The Button", offchain: "button",   weight: 1 },
-  // Score games bank CUMULATIVE points via getTopPoints (no-arg view): Sprint = each
-  // run's finalized tx count, Degen Dash = each run's stack, Clawback = each run's
-  // kept balance, Wen Moon = biggest cash-out. (Still onchain until folded into the service.)
-  { game: "Sprint",     view: "getTopPoints", address: SPRINT_LEADERBOARD,        args: [], weight: 1 },
-  { game: "Degen Dash", view: "getTopPoints", address: GAMES.degendash.contract,  args: [], weight: 1 },
-  { game: "Clawback",   view: "getTopPoints", address: GAMES.clawback.contract,   args: [], weight: 1 },
-  { game: "Wen Moon",   view: "getTopPoints", address: GAMES.wenmoon.contract,    args: [], weight: 1 },
+  // Score games bank CUMULATIVE points (getTopPoints): Degen Dash = each run's stack,
+  // Clawback = each run's kept balance, Wen Moon = biggest cash-out. These now read the
+  // off-chain service (?metric=points): cached, carries the global handle, and no
+  // per-visitor onchain query. Sprint stays on its own leaderboard contract's
+  // getTopPoints (a different contract, returns 450+ players fine).
+  { game: "Sprint",     view: "getTopPoints", address: SPRINT_LEADERBOARD, args: [], weight: 1 },
+  { game: "Degen Dash", offchain: "degendash", metric: "points", weight: 1 },
+  { game: "Clawback",   offchain: "clawback",  metric: "points", weight: 1 },
+  { game: "Wen Moon",   offchain: "wenmoon",   metric: "points", weight: 1 },
 ].filter((s) => s.offchain || (s.address && !/^erd1qqqqqqqqqqqqqqqqqqqqqqqqqqqq/.test(s.address))); // drop placeholders
 
 // the current player's passport address, for the "you" highlight (read-only, no key grind).
@@ -882,8 +884,10 @@ function pbShort(a) { return a ? a.slice(0, 6) + "…" + a.slice(-4) : "player";
 async function pbRead(src) {
   try {
     if (src.offchain) {
-      // the scalable off-chain board (already top-sorted, with global handles)
-      const r = await fetch(`/api/leaderboard?game=${src.offchain}`);
+      // the scalable off-chain board (already top-sorted, with global handles).
+      // metric=points -> cumulative-points board (score games); default -> best run.
+      const q = src.metric ? `${src.offchain}&metric=${src.metric}` : src.offchain;
+      const r = await fetch(`/api/leaderboard?game=${q}`);
       if (!r.ok) return [];
       const d = await r.json();
       return (d.rows || []).map((e) => ({ address: bechToHex(e.address), handle: e.handle || "", score: e.score }));
