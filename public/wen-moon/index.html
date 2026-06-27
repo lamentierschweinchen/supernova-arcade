@@ -378,6 +378,8 @@
 import { ARCADE_CONFIG } from "/wen-moon/arcade.config.js";
 import { mountGalaxy } from "/arcade-galaxy.js";
 import { createArcade } from "/wen-moon/arcade.js";
+import { topPlusSelf } from "/arcade-board.js";
+import { getHandle } from "/passport.js";
 
 // ---------------------------------------------------------------------------
 // Constants (mirror the contract)
@@ -789,7 +791,7 @@ async function refreshBoard() {
   try {
     const [global, board] = await Promise.all([
       fetchGlobalActions(),
-      fetchLeaderboard(10),
+      fetchLeaderboard(100),
     ]);
     if (global != null) $("globalNum").textContent = fmt(global);
     renderLeaderboard(board);
@@ -801,12 +803,16 @@ function renderLeaderboard(entries) {
   const box = $("lbRows");
   if (!G.onchain) { box.innerHTML = '<div class="lb-empty">Live once the game is deployed onchain.</div>'; return; }
   if (!entries || entries.length === 0) { box.innerHTML = '<div class="lb-empty">No scores yet. Be the first to cash out.</div>'; return; }
-  box.innerHTML = entries.map((e, i) => {
-    const isMine = G.myAddress && e.address && e.address.endsWith(G.myAddress.slice(-8));
+  const me = G.myAddress || "";
+  const GAP = '<div aria-hidden="true" style="text-align:center;opacity:.35;letter-spacing:.3em;font-size:10px;padding:2px 0;">&middot;&middot;&middot;</div>';
+  const row = (e) => {
+    const isMine = me && e.address && e.address.toLowerCase() === me.toLowerCase();
     const cls = isMine ? " you" : "";
     const name = e.handle ? escHtml(e.handle) : shortAddr(e.address);
-    return `<div class="lb-row${cls}"><span class="rank">${i+1}</span><span class="handle">${name}</span><span class="score">${fmt(e.score)}</span></div>`;
-  }).join("");
+    return `<div class="lb-row${cls}"><span class="rank">${e.rank}</span><span class="handle">${name}</span><span class="score">${fmt(e.score)}</span></div>`;
+  };
+  const { visible, self } = topPlusSelf(entries, me, 10); // top 10 + your own row if below
+  box.innerHTML = visible.map(row).join("") + (self ? GAP + row(self) : "");
 }
 
 // ---------------------------------------------------------------------------
@@ -941,7 +947,7 @@ $("cashoutBtn").addEventListener("click", onCashOut);
 // ---------------------------------------------------------------------------
 $("balNum").textContent = "···";
 $("bankbarFill").style.transform = "scaleX(0)";
-try { const h = localStorage.getItem("wenmoon_handle"); if (h) $("handleInput").value = h; } catch {}
+try { const h = getHandle(); if (h) $("handleInput").value = h; } catch {} // pre-fill name from the passport — set once, shows everywhere
 
 updateUI();
 detectMode();

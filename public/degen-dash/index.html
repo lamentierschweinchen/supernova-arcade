@@ -360,6 +360,8 @@
 
 <script type="module">
 import { createArcade } from "/degen-dash/arcade.js";
+import { topPlusSelf } from "/arcade-board.js";
+import { getHandle } from "/passport.js";
 import { ARCADE_CONFIG } from "/degen-dash/arcade.config.js";
 import { buildSchedule } from "/degen-dash/schedule.js";
 import { mountGalaxy } from "/arcade-galaxy.js";
@@ -838,7 +840,7 @@ async function claimHandle() {
 // ---------- onchain reads on a ~2s tick ----------
 async function refreshBoard() {
   if (!onchain) return;
-  const [global, board] = await Promise.all([arcade.getGlobalActions(), arcade.getLeaderboard(10)]);
+  const [global, board] = await Promise.all([arcade.getGlobalActions(), arcade.getLeaderboard(100)]); // full board for the self-row
   if (global != null) $("globalNum").textContent = fmt(global);
   renderLeaderboard(board);
 }
@@ -848,11 +850,14 @@ function renderLeaderboard(entries) {
   if (!onchain) { box.innerHTML = '<li class="empty">Live once the game is deployed.</li>'; return; }
   if (!entries || entries.length === 0) { box.innerHTML = '<li class="empty">No runs yet. Be the first to stack a score.</li>'; return; }
   const me = arcade.address;
-  box.innerHTML = entries.map((e, i) => {
+  const GAP = '<li aria-hidden="true" style="text-align:center;opacity:.35;letter-spacing:.3em;font-size:10px;padding:2px 0;list-style:none;">&middot;&middot;&middot;</li>';
+  const row = (e) => {
     const mine = me && e.address === me ? " you" : "";
     const name = e.handle ? escapeHtml(e.handle) : shortAddr(e.address);
-    return `<li><span class="rank">${i + 1}</span><span class="who${mine}">${name}</span><span class="sc">${fmt(e.score)}</span></li>`;
-  }).join("");
+    return `<li><span class="rank">${e.rank}</span><span class="who${mine}">${name}</span><span class="sc">${fmt(e.score)}</span></li>`;
+  };
+  const { visible, self } = topPlusSelf(entries, me, 10); // top 10 + your own row if below
+  box.innerHTML = visible.map(row).join("") + (self ? GAP + row(self) : "");
 }
 
 // ---------- controls: swipe (L/R lanes, up jump, down duck) + keys ----------
@@ -956,7 +961,7 @@ function buildLegend() {
 if (location.search.includes("dbg")) {
   window.__dd = { G, getCfg: () => cfg, beginRound, tick, spawnObstacle, spawnCoinLocal, moveLane, jump, duck, project, makeRng, COIN_TYPES, HAZARDS, randomU64 };
 }
-try { const s = localStorage.getItem("degendash_handle"); if (s) $("handle").value = s; } catch {}
+try { const s = getHandle(); if (s) $("handle").value = s; } catch {} // pre-fill name from the passport — set once, shows everywhere
 buildLegend();
 setupControls();
 measure();

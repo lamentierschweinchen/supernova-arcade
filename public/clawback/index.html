@@ -383,6 +383,8 @@
 
 <script type="module">
 import { createArcade } from "/clawback/arcade.js";
+import { topPlusSelf } from "/arcade-board.js";
+import { getHandle } from "/passport.js";
 import { ARCADE_CONFIG } from "/clawback/arcade.config.js";
 import { buildSchedule } from "/clawback/schedule.js";
 import { mountGalaxy } from "/arcade-galaxy.js";
@@ -879,7 +881,7 @@ async function claimHandle() {
 // ---------- onchain reads on a ~2s tick ----------
 async function refreshBoard() {
   if (!onchain) return;
-  const [global, board] = await Promise.all([arcade.getGlobalActions(), arcade.getLeaderboard(10)]);
+  const [global, board] = await Promise.all([arcade.getGlobalActions(), arcade.getLeaderboard(100)]); // full board for the self-row
   if (global != null) $("globalNum").textContent = fmt(global);
   renderLeaderboard(board);
 }
@@ -890,11 +892,14 @@ function renderLeaderboard(entries) {
   if (!onchain) { box.innerHTML = '<div class="lb-empty">Live once the game is deployed.</div>'; return; }
   if (!entries || entries.length === 0) { box.innerHTML = '<div class="lb-empty">No scores yet. Be the first to hold the line.</div>'; return; }
   const me = arcade.address;
-  box.innerHTML = entries.map((e, i) => {
+  const GAP = '<div aria-hidden="true" style="text-align:center;opacity:.35;letter-spacing:.3em;font-size:10px;padding:2px 0;">&middot;&middot;&middot;</div>';
+  const row = (e) => {
     const mine = me && e.address === me ? " you" : "";
     const name = e.handle ? escapeHtml(e.handle) : shortAddr(e.address);
-    return `<div class="lb-row${mine}"><span class="rank">${i + 1}</span><span class="handle">${name}</span><span class="score">${fmt(e.score)}</span></div>`;
-  }).join("");
+    return `<div class="lb-row${mine}"><span class="rank">${e.rank}</span><span class="handle">${name}</span><span class="score">${fmt(e.score)}</span></div>`;
+  };
+  const { visible, self } = topPlusSelf(entries, me, 10); // top 10 + your own row if below
+  box.innerHTML = visible.map(row).join("") + (self ? GAP + row(self) : "");
 }
 
 // ---------- helpers ----------
@@ -931,7 +936,7 @@ function blip(freq, dur, type) {
 function vibrate(ms) { try { navigator.vibrate && navigator.vibrate(ms); } catch {} }
 
 // ---------- boot ----------
-try { const s = localStorage.getItem("clawback_handle"); if (s) $("handle").value = s; } catch {}
+try { const s = getHandle(); if (s) $("handle").value = s; } catch {} // pre-fill name from the passport — set once, shows everywhere
 $("bal").firstChild.textContent = fmt(cfg.startStack);
 $("stackFill").style.transform = "scaleX(1)";
 // restore last-chosen mode (default ETH so the brutal contrast lands first)
