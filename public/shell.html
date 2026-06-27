@@ -164,15 +164,20 @@
 
       var stage = document.getElementById("stage");
 
-      /* ---- ONE persistent score. LITE for now: the full mix hung the tab over a
-         game's render loop. Full returns to the lobby via a live morph once the
-         engine supports it (see marketing/games/arcade-audio-engine-perf-brief.md). ---- */
-      var score = createArcadeScore({ momentStep: 25000, lite: true });
-      try { window.arcadeScore = window.arcadeScore || score; } catch (e) {}
+      /* the live tx ring — the VISUAL twin of the sound. Mount it FIRST and in
+         ISOLATION, so nothing else in this module (the audio engine, the router)
+         can ever block it from appearing. arcade-tx-ring.js has no imports, so the
+         mount itself is robust; this just guarantees ordering + a clear signal. */
+      var txRing = { addTx: function () {} };
+      try { txRing = mountTxRing(); console.debug("[arcade] tx ring mounted"); }
+      catch (e) { console.warn("[arcade] tx ring mount failed", e); }
 
-      /* the live tx ring — the VISUAL twin of the sound, fed by each game's real
-         tx hashes (the games postMessage `arcade:tx`; we tag the current game). */
-      var txRing = mountTxRing();
+      /* ---- ONE persistent score. OPTIONAL: if the audio engine fails to start (a
+         blocked CDN, no AudioContext) it must NOT break the ring or the router.
+         LITE for now (the full mix hung the tab; see the audio perf brief). ---- */
+      var score = null;
+      try { score = createArcadeScore({ momentStep: 25000, lite: true }); window.arcadeScore = window.arcadeScore || score; }
+      catch (e) { console.warn("[arcade] audio engine unavailable", e); }
 
       /* ===================================================================
          SOUND TOGGLE — lifted from the hub (arcade.html ~732-773): persist the
@@ -216,7 +221,7 @@
       // resume on the first gesture (chrome gestures here OR an in-iframe gesture
       // forwarded as a message). Idempotent: only the first real gesture fires.
       async function tryResume() {
-        if (!readSoundPref() || score.isStarted()) return;
+        if (!score || !readSoundPref() || score.isStarted()) return;
         try { paintSound(await score.setOn(true)); }
         catch (e) { console.warn("[shell] sound resume failed", e); }
       }

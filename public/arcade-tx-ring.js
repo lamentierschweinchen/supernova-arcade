@@ -30,7 +30,7 @@ const STATUS = {
 
 const CSS = `
 .atr-wrap{position:fixed;z-index:2147482000;bottom:calc(14px + env(safe-area-inset-bottom));right:calc(14px + env(safe-area-inset-right));font-family:'JetBrains Mono',ui-monospace,monospace;}
-.atr-ring{width:38px;height:38px;padding:3px;border:0;background:rgba(10,13,18,.55);border-radius:999px;cursor:pointer;display:block;
+.atr-ring{width:38px;height:38px;padding:3px;border:1px solid rgba(35,247,221,.2);background:rgba(10,13,18,.62);border-radius:999px;cursor:pointer;display:block;
   -webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);transition:transform .25s, box-shadow .35s;outline:none;}
 .atr-ring:hover{box-shadow:0 0 14px rgba(35,247,221,.22);}
 .atr-ring svg{width:100%;height:100%;display:block;overflow:visible;}
@@ -105,7 +105,7 @@ export function mountTxRing() {
     // a faint TRACK ring IS the empty state (clearly "no activity"); real txs
     // appear as dots ON the track, so a dot only ever means a real transaction
     // (no more placeholder dots that read as activity when the ring is empty).
-    let out = `<circle cx="22" cy="22" r="16" fill="none" stroke="#222836" stroke-width="1"/>`;
+    let out = `<circle cx="22" cy="22" r="16" fill="none" stroke="#39414f" stroke-width="1"/>`;
     const n = Math.min(txs.length, MAX_DOTS);
     for (let i = 0; i < n; i++) {
       const [x, y] = dotXY(i);
