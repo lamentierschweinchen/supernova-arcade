@@ -94,6 +94,13 @@ export const GAMES = {
     contract: "erd1qqqqqqqqqqqqqpgq83errjg5avj4d8tmpwpc33ckl9ywp0erppuqna027f", // testnet, shard 0
     gasLimit: 12000000,
   },
+  shardhydra: {
+    // Unlisted bite-back playtest. Every correct hit scores and damages
+    // the shared Hydra; a wrong head or timeout costs one life.
+    label: "Shard Hydra",
+    contract: "erd1qqqqqqqqqqqqqpgqa3dyjwv8r74md5wq0n3cfuvh98w24zmdppuqjufe9x", // testnet hub, shard 0
+    gasLimit: 14000000,
+  },
 };
 
 /* ---------- tiny encoders (SC call argument hex) ---------- */
@@ -114,6 +121,10 @@ export function u8ToHex(n) {
 /** u32 -> 8 hex (4 bytes BE). Top-decodes cleanly to the integer in-contract. */
 export function u32ToHex(n) {
   return (n >>> 0).toString(16).padStart(8, "0");
+}
+/** u64 -> 16 hex (8 bytes BE). Accepts a number or bigint. */
+export function u64ToHex(n) {
+  return BigInt(n).toString(16).padStart(16, "0");
 }
 /** UTF-8 string -> hex (for ManagedBuffer args like a handle). */
 export function strToHex(s) {
@@ -289,10 +300,11 @@ export function createArcadeClient(gameKey) {
 
   /* fire ONE action transaction. funcName + hex args -> signed Relayed-v3 tx ->
      /api/relay. Returns { txHash, explorerUrl } or throws { code, message }. */
-  async function sendAction(funcName, argsHex = [], gasLimitOverride) {
+  async function sendAction(funcName, argsHex = [], gasLimitOverride, receiverOverride) {
     if (!deployed) throw { code: "not_deployed", message: "cabinet scheduled — not deployed yet" };
     const ok = await ensureKey();
     if (!ok) throw { code: "unavailable", message: "crypto unavailable" };
+    const receiver = receiverOverride || game.contract;
 
     // remember the player's name in their passport, so the same name follows them across games
     if (funcName === "setHandle" && argsHex[0]) {
@@ -312,7 +324,7 @@ export function createArcadeClient(gameKey) {
     for (let attempt = 0; attempt < 2; attempt++) {
       const nonce = state.nonce++; // claim this nonce now
       const txForSign = {
-        nonce, value: "0", receiver: game.contract, sender: key.address,
+        nonce, value: "0", receiver, sender: key.address,
         gasPrice: net.gasPrice, gasLimit, dataB64, chainID: net.chainID, version: 2, relayer: net.relayer,
       };
       const sigBytes = await libs.ed.signAsync(
@@ -320,7 +332,7 @@ export function createArcadeClient(gameKey) {
         key.priv,
       );
       const plainTx = {
-        nonce, value: "0", receiver: game.contract, sender: key.address,
+        nonce, value: "0", receiver, sender: key.address,
         senderUsername: undefined, receiverUsername: undefined,
         gasPrice: net.gasPrice, gasLimit, data: dataB64, chainID: net.chainID, version: 2,
         relayer: net.relayer, signature: bytesToHex(sigBytes),
@@ -430,6 +442,9 @@ export function createArcadeClient(gameKey) {
     },
     ensureKey,
     sendAction,
+    sendActionTo(receiver, funcName, argsHex = [], gasLimitOverride) {
+      return sendAction(funcName, argsHex, gasLimitOverride, receiver);
+    },
     query,
     txStatus,
     // expose decoders + encoders the cabinet UIs need
@@ -438,6 +453,7 @@ export function createArcadeClient(gameKey) {
     decodeLeaderboard,
     u8ToHex,
     u32ToHex,
+    u64ToHex,
     strToHex,
     addressHex() {
       return state.key && state.libs

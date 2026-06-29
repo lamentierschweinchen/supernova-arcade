@@ -49,6 +49,7 @@
     if (/wen[-_]?moon/.test(p)) return "wenmoon";
     if (/clawback/.test(p)) return "clawback";
     if (/reaction/.test(p)) return "reaction";
+    if (/shard[-_]?hydra|shardhydra/.test(p)) return "shardhydra";
     if (/button/.test(p)) return "button";
     if (/canvas/.test(p)) return "canvas";
     if (/tug[-_]?of[-_]?war|tugofwar/.test(p)) return "tugofwar";

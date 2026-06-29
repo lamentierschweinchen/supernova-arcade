@@ -103,6 +103,29 @@ export const WENMOON_CONTRACT =
   process.env.NEXT_PUBLIC_WENMOON_CONTRACT ||
   "erd1qqqqqqqqqqqqqpgq83errjg5avj4d8tmpwpc33ckl9ywp0erppuqna027f"; // testnet, shard 0
 
+/**
+ * SHARD HYDRA uses one score hub plus three identical head contracts deployed
+ * across execution shards 0, 1, and 2. All players see the same attacking head.
+ * The first source-shard tap is settled by the hub into damage or a lost life.
+ */
+export const SHARD_HYDRA_HUB_CONTRACT =
+  process.env.NEXT_PUBLIC_SHARD_HYDRA_HUB_CONTRACT ||
+  "erd1qqqqqqqqqqqqqpgqa3dyjwv8r74md5wq0n3cfuvh98w24zmdppuqjufe9x"; // bite-back testnet hub, shard 0
+export const SHARD_HYDRA_HEAD_0_CONTRACT =
+  process.env.NEXT_PUBLIC_SHARD_HYDRA_HEAD_0_CONTRACT ||
+  "erd1qqqqqqqqqqqqqpgqdra35g6vnytdh8lnuuhpth4xs46xvjvqppuqgh7u5r"; // bite-back testnet head, shard 0
+export const SHARD_HYDRA_HEAD_1_CONTRACT =
+  process.env.NEXT_PUBLIC_SHARD_HYDRA_HEAD_1_CONTRACT ||
+  "erd1qqqqqqqqqqqqqpgq6w5as8ku03k4ag2wzygdyzcux0c98lmrx63sf3ctpx"; // bite-back testnet head, shard 1
+export const SHARD_HYDRA_HEAD_2_CONTRACT =
+  process.env.NEXT_PUBLIC_SHARD_HYDRA_HEAD_2_CONTRACT ||
+  "erd1qqqqqqqqqqqqqpgqgam85mljt0jz4tfj2uvky0n2mrefm6da5cdqlr79w9"; // bite-back testnet head, shard 2
+export const SHARD_HYDRA_HEAD_CONTRACTS = [
+  SHARD_HYDRA_HEAD_0_CONTRACT,
+  SHARD_HYDRA_HEAD_1_CONTRACT,
+  SHARD_HYDRA_HEAD_2_CONTRACT,
+];
+
 /** Relayed endpoints for the cabinets. */
 export const PULL_FUNCTION = "pull";
 export const PLACE_PIXEL_FUNCTION = "placePixel";
@@ -123,6 +146,9 @@ export const COLLECT_FUNCTION = "collect";
 export const STARTRUN_FUNCTION = "startRun";
 export const CALL_FUNCTION = "call";
 export const CASHOUT_FUNCTION = "cashOut";
+export const JOIN_RAID_FUNCTION = "joinRaid";
+export const HIT_FUNCTION = "hit";
+export const RESOLVE_MISS_FUNCTION = "resolveMiss";
 
 /**
  * Gas ceilings. `pull` does a handful of small storage writes (plus, on a round
@@ -151,6 +177,12 @@ export const COLLECT_GAS_LIMIT = 8_000_000;
 export const STARTRUN_GAS_LIMIT = 20_000_000;
 export const CALL_GAS_LIMIT = 12_000_000;
 export const CASHOUT_GAS_LIMIT = 12_000_000;
+// Joining seeds or joins the shared raid. A hit sends one async attempt report.
+// Resolution can settle several missed attacks chronologically before reporting
+// the player's authoritative lives and score.
+export const JOIN_RAID_GAS_LIMIT = 10_000_000;
+export const HIT_GAS_LIMIT = 14_000_000;
+export const RESOLVE_MISS_GAS_LIMIT = 30_000_000;
 
 /**
  * True when an address is still the undeployed placeholder. The relayer uses

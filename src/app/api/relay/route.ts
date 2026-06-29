@@ -86,6 +86,14 @@ import {
   STARTRUN_GAS_LIMIT,
   CALL_GAS_LIMIT,
   CASHOUT_GAS_LIMIT,
+  SHARD_HYDRA_HUB_CONTRACT,
+  SHARD_HYDRA_HEAD_CONTRACTS,
+  JOIN_RAID_FUNCTION,
+  HIT_FUNCTION,
+  RESOLVE_MISS_FUNCTION,
+  JOIN_RAID_GAS_LIMIT,
+  HIT_GAS_LIMIT,
+  RESOLVE_MISS_GAS_LIMIT,
   isPlaceholder,
 } from "@/lib/onchain/arcade.config";
 
@@ -100,6 +108,7 @@ const ARCADE_RECEIVERS = [
   CLAWBACK_CONTRACT,
   DEGENDASH_CONTRACT,
   WENMOON_CONTRACT,
+  SHARD_HYDRA_HUB_CONTRACT,
 ].filter((addr) => !isPlaceholder(addr));
 
 // The plain-object shape accepted by Transaction.newFromPlainObject, derived
@@ -255,6 +264,24 @@ const RELAY_OPS: Record<string, RelayOp> = {
     receivers: isPlaceholder(WENMOON_CONTRACT) ? [] : [WENMOON_CONTRACT],
     maxGasLimit: CASHOUT_GAS_LIMIT + 100_000,
     rateMax: 60,
+  },
+  // Shard Hydra: join the shared fight at the hub, hit the visibly attacking
+  // shard head, then resolve that attack through its expected head after the
+  // cross-shard grace period. All three writes are signed Relayed-v3 txs.
+  [JOIN_RAID_FUNCTION]: {
+    receivers: isPlaceholder(SHARD_HYDRA_HUB_CONTRACT) ? [] : [SHARD_HYDRA_HUB_CONTRACT],
+    maxGasLimit: JOIN_RAID_GAS_LIMIT + 100_000,
+    rateMax: 60,
+  },
+  [HIT_FUNCTION]: {
+    receivers: SHARD_HYDRA_HEAD_CONTRACTS.filter((address) => !isPlaceholder(address)),
+    maxGasLimit: HIT_GAS_LIMIT + 100_000,
+    rateMax: 1200,
+  },
+  [RESOLVE_MISS_FUNCTION]: {
+    receivers: SHARD_HYDRA_HEAD_CONTRACTS.filter((address) => !isPlaceholder(address)),
+    maxGasLimit: RESOLVE_MISS_GAS_LIMIT + 100_000,
+    rateMax: 1200,
   },
 };
 

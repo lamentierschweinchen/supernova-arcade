@@ -19,6 +19,8 @@ import {
   CLAWBACK_CONTRACT,
   DEGENDASH_CONTRACT,
   WENMOON_CONTRACT,
+  SHARD_HYDRA_HUB_CONTRACT,
+  SHARD_HYDRA_HEAD_CONTRACTS,
   isPlaceholder,
 } from "@/lib/onchain/arcade.config";
 import { TAP_COUNTER_CONTRACT } from "@/lib/onchain/tap-counter.config";
@@ -41,6 +43,7 @@ function gameContracts(): string[] {
     CLAWBACK_CONTRACT,
     DEGENDASH_CONTRACT,
     WENMOON_CONTRACT,
+    ...SHARD_HYDRA_HEAD_CONTRACTS,
     TAP_COUNTER_CONTRACT,
   ].filter((a) => a && !isPlaceholder(a));
 }
@@ -96,6 +99,11 @@ const GAME_BOARDS: Record<string, GameCfg> = {
   degendash: { contract: DEGENDASH_CONTRACT, view: "getLeaderboard", pointsView: "getTopPoints" },
   wenmoon: { contract: WENMOON_CONTRACT, view: "getLeaderboard", pointsView: "getTopPoints" },
   clawback: { contract: CLAWBACK_CONTRACT, view: "getLeaderboard", pointsView: "getTopPoints" },
+  // The hub stores playerHits per address, but its /keys is dominated by
+  // action-scaling attempt records (123 of 271 after 14 raids). Storage-parse
+  // would fetch the whole growing keyspace each time, so read the player-scaling
+  // getLeaderboard view instead — same pattern as the other score games.
+  shardhydra: { contract: SHARD_HYDRA_HUB_CONTRACT, view: "getLeaderboard" },
 };
 
 type GameRow = { address: string; handle: string; score: number };
@@ -111,13 +119,17 @@ function toBech32(addrHex: string): string {
   }
 }
 
-// one base64 ScoreEntry: address(32) + handleLen(4 BE) + handle + score(8 BE) + ts(8 BE)
+// one base64 ScoreEntry: address(32) + handleLen(4 BE) + handle + score(8 BE),
+// then an OPTIONAL trailing ts(8 BE). The score games (degen/wen-moon/clawback)
+// carry the timestamp; the Shard Hydra hub omits it. We never read ts, so accept
+// either length — validate only through the score field at 36 + handle + 8.
 function decodeScoreEntry(b64: string): RawRow | null {
   try {
     const b = Buffer.from(b64, "base64");
-    if (b.length < 32 + 4 + 8 + 8) return null;
+    if (b.length < 36) return null;
     const addrHex = b.subarray(0, 32).toString("hex");
     const hlen = b.readUInt32BE(32);
+    if (b.length < 36 + hlen + 8) return null;
     const handle = b.subarray(36, 36 + hlen).toString("utf8");
     const score = Number(b.readBigUInt64BE(36 + hlen));
     return { addrHex, handle, score };
