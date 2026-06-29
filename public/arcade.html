@@ -226,6 +226,15 @@ h1,h2,h3,p{text-wrap:balance;}
 .rxcore{position:absolute;width:17px;height:17px;border-radius:50%;background:var(--c);box-shadow:0 0 16px var(--c);animation:rxflash 1.6s ease-in-out infinite;}
 @keyframes rxflash{0%,55%{opacity:.12;transform:scale(.58)}62%,80%{opacity:1;transform:scale(1)}88%,100%{opacity:.12;transform:scale(.58)}}
 .byo-plus{width:42px;height:42px;border-radius:12px;border:1.5px dashed color-mix(in srgb,var(--c) 60%,transparent);display:grid;place-items:center;color:var(--c);font-size:26px;font-weight:300;}
+/* hydra: three shard-heads, the middle one rearing up to bite (coral) — the cross-shard boss */
+.hydra3{position:relative;width:84%;height:44px;}
+.hyh{position:absolute;bottom:7px;width:15px;height:18px;transform:translateX(-50%);border-radius:48% 48% 40% 40%/58% 58% 42% 42%;background:linear-gradient(180deg,#141b27,#0a0e15);border:1.5px solid color-mix(in srgb,var(--c) 55%,transparent);box-shadow:0 0 7px color-mix(in srgb,var(--c) 18%,transparent);opacity:.5;}
+.hyh::before,.hyh::after{content:"";position:absolute;top:33%;width:3px;height:3px;border-radius:50%;background:var(--c);}
+.hyh::before{left:21%;}.hyh::after{right:21%;}
+.hyh.atk{opacity:1;border-color:var(--coral);background:radial-gradient(120% 90% at 50% 22%,rgba(255,107,157,.30),#11131b 66%);box-shadow:0 0 14px color-mix(in srgb,var(--coral) 50%,transparent),0 0 0 1px rgba(255,107,157,.22);animation:hybite 1.05s ease-in-out infinite alternate;}
+.hyh.atk::before,.hyh.atk::after{background:var(--coral);box-shadow:0 0 5px var(--coral);}
+.hyfloor{position:absolute;left:5%;right:5%;bottom:5px;height:1px;background:linear-gradient(90deg,transparent,color-mix(in srgb,var(--c) 34%,transparent),transparent);}
+@keyframes hybite{0%{transform:translateX(-50%) translateY(0) scale(1)}100%{transform:translateX(-50%) translateY(-4px) scale(1.16)}}
 
 /* ---------- featured community strip ---------- */
 .feat{margin-top:30px;border:1px solid var(--border);border-radius:14px;background:rgba(14,17,23,.55);padding:14px 16px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;backdrop-filter:blur(4px);}
@@ -448,6 +457,13 @@ const CABINETS = [
     counter: { address: SPRINT_TAP_COUNTER, view: "getGlobalTaps" },
   },
   {
+    id: "shardhydra", name: "Shard Hydra", status: "live", href: "/shard-hydra", art: "hydra",
+    color: "#23F7DD", shard: "3 shards",
+    line: "A boss with a head on every shard. Hit the one that rears up before it bites — each hit is a cross-shard transaction, and the whole arcade pounds on one shared Hydra.",
+    metaSuffix: "hits onchain",
+    counter: { address: GAMES.shardhydra.contract, view: "getGlobalActions" },
+  },
+  {
     id: "tugofwar", name: "Tug of War", status: "live", href: "/tug-of-war", art: "tug",
     color: "#23F7DD", shard: "shard 1",
     line: "Two teams, one rope. Every pull is a transaction. Drag the knot across the line to your side before the buzzer.",
@@ -529,6 +545,12 @@ function artHTML(kind) {
         + '<span class="fall" style="left:46%;color:var(--lavender);background:rgba(167,139,250,.16);animation-delay:1.8s">+9</span></span>';
     case "reaction":
       return '<span class="gx"><span class="rxring"></span><span class="rxcore"></span></span>';
+    case "hydra":
+      return '<span class="gx"><span class="hydra3">'
+        + '<span class="hyh" style="left:18%"></span>'
+        + '<span class="hyh atk" style="left:50%"></span>'
+        + '<span class="hyh" style="left:82%"></span>'
+        + '<span class="hyfloor"></span></span></span>';
     default:
       return '<span class="gx"><span class="ring"></span></span>';
   }
