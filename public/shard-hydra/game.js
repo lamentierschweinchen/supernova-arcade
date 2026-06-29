@@ -31,6 +31,10 @@ const S = {
   started: false,
   joined: false,
   joining: false,
+  combatReady: false,
+  readyAt: 0,
+  resultShown: false,
+  resultFinal: false,
   frozen: Boolean(reviewState),
   raidId: 0,
   raidStartedAt: 0,
@@ -47,6 +51,12 @@ const S = {
   lives: 3,
   chainLives: 3,
   score: 0,
+  raidHits: 0,
+  raidAttempts: 0,
+  wrongHits: 0,
+  timeouts: 0,
+  currentStreak: 0,
+  bestStreak: 0,
   attackDeadline: 0,
   attackDuration: 2_200,
   nextTimer: 0,
@@ -68,10 +78,10 @@ const S = {
   config: {
     raidDuration: 60_000,
     maxLives: 3,
-    firstAttacks: 8,
-    firstWindow: 2_200,
-    secondWindow: 1_800,
-    finalWindow: 1_400,
+    firstAttacks: 6,
+    firstWindow: 2_600,
+    secondWindow: 2_200,
+    finalWindow: 1_800,
     settlementGrace: 5_000,
   },
 };
@@ -172,6 +182,119 @@ function setStatus(kind, copy) {
   $("status").textContent = copy;
 }
 
+function raidAccuracy() {
+  if (!S.raidAttempts) return 0;
+  return Math.min(100, Math.round((S.raidHits / S.raidAttempts) * 100));
+}
+
+function resetRunStats() {
+  S.raidHits = 0;
+  S.raidAttempts = 0;
+  S.wrongHits = 0;
+  S.timeouts = 0;
+  S.currentStreak = 0;
+  S.bestStreak = 0;
+  S.resultShown = false;
+  S.resultFinal = false;
+}
+
+function hideGate() {
+  $("gate").classList.add("gone");
+  $("gate").setAttribute("aria-hidden", "true");
+  $("gate").inert = true;
+}
+
+function showGatePanel(panel) {
+  $("briefingPanel").hidden = panel !== "briefing";
+  $("resultPanel").hidden = panel !== "result";
+  $("gate").classList.remove("gone");
+  $("gate").removeAttribute("aria-hidden");
+  $("gate").inert = false;
+}
+
+function bestRaidHits() {
+  try {
+    return Number(localStorage.getItem("shardhydra.bestRaidHits") || 0);
+  } catch {
+    return 0;
+  }
+}
+
+function rememberBestRaidHits(value) {
+  try {
+    localStorage.setItem("shardhydra.bestRaidHits", String(value));
+  } catch {
+    // A personal best is optional; the onchain score remains authoritative.
+  }
+}
+
+function biteSummary() {
+  const parts = [];
+  if (S.wrongHits) parts.push(`${S.wrongHits} wrong ${S.wrongHits === 1 ? "head" : "heads"}`);
+  if (S.timeouts) parts.push(`${S.timeouts} ${S.timeouts === 1 ? "timeout" : "timeouts"}`);
+  return parts.length ? parts.join(" · ") : "3 bites";
+}
+
+function showResult({ raidWon, pending = false }) {
+  if (S.resultFinal || (S.resultShown && pending)) return;
+  S.resultShown = true;
+  S.resultFinal = !pending;
+  S.combatReady = false;
+  S.phase = "ended";
+  render();
+
+  const eliminated = S.lives === 0;
+  let title;
+  let reason;
+  if (pending) {
+    title = "YOU WERE DEVOURED";
+    reason = `Three bites ended your run. ${biteSummary()}.`;
+  } else if (raidWon && eliminated) {
+    title = "HYDRA SLAIN";
+    reason = "Your team finished the Hydra after you fell.";
+  } else if (raidWon) {
+    title = "HYDRA SLAIN";
+    reason = "You survived and the team dealt all 24 damage.";
+  } else if (eliminated) {
+    title = "THE HYDRA ESCAPED";
+    reason = `Three bites ended your run. The Hydra escaped with ${S.hp} HP.`;
+  } else {
+    title = "THE HYDRA ESCAPED";
+    reason = `Time expired with ${S.hp} Hydra HP remaining.`;
+  }
+
+  $("resultKicker").textContent = pending ? "Your run is over" : raidWon ? "Raid won" : "Raid lost";
+  $("resultTitle").textContent = title;
+  $("resultReason").textContent = reason;
+  $("resultDamage").textContent = String(S.raidHits);
+  $("resultAccuracy").textContent = `${raidAccuracy()}%`;
+  $("resultStreak").textContent = String(S.bestStreak);
+  $("resultHp").textContent = String(S.hp);
+  $("resultCause").textContent = eliminated
+    ? `${biteSummary()} ended your run.`
+    : `${S.lives} ${S.lives === 1 ? "life" : "lives"} remaining.`;
+
+  const previousBest = bestRaidHits();
+  if (!pending && S.raidHits > previousBest) {
+    rememberBestRaidHits(S.raidHits);
+    $("resultHook").textContent = "New personal best";
+  } else if (previousBest > 0) {
+    const needed = Math.max(1, previousBest - S.raidHits + 1);
+    $("resultHook").textContent = `${needed} more ${needed === 1 ? "hit" : "hits"} to beat your best`;
+  } else {
+    $("resultHook").textContent = pending ? "Your team is still fighting" : "Fight again. Hit harder.";
+  }
+
+  $("resultAction").textContent = pending ? "Watch the raid" : "Fight again";
+  $("resultAction").dataset.action = pending ? "watch" : "replay";
+  showGatePanel("result");
+  window.setTimeout(() => $("resultAction").focus(), 0);
+}
+
+function visibleHydraHp() {
+  return Math.max(0, S.hp - S.pendingHits.size);
+}
+
 function removeOldestPendingHits(count) {
   for (const key of S.pendingHits.keys()) {
     if (count <= 0) break;
@@ -181,14 +304,14 @@ function removeOldestPendingHits(count) {
 }
 
 function updateStats() {
-  const visibleHp = Math.max(0, S.hp - S.pendingHits.size);
+  const visibleHp = visibleHydraHp();
   $("hp").textContent = visibleHp;
   $("hpCopy").textContent = `${visibleHp} of ${S.maxHp}`;
   $("hpFill").style.transform = `scaleX(${Math.max(0, visibleHp / Math.max(1, S.maxHp))})`;
-  $("score").textContent = S.score;
+  $("score").textContent = S.raidHits;
   $("lives").textContent =
     "♥".repeat(S.lives) + "♡".repeat(Math.max(0, S.config.maxLives - S.lives));
-  $("attackNumber").textContent = S.started ? String(S.attackIndex + 1) : "—";
+  $("accuracy").textContent = S.raidAttempts ? `${raidAccuracy()}%` : "—";
   const progressbar = document.querySelector(".hp-track");
   progressbar.setAttribute("aria-valuemax", String(S.maxHp));
   progressbar.setAttribute("aria-valuenow", String(visibleHp));
@@ -200,7 +323,9 @@ function renderHeads() {
     const eligible =
       S.started &&
       S.joined &&
+      S.combatReady &&
       S.lives > 0 &&
+      visibleHydraHp() > 0 &&
       S.attackIndex >= S.joinAttack &&
       !S.localResponses.has(S.attackIndex);
     const isActive = S.phase === "attack" && index === S.activeHead;
@@ -257,6 +382,10 @@ function showBite(reason, clickedHead = -1) {
   S.phase = "bite";
   S.responseHead = clickedHead;
   S.lives = Math.max(0, S.lives - 1);
+  S.raidAttempts += 1;
+  S.currentStreak = 0;
+  if (reason === "wrong") S.wrongHits += 1;
+  else S.timeouts += 1;
   $("screen").classList.remove("bitten");
   void $("screen").offsetWidth;
   $("screen").classList.add("bitten");
@@ -273,14 +402,20 @@ function showBite(reason, clickedHead = -1) {
   );
   render();
   window.setTimeout(() => $("screen").classList.remove("bitten"), 350);
-  if (S.lives === 0) $("mode").textContent = "Spectating";
+  if (S.lives === 0) {
+    $("mode").textContent = "Out";
+    window.setTimeout(() => showResult({ raidWon: false, pending: true }), 300);
+  }
 }
 
 function showCorrectHit(head) {
   S.phase = "hit";
   S.responseHead = head;
+  S.raidAttempts += 1;
+  S.currentStreak += 1;
+  S.bestStreak = Math.max(S.bestStreak, S.currentStreak);
   setInstruction("hit", "HIT · HYDRA HURT", "−1 Hydra HP. Watch for the next head.");
-  setStatus("ok", `You hurt the Hydra on Shard ${head}.`);
+  setStatus("ok", "Clean hit. The Hydra lost 1 HP.");
   showDamage();
   render();
 }
@@ -346,6 +481,7 @@ async function submitHit(head, raidId, attackId) {
     );
   } catch {
     S.pendingHits.delete(`${raidId}:${attackId}`);
+    S.combatReady = true;
     render();
     setStatus(
       "err",
@@ -361,6 +497,8 @@ function handleHeadClick(head) {
     S.lives === 0 ||
     S.hp === 0 ||
     S.frozen ||
+    !S.combatReady ||
+    visibleHydraHp() === 0 ||
     S.localResponses.has(S.attackIndex)
   ) {
     return;
@@ -374,6 +512,12 @@ function handleHeadClick(head) {
   if (head === S.activeHead) {
     S.pendingHits.set(responseKey, { raidId, attackId });
     showCorrectHit(head);
+    if (visibleHydraHp() === 0) {
+      S.combatReady = false;
+      setInstruction("hit", "FINAL BLOW", "The Hydra is falling.");
+      setStatus("ok", "The shared fight is over.");
+      render();
+    }
   } else {
     showBite("wrong", head);
   }
@@ -381,8 +525,10 @@ function handleHeadClick(head) {
   if (S.live) void submitHit(head, raidId, attackId);
   else if (head === S.activeHead) {
     S.score += 1;
+    S.raidHits += 1;
     S.hp = Math.max(0, S.hp - 1);
     render();
+    if (S.hp === 0) showResult({ raidWon: true });
   }
 }
 
@@ -395,7 +541,7 @@ function enterAttack(attackId, head) {
 
   if (!S.joined) {
     S.phase = "waiting";
-    setInstruction("", "JOIN THE FIGHT", "Enter with three lives. The next attacking head will be yours.");
+    setInstruction("", "GET READY", "The Hydra is waking.");
     return;
   }
   if (S.lives === 0) {
@@ -413,8 +559,8 @@ function enterAttack(attackId, head) {
   }
 
   S.phase = "attack";
-  setInstruction("attack", `HIT SHARD ${head}`, "That head is attacking. Tap it before the red timer empties.");
-  setStatus("warn", `Attack ${attackId + 1}: Shard ${head} is about to bite.`);
+  setInstruction("attack", "HIT THE GLOWING HEAD", "Tap it before the red timer empties.");
+  setStatus("warn", "It is about to bite.");
 }
 
 function handleAttackAdvance(attackId, head) {
@@ -438,27 +584,26 @@ function handleAttackAdvance(attackId, head) {
 async function joinLiveRaid() {
   if (S.joining) return;
   S.joining = true;
+  resetRunStats();
+  S.readyAt = Date.now() + 1_200;
+  S.combatReady = false;
   $("start").disabled = true;
-  $("start").textContent = "Joining…";
-  $("gate").classList.add("gone");
-  $("gate").setAttribute("aria-hidden", "true");
-  $("gate").inert = true;
+  $("start").textContent = "Get ready";
+  hideGate();
   S.started = true;
-  setInstruction("", "JOINING THE FIGHT", "Your browser is signing one gasless transaction.");
-  setStatus("warn", "Opening the raid…");
+  setInstruction("", "GET READY · 3", "Watch the heads.");
+  setStatus("", "Three lives. Kill the Hydra.");
   render();
   try {
     await client.sendAction("joinRaid", [], JOIN_GAS);
-    setStatus("warn", "Get ready. Your first target is next.");
+    setStatus("", "Watch the heads.");
   } catch (error) {
     S.joining = false;
     S.started = false;
-    $("gate").classList.remove("gone");
-    $("gate").removeAttribute("aria-hidden");
-    $("gate").inert = false;
+    showGatePanel("briefing");
     $("start").disabled = false;
     $("start").textContent = "Try again";
-    setStatus("err", `Could not join: ${error?.message || error?.code || "relay unavailable"}.`);
+    setStatus("err", "The Hydra could not wake. Try again.");
   }
 }
 
@@ -466,58 +611,47 @@ function startPractice() {
   if (S.started) return;
   S.started = true;
   S.joined = true;
+  resetRunStats();
+  S.readyAt = Date.now() + 1_200;
+  S.combatReady = false;
   S.raidId = 1;
-  S.raidStartedAt = Date.now();
-  S.raidDeadline = Date.now() + S.config.raidDuration;
+  S.raidStartedAt = S.readyAt;
+  S.raidDeadline = S.readyAt + S.config.raidDuration;
   S.raidContexts.set(1, { seed: 0n, startedAt: S.raidStartedAt });
   S.joinAttack = 0;
   S.lastObservedAttack = 0;
-  $("gate").classList.add("gone");
-  $("gate").setAttribute("aria-hidden", "true");
-  $("gate").inert = true;
+  hideGate();
   $("mode").textContent = "Practice";
-  enterAttack(0, expectedHead(0));
-  setStatus("", "Three lives. One click per attack. Correct hits hurt the shared Hydra.");
+  setInstruction("", "GET READY · 3", "Watch the heads.");
+  setStatus("", "Three lives. Kill the Hydra.");
   render();
-}
-
-function offerNextRaid(title, raidId = S.raidId) {
-  if (raidId !== S.raidId || S.offeredRaidId === raidId) return;
-  S.offeredRaidId = raidId;
-  S.started = false;
-  S.joined = false;
-  S.joining = false;
-  $("gate").classList.remove("gone");
-  $("gate").removeAttribute("aria-hidden");
-  $("gate").inert = false;
-  document.querySelector(".rules-kicker").textContent = "Raid complete";
-  document.querySelector(".rules h2").textContent = title;
-  document.querySelector(".rules > p").textContent = "A fresh Hydra starts when you rejoin.";
-  $("start").disabled = false;
-  $("start").textContent = "Join next raid";
-  render();
-}
-
-function scheduleNextRaidOffer(title) {
-  const raidId = S.raidId;
-  if (
-    !raidId ||
-    S.offeredRaidId === raidId ||
-    S.offerScheduledRaidId === raidId
-  ) {
-    return;
-  }
-  S.offerScheduledRaidId = raidId;
-  S.offerTimer = window.setTimeout(() => {
-    S.offerTimer = 0;
-    if (S.offerScheduledRaidId === raidId) S.offerScheduledRaidId = 0;
-    offerNextRaid(title, raidId);
-  }, 900);
 }
 
 function startGame() {
   if (!S.booted || S.joining) return;
   if (S.live) joinLiveRaid();
+  else startPractice();
+}
+
+function handleResultAction() {
+  if ($("resultAction").dataset.action === "watch") {
+    hideGate();
+    S.phase = "spectating";
+    $("mode").textContent = "Spectating";
+    setInstruction("", "WATCH THE RAID", "Your team can still finish the Hydra.");
+    setStatus("", `The Hydra has ${S.hp} HP left.`);
+    render();
+    return;
+  }
+
+  S.started = false;
+  S.joined = false;
+  S.joining = false;
+  S.combatReady = false;
+  S.localResponses.clear();
+  S.pendingHits.clear();
+  S.lastObservedAttack = -1;
+  if (S.live) void joinLiveRaid();
   else startPractice();
 }
 
@@ -552,11 +686,11 @@ async function refreshChain() {
   await client.ensureKey();
   const addressHex = client.addressHex();
   const mine = addressHex
-    ? decodeMany(await client.query("getPlayerState", [addressHex]), 5)
+    ? decodeMany(await client.query("getPlayerState", [addressHex]), 6)
     : null;
   let settledWithoutPoint = 0;
   if (mine) {
-    const [joined, lives, joinAttack, nextSettlement, score] = mine;
+    const [joined, lives, joinAttack, nextSettlement, score, raidHits] = mine;
     const wasJoined = S.joined;
     const previousScore = S.score;
     S.joined = Boolean(joined) && !raidEnded;
@@ -568,6 +702,7 @@ async function refreshChain() {
         : Math.max(S.joinAttack, joinAttack);
     S.nextSettlement = nextSettlement;
     S.score = score;
+    S.raidHits = raidHits;
     const scoreDelta = Math.max(0, score - previousScore);
     removeOldestPendingHits(scoreDelta);
     for (const [key, pending] of S.pendingHits) {
@@ -584,7 +719,7 @@ async function refreshChain() {
       S.started = true;
       S.lives = lives;
       $("mode").textContent = "Live · shared fight";
-      setStatus("ok", "Three lives. Watch for the attacking head.");
+      setStatus("", "Three lives. Kill the Hydra.");
     }
   }
 
@@ -595,6 +730,7 @@ async function refreshChain() {
     }
     S.offerScheduledRaidId = 0;
     S.localResponses.clear();
+    resetRunStats();
     S.lastObservedAttack = -1;
     S.lastObservedHp = hp;
     S.lastObservedScore = S.score;
@@ -602,22 +738,20 @@ async function refreshChain() {
     if (S.joined) {
       S.started = true;
       S.joining = false;
-      $("gate").classList.add("gone");
-      $("gate").setAttribute("aria-hidden", "true");
-      $("gate").inert = true;
+      hideGate();
       $("mode").textContent = "Live · shared fight";
     } else {
       S.started = false;
-      $("gate").classList.remove("gone");
-      $("gate").removeAttribute("aria-hidden");
-      $("gate").inert = false;
+      showGatePanel("briefing");
+      $("mode").textContent = "Ready";
       document.querySelector(".rules-kicker").textContent = "How to play";
-      document.querySelector(".rules h2").textContent = "Hit it before it bites.";
-      document.querySelector(".rules > p").textContent = "One head attacks at a time. You get one click.";
+      document.querySelector(".rules h2").textContent = "Kill the Hydra.";
+      document.querySelector(".rules > p").textContent = "Hit the glowing head before it bites. Three bites and you’re out.";
       $("start").disabled = false;
-      $("start").textContent = "Join the fight";
+      $("start").textContent = "Fight";
     }
   }
+  if (mine) S.raidHits = mine[5];
 
   if (hp < S.lastObservedHp) {
     showDamage();
@@ -627,6 +761,7 @@ async function refreshChain() {
   } else if (S.chainLives < S.lives) {
     S.lives = S.chainLives;
     setStatus("err", `The Hydra bit you. ${S.lives} ${S.lives === 1 ? "life" : "lives"} left.`);
+    if (S.lives === 0) showResult({ raidWon: false, pending: true });
   } else if (settledWithoutPoint > 0) {
     setStatus("warn", "Too late—no damage. Watch for the next head.");
   }
@@ -634,20 +769,25 @@ async function refreshChain() {
   S.lastObservedHp = hp;
   S.lastObservedScore = S.score;
 
-  // Only show a win/escape end-screen to a player who actually fought this raid.
-  // A newcomer who lands while the on-chain raid is dormant or expired keeps the
-  // neutral "Join the fight" intro (the raidChanged block above already set it),
-  // never a "you landed 0 hits" loss screen for a raid they never played.
+  // A dormant shared raid is historical state, not the promise shown to the next
+  // player. The next Fight call creates a fresh 24-HP raid with three lives.
+  if (!S.started && !S.joined && raidEnded) {
+    S.hp = S.maxHp;
+    S.lives = S.config.maxLives;
+    S.chainLives = S.config.maxLives;
+    S.raidHits = 0;
+  }
+
+  // Raid and personal outcomes resolve separately: the player may be eliminated
+  // before the shared Hydra is killed or escapes.
   if (S.started && hp === 0) {
-    S.phase = "hit";
-    setInstruction("hit", "HYDRA DEAD", `Raid won. You landed ${S.score} hits.`);
+    setInstruction("hit", "HYDRA DEAD", "The shared fight is over.");
     $("mode").textContent = "Raid won";
-    scheduleNextRaidOffer("Hydra defeated.");
+    showResult({ raidWon: true });
   } else if (S.started && raidExpired) {
-    S.phase = "bite";
-    setInstruction("bite", "THE HYDRA ESCAPED", `Time ran out. You landed ${S.score} hits.`);
+    setInstruction("bite", "THE HYDRA ESCAPED", "Time ran out.");
     $("mode").textContent = "Raid over";
-    scheduleNextRaidOffer("The Hydra escaped.");
+    showResult({ raidWon: false });
   } else {
     render();
   }
@@ -692,14 +832,28 @@ async function renderBoard() {
   box.innerHTML = visible.map(rowHtml).join("") + (self ? BOARD_GAP + rowHtml(self) : "");
 }
 
-function saveName() {
+async function saveName() {
   const input = $("handle");
   if (!input) return;
   const v = (input.value || "").trim();
   if (!v) return;
-  savePassportHandle(v); // one passport name, shared across every Arcade cabinet
-  renderBoard();
-  setStatus("ok", "Name saved. It rides with you across the Arcade.");
+  savePassportHandle(v); // one passport name — pre-fills every Arcade cabinet (set once, ported everywhere)
+  await renderBoard(); // your row shows it immediately
+  if (!S.live) {
+    setStatus("ok", "Name saved. It goes onchain with the board once the raid is live.");
+    return;
+  }
+  // Same path as every other cabinet: write the handle onchain. The hub, like
+  // every game contract, requires one scoring hit before it stores your name.
+  try {
+    await client.sendAction("setHandle", [client.strToHex(v)], 10_000_000);
+    setStatus("ok", "Name saved across the Arcade.");
+  } catch (err) {
+    const msg = String(err?.message || err?.code || "").toLowerCase();
+    if (msg.includes("score first") || msg.includes("first"))
+      setStatus("warn", "Land one hit first — then your name hits the shared board.");
+    else setStatus("warn", "Name saved here. It will reach the shared board shortly.");
+  }
 }
 
 async function bootstrap() {
@@ -712,7 +866,7 @@ async function bootstrap() {
     S.booted = true;
     $("mode").textContent = "Practice";
     $("start").disabled = false;
-    $("start").textContent = "Join the fight";
+    $("start").textContent = "Fight";
     render();
     return;
   }
@@ -729,7 +883,7 @@ async function bootstrap() {
     S.live = false;
     $("mode").textContent = "Practice";
     $("start").disabled = false;
-    $("start").textContent = "Join the fight";
+    $("start").textContent = "Fight";
     $("chainCopy").innerHTML = "<b>Practice mode.</b> The live testnet raid is temporarily unavailable.";
     setStatus("", "Live chain state could not be loaded. This run will not score.");
     render();
@@ -752,8 +906,8 @@ async function bootstrap() {
   $("chainCopy").innerHTML = "<b>No wallet. No gas. Just react.</b> Take the Hydra on solo, or pile on with the crowd.";
   $("mode").textContent = "Live · shared fight";
   $("start").disabled = false;
-  $("start").textContent = "Join the fight";
-  setStatus("", "Ready. Join with three lives.");
+  $("start").textContent = "Fight";
+  setStatus("", "Three lives. Sixty seconds. Kill the Hydra.");
   await refreshChain();
   S.refreshTimer = window.setInterval(refreshChain, 900);
   S.settlementTimer = window.setInterval(pumpResolutions, 750);
@@ -765,8 +919,32 @@ function tick() {
     const raidMs = Math.max(0, S.raidDeadline - now);
     $("raidClock").textContent = formatClock(raidMs);
 
+    if (!S.combatReady && !S.resultShown) {
+      const countdownMs = S.readyAt - now;
+      if (countdownMs > 0) {
+        const count = Math.max(1, Math.ceil(countdownMs / 400));
+        setInstruction("", `GET READY · ${count}`, "Watch the heads.");
+      } else if (S.joined) {
+        S.combatReady = true;
+        const currentAttack = attackAtTime(now);
+        if (S.live) {
+          const [, closesAt] = attackBounds(currentAttack);
+          const enoughTime = closesAt - now >= attackDuration(currentAttack) * 0.65;
+          S.joinAttack = enoughTime ? currentAttack : currentAttack + 1;
+          S.lastObservedAttack = S.joinAttack - 1;
+        } else {
+          S.joinAttack = 0;
+          S.lastObservedAttack = -1;
+        }
+        setInstruction("", "WATCH THE HEADS", "Hit the one that rises and glows.");
+      } else {
+        setInstruction("", "GET READY", "The Hydra is waking.");
+      }
+    }
+
     if (
       S.joined &&
+      S.combatReady &&
       S.hp > 0 &&
       S.raidStartedAt > 0 &&
       now < S.raidDeadline
@@ -806,39 +984,64 @@ function applyReviewState(state) {
   }
   S.started = true;
   S.joined = true;
+  S.combatReady = true;
   S.raidId = 12;
   S.raidStartedAt = Date.now() - 17_000;
   S.raidDeadline = Date.now() + 43_000;
   S.attackIndex = 7;
   S.activeHead = 1;
   S.joinAttack = 0;
-  $("gate").classList.add("gone");
-  $("gate").setAttribute("aria-hidden", "true");
-  $("gate").inert = true;
+  hideGate();
   $("raidClock").textContent = "0:43";
   $("mode").textContent = "Shared fight";
 
   if (state === "attack") {
     S.phase = "attack";
-    S.attackDuration = 2_200;
-    setInstruction("attack", "HIT SHARD 1", "That head is attacking. Tap it before the red timer empties.");
-    setStatus("warn", "Attack 8: Shard 1 is about to bite.");
+    S.attackDuration = 2_600;
+    setInstruction("attack", "HIT THE GLOWING HEAD", "Tap it before the red timer empties.");
+    setStatus("warn", "It is about to bite.");
     headEls[1].querySelector(".attack-meter i").style.transform = "scaleX(.58)";
   } else if (state === "hit") {
     S.phase = "hit";
     S.responseHead = 1;
     S.hp = 23;
     S.score = 1;
+    S.raidHits = 1;
+    S.raidAttempts = 1;
+    S.bestStreak = 1;
     setInstruction("hit", "HIT · HYDRA HURT", "−1 Hydra HP. Watch for the next head.");
-    setStatus("ok", "Correct hit on Shard 1. The shared Hydra lost 1 HP.");
+    setStatus("ok", "Clean hit. The Hydra lost 1 HP.");
     $("damagePop").classList.add("show");
   } else if (state === "bite") {
     S.phase = "bite";
     S.responseHead = 0;
     S.lives = 2;
+    S.raidAttempts = 1;
+    S.wrongHits = 1;
     setInstruction("bite", "BITTEN · WRONG HEAD", "2 lives left. Watch for the next attacking head.");
-    setStatus("err", "Your first click was the wrong head. You lost 1 life.");
+    setStatus("err", "Wrong head. You lost 1 life.");
     $("screen").classList.add("bitten");
+  } else if (state === "victory") {
+    S.hp = 0;
+    S.raidHits = 9;
+    S.raidAttempts = 11;
+    S.bestStreak = 6;
+    showResult({ raidWon: true });
+  } else if (state === "escape") {
+    S.hp = 4;
+    S.raidHits = 7;
+    S.raidAttempts = 10;
+    S.bestStreak = 4;
+    showResult({ raidWon: false });
+  } else if (state === "dead") {
+    S.hp = 11;
+    S.lives = 0;
+    S.raidHits = 5;
+    S.raidAttempts = 8;
+    S.wrongHits = 2;
+    S.timeouts = 1;
+    S.bestStreak = 3;
+    showResult({ raidWon: false, pending: true });
   }
   render();
 }
@@ -847,6 +1050,7 @@ headEls.forEach((head, index) => {
   head.addEventListener("click", () => handleHeadClick(index));
 });
 $("start").addEventListener("click", startGame);
+$("resultAction").addEventListener("click", handleResultAction);
 $("saveName")?.addEventListener("click", saveName);
 $("handle")?.addEventListener("keydown", (e) => {
   if (e.key === "Enter") saveName();

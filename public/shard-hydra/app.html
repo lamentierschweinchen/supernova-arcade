@@ -388,6 +388,7 @@
         width: min(340px, 100%);
         text-align: left;
       }
+      .gate-panel[hidden] { display: none; }
       .rules-kicker {
         display: block;
         margin-bottom: 7px;
@@ -447,6 +448,69 @@
         font-size: 12.5px;
       }
       .gate .btn { padding: 12px 16px; font-size: 14px; }
+      .result-panel {
+        width: min(390px, 100%);
+        text-align: center;
+      }
+      .result-panel h2 {
+        margin-bottom: 8px;
+        color: var(--text);
+        font-size: clamp(25px, 7vw, 34px);
+        letter-spacing: -.025em;
+        line-height: 1;
+      }
+      .result-reason {
+        max-width: 34ch;
+        margin: 0 auto 18px;
+        color: var(--text-dim);
+        font-size: 13px;
+        line-height: 1.45;
+      }
+      .result-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 8px;
+        margin-bottom: 14px;
+      }
+      .result-stat {
+        padding: 10px;
+        border: 1px solid var(--border-soft);
+        border-radius: 10px;
+        background: rgba(14, 17, 23, .72);
+      }
+      .result-stat strong {
+        display: block;
+        color: var(--text);
+        font-family: var(--mono);
+        font-size: 21px;
+        font-variant-numeric: tabular-nums;
+        line-height: 1;
+      }
+      .result-stat span {
+        display: block;
+        margin-top: 5px;
+        color: var(--text-faint);
+        font-family: var(--mono);
+        font-size: 8px;
+        letter-spacing: .09em;
+        text-transform: uppercase;
+      }
+      .result-cause {
+        margin-bottom: 14px;
+        color: var(--text-dim);
+        font-size: 11.5px;
+        line-height: 1.4;
+      }
+      .result-hook {
+        min-height: 20px;
+        margin-bottom: 14px;
+        color: var(--c);
+        font-family: var(--mono);
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: .06em;
+        text-transform: uppercase;
+      }
       .status {
         margin-bottom: 10px;
         justify-content: center;
@@ -458,31 +522,6 @@
         font-size: 19px !important;
         letter-spacing: .04em;
         text-shadow: 0 0 12px rgba(255, 107, 157, .4);
-      }
-      .review-story {
-        display: grid;
-        grid-template-columns: repeat(4, 1fr);
-        gap: 7px;
-        margin-bottom: 14px;
-      }
-      .story-step {
-        min-width: 0;
-        padding: 10px 8px;
-        border-top: 1px solid color-mix(in srgb, var(--c) 30%, var(--border));
-      }
-      .story-step b {
-        display: block;
-        margin-bottom: 3px;
-        color: var(--c);
-        font-family: var(--mono);
-        font-size: 8px;
-        letter-spacing: .1em;
-        text-transform: uppercase;
-      }
-      .story-step span {
-        color: var(--text-dim);
-        font-size: 10.5px;
-        line-height: 1.35;
       }
       details.proof {
         margin-bottom: 14px;
@@ -574,7 +613,6 @@
         .head-label { font-size: 10.5px; }
         .head-action { font-size: 6.8px; letter-spacing: .07em; }
         .shared-note { font-size: 7px; }
-        .review-story { grid-template-columns: repeat(2, 1fr); }
         .rules { width: 100%; }
         .rules h2 { font-size: 25px; }
       }
@@ -606,9 +644,9 @@
         <div class="cab-marquee">Hit the attacking head before it bites</div>
         <div class="screen" id="screen">
           <div class="raid-bar">
-            <span class="raid-label">Shared fight · raid <b id="raid">12</b></span>
+            <span class="raid-label">Shared Hydra</span>
             <span class="raid-clock"><span id="raidClock">1:00</span><small>Raid left</small></span>
-            <span class="mode" id="mode">Checking chain</span>
+            <span class="mode" id="mode">Getting ready</span>
           </div>
 
           <div class="boss">
@@ -666,16 +704,30 @@
           <p class="shared-note"><i aria-hidden="true"></i>Everyone sees the same attacking head</p>
 
           <div class="gate" id="gate">
-            <div class="rules">
+            <div class="rules gate-panel" id="briefingPanel">
               <span class="rules-kicker">How to play</span>
-              <h2>Hit it before it bites.</h2>
-              <p>One head attacks at a time. You get one click.</p>
+              <h2>Kill the Hydra.</h2>
+              <p>Hit the glowing head before it bites. Three bites and you’re out.</p>
               <div class="rules-list">
-                <div class="rule"><b aria-hidden="true">✓</b><span><strong>Hit the glowing head</strong>Deal 1 damage and score 1 point.</span></div>
-                <div class="rule"><b aria-hidden="true">×</b><span><strong>Wrong head or too slow</strong>Lose 1 of your 3 lives.</span></div>
-                <div class="rule"><b aria-hidden="true">24</b><span><strong>Kill the shared Hydra</strong>Every player’s correct hits add up.</span></div>
+                <div class="rule"><b aria-hidden="true">24</b><span><strong>Hydra HP</strong>Every correct hit deals 1 damage.</span></div>
+                <div class="rule"><b aria-hidden="true">♥</b><span><strong>Three lives</strong>Wrong or too slow costs one.</span></div>
+                <div class="rule"><b aria-hidden="true">60</b><span><strong>Seconds</strong>Kill it before it escapes.</span></div>
               </div>
-              <button class="btn" id="start" type="button">Join the fight</button>
+              <button class="btn" id="start" type="button">Fight</button>
+            </div>
+            <div class="result-panel gate-panel" id="resultPanel" hidden aria-live="assertive">
+              <span class="rules-kicker" id="resultKicker">Raid complete</span>
+              <h2 id="resultTitle">Hydra slain.</h2>
+              <p class="result-reason" id="resultReason"></p>
+              <div class="result-grid">
+                <div class="result-stat"><strong id="resultDamage">0</strong><span>Your damage</span></div>
+                <div class="result-stat"><strong id="resultAccuracy">0%</strong><span>Accuracy</span></div>
+                <div class="result-stat"><strong id="resultStreak">0</strong><span>Best streak</span></div>
+                <div class="result-stat"><strong id="resultHp">0</strong><span>Hydra HP left</span></div>
+              </div>
+              <p class="result-cause" id="resultCause"></p>
+              <p class="result-hook" id="resultHook"></p>
+              <button class="btn" id="resultAction" type="button">Fight again</button>
             </div>
           </div>
         </div>
@@ -683,17 +735,17 @@
 
       <div class="status" id="statusBox" role="status">
         <span class="dot" aria-hidden="true"></span>
-        <span id="status">Join with three lives. You are safe until your first target appears.</span>
+        <span id="status">Three lives. Sixty seconds. Kill the Hydra.</span>
       </div>
 
       <div class="stats" aria-label="Your raid status">
-        <div class="stat"><div class="num on" id="score">0</div><div class="lbl">Correct hits</div></div>
+        <div class="stat"><div class="num on" id="score">0</div><div class="lbl">Raid hits</div></div>
         <div class="stat"><div class="num hearts" id="lives">♥♥♥</div><div class="lbl">Your lives</div></div>
-        <div class="stat"><div class="num" id="attackNumber">—</div><div class="lbl">Attack</div></div>
+        <div class="stat"><div class="num" id="accuracy">—</div><div class="lbl">Accuracy</div></div>
       </div>
 
       <div style="display:flex;gap:8px;margin-bottom:14px;">
-        <input class="name-input" id="handle" maxlength="24" placeholder="Your name on the board" autocomplete="off" />
+        <input class="name-input" id="handle" maxlength="24" aria-label="Your name on the leaderboard" placeholder="Your name on the board" autocomplete="nickname" />
         <button class="btn" id="saveName" type="button" style="width:auto;flex:0 0 auto;">Save</button>
       </div>
 
@@ -701,13 +753,6 @@
         <div class="card-title"><span class="gd"></span>Top hitters · most damage dealt</div>
         <ul class="lb" id="lbRows"><li class="empty">Reading the chain…</li></ul>
       </section>
-
-      <div class="review-story" aria-label="Interaction storyboard">
-        <div class="story-step"><b>1 · Watch</b><span>All heads wait below the line.</span></div>
-        <div class="story-step"><b>2 · Attack</b><span>One rises, glows and opens its mouth.</span></div>
-        <div class="story-step"><b>3 · Hit</b><span>Correct head recoils; Hydra loses HP.</span></div>
-        <div class="story-step"><b>4 · Bite</b><span>Wrong or late costs one life.</span></div>
-      </div>
 
       <details class="proof">
         <summary>Why this is a MultiversX game</summary>
