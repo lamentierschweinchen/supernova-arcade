@@ -39,20 +39,26 @@ import { createArcadeScore } from "/arcade-score.js";
     if (/button/.test(p)) return "button";
     if (/canvas/.test(p)) return "canvas";
     if (/tug[-_]?of[-_]?war|tugofwar/.test(p)) return "tugofwar";
+    if (/wen[-_]?moon|wenmoon/.test(p)) return "wenmoon";
+    if (/shard[-_]?hydra|shardhydra/.test(p)) return "shardhydra";
     if (/sprint|onchain/.test(p)) return "sprint";
     return null;
   }
 
-  var GAME_ID = gameFromPath();
-  if (!GAME_ID) return; // unknown page — do nothing
-
-  // Inside the persistent audio shell? The shell owns the AudioContext + the one
-  // toggle, so do NOT create a second score/toggle here (that doubles the music).
-  // Hand off to the bridge: it postMessages this game's activity up + routes nav.
+  // Inside the persistent audio shell? Hand off to the bridge FIRST — before we
+  // resolve the game id — so the shell keeps the one AudioContext + toggle and this
+  // page never makes a second score. Doing this BEFORE the gameFromPath bail is
+  // load-bearing: an embedded cabinet this file doesn't recognize would otherwise
+  // return early, never load the bridge, and its links would navigate the IFRAME to
+  // a pretty path -> shell.html -> a NESTED shell -> a second score (double audio)
+  // + duplicated chrome (mangled windows). The bridge carries the complete game map.
   if (window.parent !== window) {
     import("/arcade-bridge.js").catch(function (e) { console.warn("[arcade-sound] bridge load failed", e); });
     return;
   }
+
+  var GAME_ID = gameFromPath();
+  if (!GAME_ID) return; // unknown standalone page — do nothing
 
   // ---- persistence helpers (fail-safe: private mode / disabled storage) ----
   function readPref() {
