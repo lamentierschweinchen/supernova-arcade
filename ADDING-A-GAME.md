@@ -20,7 +20,10 @@ The repeatable path, and the traps that already cost us. Follow the steps; heed 
 
 8. **Routing**. `vercel.json` rewrite (`/<pretty>` → `/shell.html`) + `shell.html` `GAME_FILE`/`GAME_PRETTY` maps + `arcade-bridge.js` `gameFromPath`.
 
-9. **Sound**. Ping the music instance to add a game sound to the arcade live-score engine (it can't be driven from a build session).
+9. **Sound** (the arcade is one continuous, self-playing soundtrack — wire the new cabinet into it):
+   - **Per-event SFX: automatic.** Every confirmed onchain tx postMessages `arcade:tx` to the shell, which fires a discrete stinger. You get this for free as long as the cabinet relays through `arcade-core.js` `sendAction` (or emits `arcade:tx` itself, like the self-contained forks do). Nothing to add.
+   - **The shared bed:** add one line to `shell.html`'s `COUNTERS` list — `{ id: "<id>", address: GAMES.<id>.contract, view: "getGlobalActions" }` — so the whole-arcade soundtrack includes your cabinet's activity (the shell polls it every ~2s, alive across every game switch). The `id` MUST match the engine voice id below.
+   - **A voice (optional but nice):** ping the music instance to add `<id>` to `arcade-score.js` (`GAME_VOICES` + `CABINET_PULL`/`CABINET_COLOR` + `DEFAULT_MIX.voices` + `P.poly` + a `buildVoices` synth + a `playAccent` case + a `triggerSfx` case). Without it the cabinet still raises the bed and fires the fallback coin stinger; with it, it gets its own recognizable sound. (The engine can't be tuned from a build session — that's the music instance.)
 
 10. **Ship + verify**. `vercel --prod` then `git push`. Verify: `/api/leaderboard?game=<id>` returns the board; a smoke test signs → fires an action → the score lands (on `getPlayerEntry` / the board); the page loads with no console errors.
 

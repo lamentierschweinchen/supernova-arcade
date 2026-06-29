@@ -1108,6 +1108,7 @@ async function fireTaps(count){
 
   // SENT: the relayer broadcast it. Count it and track it to finality.
   try { if (window.__arcadeGalaxy) window.__arcadeGalaxy.pulse(1); } catch (e) {} // photon into shard 1 per real tap
+  try { if (window.parent !== window) window.parent.postMessage({ type: "arcade:tx", hash: out.txHash }, location.origin); } catch (e) {} // feed the shell's live tx ring + per-event SFX
   var inSprint = (ST.appMode === 'sprint');
   var entry = { hash: out.txHash, state: 'pending', sentAt: Date.now(), finalMs: null, count: count, sprint: inSprint, runId: ST.sprint.runId };
 

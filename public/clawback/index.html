@@ -924,6 +924,9 @@ function friendlyError(err) {
 let actx = null;
 function initAudio() { try { if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)(); } catch {} }
 function blip(freq, dur, type) {
+  // governed by the one arcade sound toggle (shared localStorage key) so "sound off"
+  // means silent everywhere, in the shell or standalone.
+  try { if (localStorage.getItem("arcade_sound_on") !== "1") return; } catch (e) {}
   if (!actx) return;
   try {
     const o = actx.createOscillator(), g = actx.createGain();

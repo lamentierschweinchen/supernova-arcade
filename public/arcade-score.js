@@ -82,9 +82,9 @@ function smooth01(v) { v = clamp01(v); return v * v * (3 - 2 * v); } // smoothst
       1 = the chain is unmistakably driving). Default heavy.
    ============================================================================ */
 // each cabinet bends the melodic line a direction (+up / -down)
-const CABINET_PULL  = { sprint: 1.0, degendash: 0.5, canvas: 0.35, tugofwar: 0.0, clawback: -0.35, button: -1.0 };
+const CABINET_PULL  = { sprint: 1.0, wenmoon: 0.85, reaction: 0.7, degendash: 0.5, canvas: 0.35, tugofwar: 0.0, clawback: -0.35, shardhydra: -0.6, button: -1.0 };
 // the dominant cabinet tints the harmony
-const CABINET_COLOR = { sprint: "bright", canvas: "bright", tugofwar: "bright", clawback: "bright", button: "spacey", degendash: "dorian" };
+const CABINET_COLOR = { sprint: "bright", canvas: "bright", tugofwar: "bright", clawback: "bright", reaction: "bright", wenmoon: "bright", button: "spacey", shardhydra: "spacey", degendash: "dorian" };
 // progression pool (semitone roots from the key) — movements draw varied changes
 const CHORD_SETS = [
   [0, 7, 9, 5],   // I  V  vi IV   (anthemic)
@@ -143,6 +143,9 @@ export const DEFAULT_MIX = {
     button:    { level: 0.58, reverb: 0.14, delay: 0.00 }, // deep sub thump
     clawback:  { level: 0.44, reverb: 0.30, delay: 0.18 }, // tense -> resolved
     degendash: { level: 0.42, reverb: 0.10, delay: 0.22 }, // 8-bit bleeps
+    reaction:  { level: 0.50, reverb: 0.16, delay: 0.10 }, // sharp ready -> hit blip
+    wenmoon:   { level: 0.46, reverb: 0.30, delay: 0.34 }, // rising "to the moon" sweep
+    shardhydra:{ level: 0.46, reverb: 0.28, delay: 0.20 }, // 3-note cross-shard motif
     // --- event SFX ---
     blip:      { level: 0.66, reverb: 0.30, delay: 0.30 }, // jingles / stingers
   },
@@ -151,7 +154,7 @@ export const DEFAULT_MIX = {
 // bed layers driven by the energy arranger (each gets an energyGate)
 const BED_LAYERS = ["pad", "bass", "kick", "hat", "snare", "arp", "lead"];
 // per-cabinet accent voices (keys MUST match the hub CABINETS ids)
-const GAME_VOICES = ["sprint", "tugofwar", "canvas", "button", "clawback", "degendash"];
+const GAME_VOICES = ["sprint", "tugofwar", "canvas", "button", "clawback", "degendash", "reaction", "wenmoon", "shardhydra"];
 
 // energy tier names (for studio readouts) by energy 0..1
 function tierName(e) {
@@ -185,11 +188,11 @@ export function createArcadeScore(opts = {}) {
   const P = lite
     ? { reverb: false, chorus: false, eq: false, vibrato: false, riser: false,
         padOsc: { type: "triangle" }, padPoly: 3, padRelease: 2.0,
-        poly: { arp: 3, lead: 2, sprint: 3, tugofwar: 3, canvas: 4, clawback: 3, degendash: 4, blip: 4 },
+        poly: { arp: 3, lead: 2, sprint: 3, tugofwar: 3, canvas: 4, clawback: 3, degendash: 4, reaction: 3, wenmoon: 3, shardhydra: 3, blip: 4 },
         arpEvery: 2, hatSparse: true }
     : { reverb: true, chorus: true, eq: true, vibrato: true, riser: true,
         padOsc: { type: "fatsawtooth", spread: 22, count: 2 }, padPoly: 6, padRelease: 3.0,
-        poly: { arp: 5, lead: 3, sprint: 6, tugofwar: 5, canvas: 6, clawback: 5, degendash: 6, blip: 8 },
+        poly: { arp: 5, lead: 3, sprint: 6, tugofwar: 5, canvas: 6, clawback: 5, degendash: 6, reaction: 5, wenmoon: 5, shardhydra: 5, blip: 8 },
         arpEvery: 1, hatSparse: false };
 
   /* ---- live state ---- */
@@ -401,6 +404,18 @@ export function createArcadeScore(opts = {}) {
       const s = new T.PolySynth(T.Synth, { maxPolyphony: P.poly.degendash, oscillator: { type: "square" },
         envelope: { attack: 0.002, decay: 0.08, sustain: 0, release: 0.05 } }).connect(strip.level);
       S.degendash = s; graph.disposables.push(s); }
+    { const strip = makeStrip("reaction"); // sharp, quantized ready->hit blip
+      const s = new T.PolySynth(T.Synth, { maxPolyphony: P.poly.reaction, oscillator: { type: "pulse", width: 0.3 },
+        envelope: { attack: 0.001, decay: 0.09, sustain: 0, release: 0.06 } }).connect(strip.level);
+      S.reaction = s; graph.disposables.push(s); }
+    { const strip = makeStrip("wenmoon"); // rising "to the moon" run
+      const s = new T.PolySynth(T.Synth, { maxPolyphony: P.poly.wenmoon, oscillator: { type: "triangle" },
+        envelope: { attack: 0.004, decay: 0.18, sustain: 0.1, release: 0.22 } }).connect(strip.level);
+      S.wenmoon = s; graph.disposables.push(s); }
+    { const strip = makeStrip("shardhydra"); // darker square motif (the boss)
+      const s = new T.PolySynth(T.Synth, { maxPolyphony: P.poly.shardhydra, oscillator: { type: "square" },
+        envelope: { attack: 0.006, decay: 0.3, sustain: 0.15, release: 0.4 } }).connect(strip.level);
+      S.shardhydra = s; graph.disposables.push(s); }
 
     /* ---- event SFX (jingles / stingers / risers) ---- */
     { const strip = makeStrip("blip");
@@ -714,6 +729,18 @@ export function createArcadeScore(opts = {}) {
         const step = Math.min(0.16, span / n);
         for (let i = 0; i < n; i++) S.degendash.triggerAttackRelease(scaleFreq([0, 2, 4, 3, 5][i % 5], 1), "16n", t0 + i * step, vel * 0.6);
         break; }
+      case "reaction": { // crisp quantized blips
+        const step = Math.min(0.12, span / n);
+        for (let i = 0; i < n; i++) S.reaction.triggerAttackRelease(chordFreq(i % 3, 1), "32n", t0 + i * step, vel * 0.8);
+        break; }
+      case "wenmoon": { // a rising run — to the moon
+        const step = Math.min(0.1, span / n);
+        for (let i = 0; i < n; i++) S.wenmoon.triggerAttackRelease(scaleFreq(i, 1), "16n", t0 + i * step, clamp(vel * (0.6 + 0.05 * i), 0.3, 0.9));
+        break; }
+      case "shardhydra": { // a 3-note cross-shard motif (the three heads)
+        const g = Math.min(3, Math.max(2, n)), step = Math.min(0.22, span / g);
+        for (let i = 0; i < g; i++) S.shardhydra.triggerAttackRelease(chordFreq([0, 2, 4][i % 3], 0), "8n", t0 + i * step, vel * 0.7);
+        break; }
     }
   }
 
@@ -745,6 +772,37 @@ export function createArcadeScore(opts = {}) {
       graph.synth.riser.triggerAttackRelease(1.2, t, 0.5);
     } catch (e) {}
     bumpMeter("blip", 0.6);
+  }
+
+  /* ---- discrete per-event SFX: a REAL confirmed onchain tx in `game` -> one
+     short, characterful one-shot on that game's accent voice. Toggle-governed
+     (no sound when off) and rate-limited so a burst (canvas ~7 tx/s) coalesces.
+     Falls back to the coin stinger for surfaces without a voice. The shell calls
+     this from its arcade:tx handler, so every confirmed onchain action is audible
+     across ALL cabinets with no per-cabinet audio code. ---- */
+  let lastSfxAt = 0;
+  function triggerSfx(game) {
+    if (!graph || !on) return;
+    const now = (T && T.now) ? T.now() : 0;
+    if (now - lastSfxAt < 0.09) return; // ~11/s ceiling; bursts coalesce
+    lastSfxAt = now;
+    const S = graph.synth, t = now + 0.02;
+    const syn = game && S[game];
+    if (!syn) { triggerJingle("coin"); return; }
+    const vel = 0.5;
+    switch (game) {
+      case "sprint":     syn.triggerAttackRelease(chordFreq(2, 1), "16n", t, vel); break;
+      case "tugofwar":   if (S.tugPan) S.tugPan.pan.setValueAtTime(0, t); syn.triggerAttackRelease(chordFreq(0, 0), "16n", t, vel); break;
+      case "canvas":     syn.triggerAttackRelease(scaleFreq(Math.floor(Math.random() * 6) + 2, 2), "8n", t, vel * 0.8); break;
+      case "button":     syn.triggerAttackRelease(chordFreq(0, -1), "8n", t, vel * 0.7); break;
+      case "clawback":   syn.triggerAttackRelease(chordFreq(1, 0), "16n", t, vel); break;
+      case "degendash":  syn.triggerAttackRelease(scaleFreq(4, 1), "32n", t, vel * 0.7); break;
+      case "reaction":   syn.triggerAttackRelease(chordFreq(2, 1), "32n", t, vel * 0.8); break;
+      case "wenmoon":    syn.triggerAttackRelease(scaleFreq(2, 1), "16n", t, vel); syn.triggerAttackRelease(scaleFreq(4, 1), "16n", t + 0.06, vel); break;
+      case "shardhydra": syn.triggerAttackRelease(chordFreq(0, 0), "16n", t, vel * 0.8); break;
+      default:           triggerJingle("coin");
+    }
+    bumpMeter(game, 0.7);
   }
 
   /* ---- the MINT hook (seam): freeze state; do NOT mint here ---- */
@@ -859,7 +917,7 @@ export function createArcadeScore(opts = {}) {
 
   return {
     feed, setOn, toggle() { return setOn(!on); }, isOn() { return on; }, isStarted() { return started; },
-    captureMoment, triggerMoment, triggerJingle,
+    captureMoment, triggerMoment, triggerJingle, triggerSfx,
     // mixer
     setLevel, setSend, setMaster, setMute, setSolo, applyMix, getMix,
     // arranger + harmony (studio)

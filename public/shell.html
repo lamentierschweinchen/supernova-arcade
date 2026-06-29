@@ -117,6 +117,7 @@
     <script type="module">
       import { createArcadeScore } from "/arcade-score.js";
       import { mountTxRing } from "/arcade-tx-ring.js";
+      import { createArcadeClient, GAMES } from "/arcade-core.js";
 
       "use strict";
 
@@ -180,6 +181,59 @@
       var score = null;
       try { score = createArcadeScore({ momentStep: 25000, lite: true }); window.arcadeScore = window.arcadeScore || score; }
       catch (e) { console.warn("[arcade] audio engine unavailable", e); }
+
+      /* =====================================================================
+         WHOLE-ARCADE SOUNDTRACK. The shell is the one always-alive context, so
+         the global onchain feed lives HERE — not in the hub iframe, which unloads
+         the moment you navigate to a cabinet. Every ~2s we read each cabinet's
+         getGlobalActions (+ Sprint's getGlobalTaps) and hand the ONE persistent
+         score the TOTAL arcade activity, so the bed reflects the whole arcade —
+         every cabinet, whichever one you happen to be on. The score diffs to
+         per-cabinet deltas internally and tracks baselines even while muted, so we
+         poll always once the engine exists (so turning sound on mid-session lands
+         on real deltas, not a cold spike). Reads are public views (no key, no
+         relay), via the same client the hub uses. Adding a cabinet = one line in
+         COUNTERS (its key MUST match a score GAME_VOICES id).
+         ===================================================================== */
+      (function startGlobalFeed() {
+        if (!score) return;
+        var SPRINT_TAP_COUNTER = "erd1qqqqqqqqqqqqqpgqlwv6l2zpx9v0uv6869tn90exv3vdplejppuq97k7r4"; // mirrors arcade.html
+        var COUNTERS = [
+          { id: "sprint",     address: SPRINT_TAP_COUNTER,        view: "getGlobalTaps" },
+          { id: "tugofwar",   address: GAMES.tugofwar.contract,   view: "getGlobalActions" },
+          { id: "canvas",     address: GAMES.canvas.contract,     view: "getGlobalActions" },
+          { id: "button",     address: GAMES.button.contract,     view: "getGlobalActions" },
+          { id: "reaction",   address: GAMES.reaction.contract,   view: "getGlobalActions" },
+          { id: "clawback",   address: GAMES.clawback.contract,   view: "getGlobalActions" },
+          { id: "degendash",  address: GAMES.degendash.contract,  view: "getGlobalActions" },
+          { id: "wenmoon",    address: GAMES.wenmoon.contract,    view: "getGlobalActions" },
+          { id: "shardhydra", address: GAMES.shardhydra.contract, view: "getGlobalActions" },
+        ];
+        var rclient;
+        try { rclient = createArcadeClient("tugofwar"); } // read-only use; no key is ground for query()
+        catch (e) { console.warn("[shell] global feed unavailable", e); return; }
+        var prev = {}; // last good per-cabinet value, so a failed read holds steady
+        function readOne(c) {
+          return rclient.query(c.view, [], c.address)
+            .then(function (rd) { return rd && rd.length ? rclient.decodeU64(rd[0]) : null; })
+            .catch(function () { return null; });
+        }
+        function refresh() {
+          Promise.all(COUNTERS.map(readOne)).then(function (vals) {
+            var per = {}, total = 0, any = false;
+            COUNTERS.forEach(function (c, i) {
+              var v = vals[i];
+              if (v == null) v = prev[c.id]; // hold last-known on a failed read
+              if (v == null) return;
+              prev[c.id] = v; per[c.id] = v; total += v; any = true;
+            });
+            if (!any) return; // nothing read yet -> don't feed a phantom zero
+            try { score.feed({ perCabinet: per, total: total }); } catch (e) {}
+          });
+        }
+        refresh();
+        setInterval(refresh, 2000);
+      })();
 
       /* ===================================================================
          SOUND TOGGLE — lifted from the hub (arcade.html ~732-773): persist the
@@ -308,15 +362,23 @@
         if (!d || typeof d !== "object") return;
         switch (d.type) {
           case "arcade:activity": {
-            if (!d.game) return;
-            var per = {};
-            per[d.game] = +d.total || 0;
-            try { score.feed({ perCabinet: per, total: +d.total || 0 }); } catch (err) {}
+            // DEPRECATED as a score driver. This was a per-page pointer-tap
+            // heuristic; the bed now rides the real whole-arcade onchain feed
+            // (startGlobalFeed above). Feeding it here would corrupt that feed's
+            // per-cabinet delta baselines (same ids, different magnitudes), so we
+            // intentionally ignore it. The "you, specifically, are playing" beat
+            // is delivered by the per-tx SFX below (your real confirmed tx).
             break;
           }
           case "arcade:tx": {
-            // a real onchain tx fired in the current game -> feed the live ring
-            if (d.hash) txRing.addTx(d.hash, current);
+            // a real confirmed onchain tx fired in the current game -> the live
+            // ring (visual) AND a discrete per-event stinger (audio, toggle-
+            // governed + rate-limited inside the engine). One wiring point covers
+            // every cabinet; no per-cabinet audio code.
+            if (d.hash) {
+              txRing.addTx(d.hash, current);
+              try { if (score && score.triggerSfx) score.triggerSfx(current); } catch (err) {}
+            }
             break;
           }
           case "arcade:navigate": {
