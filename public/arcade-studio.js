@@ -21,6 +21,7 @@ const VOICE_GROUPS = [
   { title: "Cabinets (per-game accents)", voices: [
     ["sprint", "Sprint"], ["tugofwar", "Tug of War"], ["canvas", "Canvas"],
     ["button", "The Button"], ["clawback", "Clawback"], ["degendash", "Degen Dash"],
+    ["reaction", "Reaction"], ["wenmoon", "Wen Moon"], ["shardhydra", "Shard Hydra"],
   ] },
   { title: "Events", voices: [["blip", "SFX / Jingle"]] },
 ];
@@ -74,7 +75,7 @@ export function mountStudio(score, opts = {}) {
   ]);
 
   /* ---------------- drive (simulated play) ---------------- */
-  const fake = { sprint: 0, tugofwar: 0, canvas: 0, button: 0, clawback: 0, degendash: 0 };
+  const fake = { sprint: 0, tugofwar: 0, canvas: 0, button: 0, clawback: 0, degendash: 0, reaction: 0, wenmoon: 0, shardhydra: 0 };
   let activity = 0, autoDemo = false;
   const actSl = slider(0, 1, 0.01, 0, (v) => { activity = v; actVal.textContent = v.toFixed(2); });
   const actVal = el("span", { class: "mono dim" }, "0.00");
@@ -95,6 +96,9 @@ export function mountStudio(score, opts = {}) {
     fake.button += Math.random() < a * 0.5 ? 1 + rnd(3) : 0;
     fake.clawback += Math.random() < a * 0.6 ? rnd(6) : 0;
     fake.degendash += Math.random() < a * 0.5 ? rnd(7) : 0;
+    fake.reaction += Math.random() < a * 0.5 ? 1 + rnd(3) : 0;
+    fake.wenmoon += Math.random() < a * 0.35 ? rnd(4) : 0;
+    fake.shardhydra += Math.random() < a * 0.3 ? rnd(3) : 0;
     pushFeed();
   }, 1500);
 
@@ -174,6 +178,11 @@ export function mountStudio(score, opts = {}) {
       el("button", { class: "tg sm", onclick: () => score.triggerJingle("milestone") }, "milestone"),
       el("button", { class: "tg sm", onclick: () => score.modulate(2) }, "key +2 + riser"),
       el("button", { class: "tg sm", onclick: () => score.triggerMoment() }, "full moment"),
+    ]),
+    el("div", { class: "row wrap" }, [
+      el("span", { class: "fl wide" }, "Event SFX (per tx)"),
+      ...["sprint", "tugofwar", "canvas", "button", "clawback", "degendash", "reaction", "wenmoon", "shardhydra"]
+        .map((id) => el("button", { class: "tg sm", onclick: () => { try { score.triggerSfx(id); } catch (e) {} } }, id)),
     ]),
     el("div", { class: "row wrap" }, [
       el("span", { class: "fl wide" }, "Feel preset"),
