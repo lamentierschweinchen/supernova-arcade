@@ -33,9 +33,13 @@
   --good:var(--mint);--warn:var(--amber);--bad:var(--coral);
 }
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
-html{background:#040506;-webkit-text-size-adjust:100%;}
+/* Contain touch scroll so a cabinet inside the shell iframe never pull-to-refreshes
+   or rubber-band-bounces off the game mid-tap (the "can't stay on the game" bug).
+   Normal vertical scroll to the leaderboard below still works. */
+html{background:#040506;-webkit-text-size-adjust:100%;overscroll-behavior:none;}
 body{font-family:'Roobert PRO',system-ui,-apple-system,sans-serif;color:var(--text);background:transparent;
-  -webkit-font-smoothing:antialiased;line-height:1.5;text-wrap:pretty;overflow-x:hidden;min-height:100vh;position:relative;}
+  -webkit-font-smoothing:antialiased;line-height:1.5;text-wrap:pretty;overflow-x:hidden;min-height:100vh;position:relative;
+  overscroll-behavior:none;}
 a{color:inherit;text-decoration:none;}
 
 /* the galaxy canvas (created by arcade-galaxy.js) sits behind everything */

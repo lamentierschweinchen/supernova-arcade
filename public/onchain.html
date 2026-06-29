@@ -630,6 +630,13 @@ body{
       try { window.__arcadeGalaxy = mountGalaxy({ intensity: 0.5, focusShard: 1, canvas: "#galaxy" }); }
       catch (e) { console.warn("[onchain] galaxy mount failed", e); }
     </script>
+    <script type="module">
+      // Shared leaderboard helpers (top-10 + sticky self-row, same as every cabinet).
+      // Exposed on window so the (non-module) board code can use them.
+      import { topPlusSelf, fetchGameBoard } from "/arcade-board.js";
+      window.topPlusSelf = topPlusSelf;
+      window.fetchGameBoard = fetchGameBoard;
+    </script>
 </head>
 <body>
 <canvas id="galaxy" aria-hidden="true"></canvas>
@@ -2007,7 +2014,7 @@ function onMvxModeToggle(mode){
    ephemeral key (shard 0) is generated per submit. Fail-soft on every path.
    ============================================================================ */
 var LB = {
-  contract: CFG.contract,   // the upgraded tap-counter (shard 0): bestScore + handle per address
+  contract: CFG.sprintLeaderboard,   // Sprint's own board contract — the same one the display reads (submit + board agree)
   submitted: false,
   lastScore: 0,
   reset: function(){
@@ -2158,34 +2165,12 @@ function lbDecodeEntry(b64, bech32){
 
 async function lbLoadLeaderboard(){
   try {
-    // The contract's getTopScores view sorts ALL players on-chain (insertion sort
-    // + 3 storage reads each); past ~150 players that blows the view gas budget
-    // ("out of gas"), which breaks the board. So read the raw storage once and
-    // sort client-side: no on-chain compute, scales with the player count.
-    // Storage layout: bestScore<addr32> = u64 score, handle<addr32> = utf8 handle.
-    var res = await fetch(CFG.api + '/address/' + LB.contract + '/keys');
-    if(!res.ok) return;
-    var json = await res.json();
-    var pairs = (json && json.data && json.data.pairs) || {};
-    var toHex = function(s){ var h=''; for(var i=0;i<s.length;i++){ h += s.charCodeAt(i).toString(16).padStart(2,'0'); } return h; };
-    var hexUtf8 = function(h){ try { var b=new Uint8Array(h.length/2); for(var i=0;i<b.length;i++){ b[i]=parseInt(h.substr(i*2,2),16); } return new TextDecoder().decode(b); } catch(e){ return ''; } };
-    var PS = toHex('bestScore'), PH = toHex('handle');
-    var LS = PS.length + 64, LH = PH.length + 64;   // mapper prefix + 32-byte address (64 hex chars)
-    var byAddr = {};
-    Object.keys(pairs).forEach(function(k){
-      if(k.length === LS && k.indexOf(PS) === 0){
-        var a = k.slice(PS.length); (byAddr[a] = byAddr[a] || {}).score = parseInt(pairs[k], 16) || 0;
-      } else if(k.length === LH && k.indexOf(PH) === 0){
-        var a2 = k.slice(PH.length); (byAddr[a2] = byAddr[a2] || {}).handle = hexUtf8(pairs[k]);
-      }
-    });
-    var entries = [];
-    Object.keys(byAddr).forEach(function(a){
-      var v = byAddr[a];
-      if(!v || v.score == null || !v.handle) return;
-      entries.push({ address: '', handle: v.handle, score: v.score, timestamp: 0 });
-    });
-    entries.sort(function(a, b){ return b.score - a.score; });
+    // Read the board from the shared off-chain service — same path every other
+    // Arcade cabinet uses (cached, scalable, global cross-game names). Returns
+    // [{address (bech32), handle, score}] sorted desc from Sprint's own board
+    // contract. (The bespoke /keys parse this replaced read the wrong contract.)
+    if(!window.fetchGameBoard){ setTimeout(lbLoadLeaderboard, 300); return; } // deferred module not ready yet — retry
+    var entries = await window.fetchGameBoard("sprint");
     lbRenderLeaderboard(entries);
   } catch(err){
     console.warn('[onchain] sprint leaderboard read failed:', err);
@@ -2216,30 +2201,23 @@ function lbRenderLeaderboard(entries){
     rows.innerHTML = '<div class="lb-empty">No sprints onchain yet. Submit yours to be first.</div>';
     return;
   }
-  // order by score desc so rank = index + 1 (the view returns sorted; this is defensive)
-  entries = entries.slice().sort(function(a,b){ return b.score - a.score; });
-  var myHandle = ($('lbHandle').value || '').trim();
-  // locate the player's own row anywhere in the fetched list, so we can always show their rank
-  var myIdx = -1;
-  if(LB.submitted && myHandle){
-    for(var k=0;k<entries.length;k++){ if(entries[k].handle === myHandle){ myIdx = k; break; } }
-  }
-  var rowHtml = function(e, rank, mine){
+  // Same top-10 + sticky "you" self-row as every other cabinet (shared topPlusSelf).
+  // Match the player by address (the ephemeral submit key), not handle string.
+  var me = (ST.key && ST.key.address) ? ST.key.address : '';
+  var rowHtml = function(e){
+    var mine = me && e.address && e.address.toLowerCase() === me.toLowerCase();
+    var name = e.handle ? lbEscape(e.handle) : (e.address ? (e.address.slice(0,6)+'…'+e.address.slice(-4)) : '?');
     return '<div class="lb-row' + (mine?' you':'') + '">' +
-      '<span class="lb-rank">' + rank + '</span>' +
-      lbAvatar(e.handle) +
-      '<span class="lb-handle-cell">' + lbEscape(e.handle) + '</span>' +
+      '<span class="lb-rank">' + e.rank + '</span>' +
+      lbAvatar(e.handle || name) +
+      '<span class="lb-handle-cell">' + name + '</span>' +
       '<span class="lb-score-cell">' + e.score + '</span>' +
     '</div>';
   };
-  // render up to the top 100 into the scrollable list (DOM-bounded); the box scrolls
-  var CAP = 100, limit = Math.min(CAP, entries.length);
-  var html = '';
-  for(var i=0;i<limit;i++){ html += rowHtml(entries[i], i + 1, (i === myIdx)); }
-  rows.innerHTML = html;
-  // when the player is below the visible top, keep their rank pinned below the scroll
-  if(you && myIdx >= 8){
-    you.innerHTML = '<div class="lb-you-label">Your rank</div>' + rowHtml(entries[myIdx], myIdx + 1, true);
+  var r = window.topPlusSelf(entries, me, 10); // top-10 (each with .rank) + self-row if below the cut
+  rows.innerHTML = r.visible.map(rowHtml).join('');
+  if(you && r.self){
+    you.innerHTML = '<div class="lb-you-label">Your rank</div>' + rowHtml(r.self);
     you.className = 'lb-you show';
   }
 }

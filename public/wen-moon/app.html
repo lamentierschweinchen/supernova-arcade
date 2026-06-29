@@ -460,27 +460,12 @@ async function arcadeReady() {
   return await arcade.ready().catch(() => false);
 }
 
-// Generic onchain query — calls a SC view endpoint
-async function scQuery(func, args = []) {
-  const url = `${ARCADE_CONFIG.apiBase}/vm-values/query`;
-  const body = { scAddress: ARCADE_CONFIG.contract, funcName: func, args };
-  const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  if (!r.ok) throw new Error("query failed: " + r.status);
-  const data = await r.json();
-  return data.data?.data?.returnData || [];
-}
-
 function decodeU64(b64) {
   if (!b64) return 0;
   const bytes = atob(b64);
   let v = 0n;
   for (let i = 0; i < bytes.length; i++) v = (v << 8n) | BigInt(bytes.charCodeAt(i));
   return Number(v);
-}
-
-function encodeAddress(addr) {
-  // bech32 decode → hex. For now, pass as hex arg to query.
-  return ""; // placeholder — queries that need address use a different path
 }
 
 // Read global actions
@@ -498,15 +483,6 @@ async function fetchBankroll(address) {
 // addresses, so the "you" row below matches the passport address correctly.
 async function fetchLeaderboard(n) {
   return await arcade.getLeaderboard(n);
-}
-
-// Send a gasless tx via relay
-async function relayTx(endpoint, args) {
-  const body = JSON.stringify({ game: "wenmoon", endpoint, args, chainId: ARCADE_CONFIG.chainId });
-  const r = await fetch("/api/relay", { method: "POST", headers: { "Content-Type": "application/json" }, body,
-    signal: AbortSignal.timeout(15000) });
-  if (!r.ok) { const t = await r.text().catch(()=>""); throw new Error("relay error: " + r.status + " " + t); }
-  return r.json(); // { txHash, explorerUrl, result? }
 }
 
 async function pollTx(txHash, maxMs = 12000) {
@@ -663,18 +639,74 @@ async function onCall() {
   }
 }
 
+// Decode the contract's `callResult` event — the authoritative outcome, so we
+// never re-read a chain value that Elastic may still be lagging behind.
+//
+// Event shape (from the contract ABI):
+//   topics = ["callResult" name, player(32)]   ← indexed, ignored here
+//   data   = ONE non-indexed arg: the CallResult struct, nested-encoded.
+//
+// CallResult is all fixed-width primitives, so nested encoding is just the
+// fields back-to-back, big-endian, with NO length prefixes (50 bytes total):
+//   run_id u64(8) call_id u64(8) band u8(1) wager u64(8)
+//   moon bool(1) delta u64(8) new_bankroll u64(8) seed u64(8)
+const CALL_RESULT_LEN = 50;
+
+function b64ToBytes(b64) {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+function readU64(bytes, off) {
+  let v = 0n;
+  for (let i = 0; i < 8; i++) v = (v << 8n) | BigInt(bytes[off + i]);
+  return v; // BigInt — full u64 precision (seed can exceed 2^53)
+}
+
+function decodeCallResult(bytes) {
+  if (!bytes || bytes.length < CALL_RESULT_LEN) return null;
+  let off = 0;
+  const runId = readU64(bytes, off); off += 8;
+  const callId = readU64(bytes, off); off += 8;
+  const band = bytes[off]; off += 1;
+  const wager = readU64(bytes, off); off += 8;
+  const moon = bytes[off] !== 0; off += 1;
+  const delta = readU64(bytes, off); off += 8;
+  const newBankroll = readU64(bytes, off); off += 8;
+  const seed = readU64(bytes, off); off += 8;
+  return {
+    runId: Number(runId),
+    callId: Number(callId),
+    band,
+    wager: Number(wager),       // game amounts are small — safe as Number for UI/math
+    moon,
+    delta: Number(delta),
+    newBankroll: Number(newBankroll),
+    seed,                       // keep as BigInt for the verify line
+  };
+}
+
 function parseCallResult(txData) {
-  // Parse callResult event from the transaction logs
+  // Find the callResult event and decode its data field.
   try {
-    const logs = txData.logs?.events || [];
-    for (const ev of logs) {
-      if (ev.identifier === "callResult") {
-        // topics: [player, run_id, call_id, band] — data has remaining fields
-        // For now, just read the new bankroll from chain state after the tx
-        return null; // let the caller do a chain read
-      }
+    const events = txData?.logs?.events || [];
+    const wanted = btoa("callResult"); // base64 of the event name, for topic-match fallback
+    for (const ev of events) {
+      const isCallResult =
+        ev.identifier === "callResult" ||
+        (Array.isArray(ev.topics) && ev.topics[0] === wanted);
+      if (!isCallResult) continue;
+      // The non-indexed struct lands in `data` (base64). Newer API variants may
+      // expose it as additionalData[0] instead.
+      const raw = ev.data || (Array.isArray(ev.additionalData) ? ev.additionalData[0] : null);
+      if (!raw) continue;
+      const decoded = decodeCallResult(b64ToBytes(raw));
+      if (decoded) return decoded;
     }
-  } catch {}
+  } catch (err) {
+    console.warn("[wenmoon] callResult decode failed:", err);
+  }
   return null;
 }
 

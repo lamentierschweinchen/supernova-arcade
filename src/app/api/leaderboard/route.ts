@@ -24,6 +24,7 @@ import {
   isPlaceholder,
 } from "@/lib/onchain/arcade.config";
 import { TAP_COUNTER_CONTRACT } from "@/lib/onchain/tap-counter.config";
+import { ONCHAIN_LEADERBOARD_CONTRACT } from "@/lib/onchain/leaderboard.config";
 import { Address } from "@multiversx/sdk-core";
 
 export const dynamic = "force-dynamic";
@@ -94,8 +95,15 @@ type GameCfg = { contract: string; scoreMapper?: string; view?: string; pointsVi
 const GAME_BOARDS: Record<string, GameCfg> = {
   tugofwar: { contract: TUGOFWAR_CONTRACT, scoreMapper: "playerPulls" },
   canvas: { contract: CANVAS_CONTRACT, scoreMapper: "playerPixels" },
-  button: { contract: BUTTON_CONTRACT, scoreMapper: "playerPoints" },
+  // Rank by best single wait (seconds) — matches getTopPressers, the "Your best
+  // wait" stat, the "Bravest pressers" title, and the cabinet's "Xs" display.
+  // (Was playerPoints/cumulative, which the client mislabeled with an "s" suffix.)
+  button: { contract: BUTTON_CONTRACT, scoreMapper: "bestWait" },
   reaction: { contract: REACTION_CONTRACT, scoreMapper: "reactions" },
+  // Sprint's own board contract (NOT the tap-counter). Its getTopPoints returns
+  // points=0 and getLeaderboard OOMs; the real scores live in bestScore storage,
+  // which is player-scaling — so storage-parse, same as the arcade-core games.
+  sprint: { contract: ONCHAIN_LEADERBOARD_CONTRACT, scoreMapper: "bestScore" },
   degendash: { contract: DEGENDASH_CONTRACT, view: "getLeaderboard", pointsView: "getTopPoints" },
   wenmoon: { contract: WENMOON_CONTRACT, view: "getLeaderboard", pointsView: "getTopPoints" },
   clawback: { contract: CLAWBACK_CONTRACT, view: "getLeaderboard", pointsView: "getTopPoints" },

@@ -199,6 +199,19 @@
 
   @media (prefers-reduced-motion: reduce) { .item.big.good .tok { animation: none; } }
   @media (max-width: 430px) { .arena:not(:has(#center .final)) { height: 366px; } }
+  /* Narrow screens: the header row (back + wordmark + shard + injected info "i" +
+     sound toggle) overflows ~48px at 375px. Tighten the gaps and drop the sound
+     toggle's "Sound" text label so it collapses to a compact icon button — every
+     control stays present and tappable, the row just fits. (The info + sound buttons
+     are injected by /arcade-info.js + /arcade-sound.js into .abar after this style,
+     so the label-hide needs !important.) */
+  @media (max-width: 400px) {
+    .abar { gap: 7px; }
+    .abar .back { padding-left: 8px; padding-right: 8px; }
+    .abar .shard { padding: 4px 7px; }
+    .abar .sound-toggle { padding: 6px 9px; }
+    .abar .sound-toggle .st-label { display: none !important; }
+  }
 
   /* === RESULT STATE: expand arena out of fixed-height play box === */
   #arena:has(#center .final) { height: auto; overflow: visible; }
@@ -756,10 +769,22 @@ async function endRoundFlow(dead) {
 }
 async function finalizeOnchain(dead) {
   showCenter(`<div class="spin"></div><p>${dead ? "Wrecked!" : "Run over."} Saving your run onchain…</p>`);
-  // endRound finalizes immediately (the contract records on death — no round-timer
-  // wait); the retry only guards a relay/indexer hiccup, so it lands in ~one confirm.
+  // endRound finalizes the score onchain. We must send AT MOST ONE successful endRound:
+  // every redundant send burns the relayer's full gas and reverts (the contract rejects
+  // a second endRound as "round already ended", and an early one as "round not over yet").
+  // So: (1) re-read the round each loop and STOP the moment it's ended — never re-fire
+  // over a confirm/indexer lag; (2) on the timer path, hold the first send until the
+  // contract's round window has actually elapsed (death finalizes immediately, so it's
+  // already over and skips the wait). The reveal/score fallback below still runs if the
+  // chain is slow, so the player always sees a result.
   let ended = false;
   for (let i = 0; i < 12 && !ended; i++) {
+    // never send if it's already done — kills the "round already ended" reverts
+    const pre = await arcade.getRound().catch(() => null);
+    if (pre && pre.ended) { ended = true; break; }
+    // don't send before the round is really over — kills the "round not over yet" reverts.
+    // death records immediately; only the timer path needs to wait for the contract window.
+    if (!dead && now() < G.startMs + cfg.roundLengthMs) { await wait(1500); continue; }
     try { await arcade.endRound(G.roundId); } catch (err) { /* relay hiccup — retry */ }
     await wait(1500);
     const r = await arcade.getRound().catch(() => null);

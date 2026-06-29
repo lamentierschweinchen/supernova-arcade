@@ -241,6 +241,11 @@ function showResult({ raidWon, pending = false }) {
   S.resultFinal = !pending;
   S.combatReady = false;
   S.phase = "ended";
+  // The run is over: push any of the player's still-unsettled hits onchain now
+  // rather than waiting on the throttled pump, which may never fire if the tab
+  // is about to close. Deduped against settlementSentThrough, so a kill already
+  // flushed in handleHeadClick is not sent twice.
+  flushAllPendingSettlements();
   render();
 
   const eliminated = S.lives === 0;
@@ -434,6 +439,37 @@ function readySettlementTarget(raidId, target) {
   return Math.min(target, Math.max(-1, attackAtTime(readyAt, raidId) - 1));
 }
 
+// One resolveMiss settles the hub *through* `attackId` (nextSettlement advances
+// past it). All settlement sends — the throttled pump and the immediate
+// kill/end flush — funnel through here so the bookkeeping stays identical and
+// nothing double-sends: settlementInFlight is the single in-flight guard, and
+// settlementSentThrough records the high-water mark the pump checks against.
+async function sendSettlement(raidId, attackId) {
+  if (attackId < 0) return false;
+  if ((S.settlementSentThrough.get(raidId) ?? -1) >= attackId) return false;
+  const head = expectedHead(attackId, raidId);
+  try {
+    await client.sendActionTo(
+      HEADS[head],
+      "resolveMiss",
+      [client.u64ToHex(raidId), client.u64ToHex(attackId)],
+      RESOLVE_GAS,
+    );
+    const sentThrough = S.settlementSentThrough.get(raidId) ?? -1;
+    if (attackId > sentThrough) S.settlementSentThrough.set(raidId, attackId);
+    if ((S.settlementTargets.get(raidId) ?? -1) <= attackId) {
+      S.settlementTargets.delete(raidId);
+    }
+    return true;
+  } catch {
+    setStatus(
+      "warn",
+      "The raid is reconnecting. Keep playing.",
+    );
+    return false;
+  }
+}
+
 async function pumpResolutions() {
   if (!S.live || S.settlementInFlight) return;
   let candidate = null;
@@ -447,28 +483,55 @@ async function pumpResolutions() {
   }
   if (!candidate) return;
 
-  const { raidId, attackId } = candidate;
-  const head = expectedHead(attackId, raidId);
   S.settlementInFlight = true;
   try {
-    await client.sendActionTo(
-      HEADS[head],
-      "resolveMiss",
-      [client.u64ToHex(raidId), client.u64ToHex(attackId)],
-      RESOLVE_GAS,
-    );
-    S.settlementSentThrough.set(raidId, attackId);
-    if ((S.settlementTargets.get(raidId) ?? -1) <= attackId) {
-      S.settlementTargets.delete(raidId);
-    }
-  } catch {
-    setStatus(
-      "warn",
-      "The raid is reconnecting. Keep playing.",
-    );
+    await sendSettlement(candidate.raidId, candidate.attackId);
   } finally {
     S.settlementInFlight = false;
   }
+}
+
+// Bypass the ~grace throttle for one decisive settlement: the killing blow (or
+// the last hit before the raid ends) must reach the hub even if the player
+// closes the tab immediately, otherwise award_hit never runs and the score +
+// shared HP under-count. Still respects settlementInFlight / settlementSentThrough,
+// so it never races or duplicates the pump's normal mid-raid sends.
+async function flushSettlementNow(raidId, attackId) {
+  if (!S.live || attackId < 0) return;
+  if ((S.settlementSentThrough.get(raidId) ?? -1) >= attackId) return;
+  while (S.settlementInFlight) {
+    await new Promise((resolve) => window.setTimeout(resolve, 60));
+    if ((S.settlementSentThrough.get(raidId) ?? -1) >= attackId) return;
+  }
+  S.settlementInFlight = true;
+  try {
+    await sendSettlement(raidId, attackId);
+  } finally {
+    S.settlementInFlight = false;
+  }
+}
+
+// Best-effort sweep of every still-pending attack when the run ends or the tab
+// goes away. Settling through the highest pending attack clears all lower ones
+// in a single hub call, so the player's landed hits are not lost on exit.
+function flushAllPendingSettlements() {
+  if (!S.live) return;
+  let pendingMax = -1;
+  let pendingRaid = -1;
+  for (const pending of S.pendingHits.values()) {
+    if (pending.raidId === S.raidId && pending.attackId > pendingMax) {
+      pendingMax = pending.attackId;
+      pendingRaid = pending.raidId;
+    }
+  }
+  const targetForRaid = S.settlementTargets.get(S.raidId) ?? -1;
+  if (targetForRaid > pendingMax) {
+    pendingMax = targetForRaid;
+    pendingRaid = S.raidId;
+  }
+  if (pendingMax < 0) return;
+  if ((S.settlementSentThrough.get(pendingRaid) ?? -1) >= pendingMax) return;
+  void flushSettlementNow(pendingRaid, pendingMax);
 }
 
 async function submitHit(head, raidId, attackId) {
@@ -509,11 +572,13 @@ function handleHeadClick(head) {
   S.localResponses.set(attackId, head);
   scheduleResolution(raidId, attackId);
 
+  let decisiveKill = false;
   if (head === S.activeHead) {
     S.pendingHits.set(responseKey, { raidId, attackId });
     showCorrectHit(head);
     if (visibleHydraHp() === 0) {
       S.combatReady = false;
+      decisiveKill = true;
       setInstruction("hit", "FINAL BLOW", "The Hydra is falling.");
       setStatus("ok", "The shared fight is over.");
       render();
@@ -522,7 +587,15 @@ function handleHeadClick(head) {
     showBite("wrong", head);
   }
 
-  if (S.live) void submitHit(head, raidId, attackId);
+  if (S.live) {
+    void (async () => {
+      await submitHit(head, raidId, attackId);
+      // The killing blow must settle now (not on the throttled pump) so it
+      // lands onchain even if the tab closes the instant the Hydra dies. The
+      // hit must register at the hub first, hence after submitHit resolves.
+      if (decisiveKill) await flushSettlementNow(raidId, attackId);
+    })();
+  }
   else if (head === S.activeHead) {
     S.score += 1;
     S.raidHits += 1;
@@ -1061,7 +1134,20 @@ $("handle")?.addEventListener("keydown", (e) => {
 }
 renderBoard();
 S.boardTimer = window.setInterval(renderBoard, 2500);
+// Best-effort: if the player leaves mid-flight with hits not yet settled (e.g.
+// closes the tab right after the killing blow), try once more to push them
+// onchain before teardown. It is fine if this does not complete — the kill path
+// already flushes the decisive hit — but the attempt recovers the common case.
+function flushSettlementsOnExit() {
+  if (!S.live) return;
+  flushAllPendingSettlements();
+}
+window.addEventListener("pagehide", flushSettlementsOnExit);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") flushSettlementsOnExit();
+});
 window.addEventListener("beforeunload", () => {
+  flushSettlementsOnExit();
   clearNextTimer();
   if (S.frame) window.cancelAnimationFrame(S.frame);
   if (S.refreshTimer) window.clearInterval(S.refreshTimer);

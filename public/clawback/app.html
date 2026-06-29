@@ -248,6 +248,20 @@
   @keyframes pulse { 0%,100% { opacity: 0.35; } 50% { opacity: 1; } }
   .screen .play { width: 100%; display: flex; flex-direction: column; gap: 12px; align-items: stretch; }
 
+  /* Narrow screens: the header row (back + wordmark + shard + injected info "i" +
+     sound toggle) overflows ~48px at 375px. Tighten the gaps and drop the sound
+     toggle's "Sound" text label so it collapses to a compact icon button — every
+     control stays present and tappable, the row just fits. (The info + sound buttons
+     are injected by /arcade-info.js + /arcade-sound.js into .abar after this style,
+     so the label-hide needs !important.) */
+  @media (max-width: 400px) {
+    .abar { gap: 7px; }
+    .abar .back { padding-left: 8px; padding-right: 8px; }
+    .abar .shard { padding: 4px 7px; }
+    .abar .sound-toggle { padding: 6px 9px; }
+    .abar .sound-toggle .st-label { display: none !important; }
+  }
+
   /* === RESULT STATE: expand arena out of the fixed-height play box === */
   /* :has(.final) only fires when result is showing; spinner/start never have .final */
   #arena:has(#center .final) { height: auto; overflow: visible; }
@@ -774,12 +788,22 @@ async function endRoundFlow() {
   if (!onchain) return reveal(localFinal(), 0, true);
 
   showCenter(`<div class="spin"></div><p>Round over. Tallying your final balance onchain…</p>`);
-  // endRound must actually EXECUTE (not just relay) to record the score and put you
-  // on the board. It only succeeds once the BLOCK timestamp passes start+length —
-  // Supernova blocks trail wall-clock slightly, so the first send can revert as
-  // "round not over yet". Resend until getRound reports ended (not until relay-ack).
+  // endRound must actually EXECUTE (not just relay) to record the score and put you on
+  // the board. We must send AT MOST ONE successful endRound: every redundant send burns
+  // the relayer's full gas and reverts. endRound only succeeds once the BLOCK timestamp
+  // passes start+length; the contract rejects an early send as "round not over yet" and
+  // a second send as "round already ended". So: (1) re-read the round each loop and STOP
+  // the moment it's ended — never re-fire over a confirm/indexer lag; (2) hold the first
+  // send until the contract's round window has actually elapsed (we end on the trimmed
+  // local timer, which can be earlier than start+length, and Supernova blocks trail
+  // wall-clock besides). The local-final fallback below still runs if the chain is slow.
   let ended = false;
   for (let i = 0; i < 12 && !ended; i++) {
+    // never send if it's already done — kills the "round already ended" reverts
+    const pre = await arcade.getRound().catch(() => null);
+    if (pre && pre.ended) { ended = true; break; }
+    // don't send before the contract's round window is up — kills "round not over yet"
+    if (now() < G.startMs + cfg.roundLengthMs) { await wait(1500); continue; }
     try { await arcade.endRound(G.roundId); } catch (err) { /* relay hiccup — retry */ }
     await wait(1500);
     const r = await arcade.getRound().catch(() => null);
