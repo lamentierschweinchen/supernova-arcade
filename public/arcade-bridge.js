@@ -45,15 +45,17 @@
   // ---- which game is this? (mirrors arcade-sound.js / arcade-info.js) ----
   function gameFromPath(p) {
     p = (p || "").toLowerCase();
-    // before the generic /canvas/ test below — /three-shard-canvas also contains "canvas"
-    if (/three[-_]?shard[-_]?canvas|triptych/.test(p)) return "triptych";
+    // /canvas IS the three-shard triptych now (the canvas evolved into it); the old
+    // single board is parked at /canvas-classic. Test classic FIRST so it isn't
+    // swallowed by the /canvas/ match that now resolves to the triptych.
+    if (/canvas[-_]classic/.test(p)) return "canvas";
+    if (/three[-_]?shard[-_]?canvas|triptych|canvas/.test(p)) return "triptych";
     if (/degen[-_]?dash/.test(p)) return "degendash";
     if (/wen[-_]?moon/.test(p)) return "wenmoon";
     if (/clawback/.test(p)) return "clawback";
     if (/reaction/.test(p)) return "reaction";
     if (/shard[-_]?hydra|shardhydra/.test(p)) return "shardhydra";
     if (/button/.test(p)) return "button";
-    if (/canvas/.test(p)) return "canvas";
     if (/tug[-_]?of[-_]?war|tugofwar/.test(p)) return "tugofwar";
     if (/supernova[-_]?sprint/.test(p)) return "supernova-sprint";
     if (/sprint|onchain/.test(p)) return "sprint";
