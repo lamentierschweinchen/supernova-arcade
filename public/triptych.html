@@ -152,7 +152,9 @@
          between the main board and the wings one tap. */
       @media (max-width: 600px) {
         .triptych { grid-template-columns: 1fr 1fr; gap: 16px 26px; align-items: start; column-gap: 26px; }
-        .panel.center { grid-column: 1 / 3; grid-row: 1; max-width: 84%; margin: 0 auto 2px; }
+        /* full grid width — the center is the main board and must stay at least as
+           tappable as the old single canvas (~9.3px/cell); an 84% cap shrank it. */
+        .panel.center { grid-column: 1 / 3; grid-row: 1; max-width: 100%; margin: 0 auto 2px; }
         .panel.wing.left  { grid-column: 1; grid-row: 2; }
         .panel.wing.right { grid-column: 2; grid-row: 2; }
         /* The swing-open hinge reveal is a DESKTOP flourish — the wings flank the
