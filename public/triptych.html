@@ -155,6 +155,12 @@
         .panel.center { grid-column: 1 / 3; grid-row: 1; max-width: 84%; margin: 0 auto 2px; }
         .panel.wing.left  { grid-column: 1; grid-row: 2; }
         .panel.wing.right { grid-column: 2; grid-row: 2; }
+        /* The swing-open hinge reveal is a DESKTOP flourish — the wings flank the
+           center and rotateY open from the hinge. On mobile the wings sit BELOW the
+           center, so that rotation does nothing useful, and if it's throttled mid-
+           swing it leaves the wings collapsed edge-on (~47px slivers ≈ invisible —
+           they read as "not there"). Kill it on mobile: the panels just appear flat. */
+        .panel.wing.left, .panel.wing.right, .panel.center { animation: none; transform: none; }
         .seam { display: none; }
         /* a bold divider between the two wings — two distinct shards, not one board */
         .wing.left::after { content: ""; position: absolute; top: 4%; bottom: 22%; right: -14px; width: 2px;
@@ -241,6 +247,10 @@
 
       const COOLDOWN_MS = 500; // mirrors the contract
       const SCALE = 16;        // internal px per cell (crisp pixelation)
+      // Announcement/preview mode (?announce): fill the not-yet-deployed wings with a
+      // cool MvX color so an expansion screenshot reads complete. Off by default, so
+      // the live page honestly shows undeployed wings as empty/"warming up".
+      const ANNOUNCE = new URLSearchParams(location.search).has("announce");
       const PALETTE = [
         "#0e1320", "#F4F6FA", "#23F7DD", "#5B8DEF", "#A78BFA", "#F5B544", "#FF6B9D", "#4ADE80",
         "#9BA3B4", "#6B7385", "#1ec8b4", "#3a6fc4", "#7a5bd0", "#c98f2e", "#cf4f7e", "#2fae5f",
@@ -317,6 +327,18 @@
           cv.addEventListener("pointermove", (e) => aim(b, e));
           cv.addEventListener("pointerdown", (e) => { focusBoard(b.idx, false); aim(b, e); });
           cv.addEventListener("pointerleave", () => b.sel.classList.remove("show"));
+          drawBoard(b);
+        });
+      }
+
+      // fill the wings solid with their cool shard tint (blue s1 / lavender s2) for
+      // the expansion announcement. Wings only — the center keeps the real mural.
+      function announceFillWings() {
+        BOARDS.forEach((b) => {
+          if (b.role === "center") return;
+          const idx = Math.max(1, PALETTE.indexOf(b.tint)); // the wing's tint is in the palette
+          b.board.fill(idx);
+          b.el.classList.remove("pending-deploy"); // drop the "warming up" dim
           drawBoard(b);
         });
       }
@@ -492,6 +514,7 @@
       // ---------- poll onchain (each board independently → parallel shards) ----------
       async function pollBoard(b) {
         if (!b.live) return;
+        if (ANNOUNCE && b.role !== "center") return; // keep the announce solid-fill on the wings
         const canvas = await client.query("getCanvas", [], b.contract);
         if (canvas && canvas.length) {
           const bytes = client.b64ToBytes(canvas[0]);
@@ -543,6 +566,7 @@
 
       (async function () {
         buildPalette(); buildPanels(); buildNav(); focusBoard(centerIdx, false); render();
+        if (ANNOUNCE) announceFillWings(); // expansion screenshot: solid cool wings
         { const h = getHandle(); if (h && $("nameInput")) $("nameInput").value = h; }
         const live = anyLive();
         if (!live) setStatus("warn", "Local preview. Paint freely; placements go onchain as a shared mural once the wings are live.");
