@@ -98,15 +98,15 @@ const S = {
   config: {
     raidDuration: 60_000,
     maxLives: 3,
-    progressive: true, // HARD MODE: continuous ramp, reaction window 2.94s -> 1.2s over ~28 attacks
+    progressive: true, // HARD MODE: continuous ramp, reaction window 1.5s -> 0.65s by ~attack 13 (then held)
     firstAttacks: 6,
     firstWindow: 2_600,
     secondWindow: 2_200,
     finalWindow: 1_800,
-    rampAttacks: 29,
-    startWindow: 2_940,
-    windowStep: 62,
-    minWindow: 1_200,
+    rampAttacks: 13,
+    startWindow: 1_500,
+    windowStep: 70,
+    minWindow: 650,
     settlementGrace: 5_000,
   },
 };
