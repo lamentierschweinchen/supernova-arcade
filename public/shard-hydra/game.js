@@ -98,7 +98,7 @@ const S = {
   config: {
     raidDuration: 60_000,
     maxLives: 3,
-    progressive: false,
+    progressive: true, // HARD MODE: continuous ramp, reaction window 2.94s -> 1.2s over ~28 attacks
     firstAttacks: 6,
     firstWindow: 2_600,
     secondWindow: 2_200,
