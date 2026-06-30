@@ -149,6 +149,7 @@ export const CASHOUT_FUNCTION = "cashOut";
 export const JOIN_RAID_FUNCTION = "joinRaid";
 export const HIT_FUNCTION = "hit";
 export const RESOLVE_MISS_FUNCTION = "resolveMiss";
+export const SETTLE_PLAYER_FUNCTION = "settlePlayer";
 
 /**
  * Gas ceilings. `pull` does a handful of small storage writes (plus, on a round
@@ -183,6 +184,7 @@ export const CASHOUT_GAS_LIMIT = 12_000_000;
 export const JOIN_RAID_GAS_LIMIT = 10_000_000;
 export const HIT_GAS_LIMIT = 14_000_000;
 export const RESOLVE_MISS_GAS_LIMIT = 30_000_000;
+export const SETTLE_PLAYER_GAS_LIMIT = 30_000_000;
 
 /**
  * True when an address is still the undeployed placeholder. The relayer uses

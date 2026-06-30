@@ -5,6 +5,13 @@ import {
 import { mountGalaxy } from "/arcade-galaxy.js";
 import { topPlusSelf, fetchGameBoard, BOARD_GAP } from "/arcade-board.js";
 import { getHandle, setHandle as savePassportHandle, getAddress } from "/passport.js";
+import {
+  monotonicHp,
+  runOwnsRaid,
+  settlementEligibleAt,
+  settlementRetryDue,
+  snapshotCanApply,
+} from "/shard-hydra/state.mjs";
 
 mountGalaxy({ intensity: 0.5, focusShard: 0 });
 
@@ -21,7 +28,9 @@ const HEADS = [
 ];
 const JOIN_GAS = 10_000_000;
 const HIT_GAS = 14_000_000;
-const RESOLVE_GAS = 30_000_000;
+const SETTLE_GAS = 30_000_000;
+const SETTLEMENT_RETRY_MS = 3_000;
+const VICTORY_REVEAL_MS = 400;
 const REVIEW_ATTACK_ORDER = [1, 0, 2, 1, 2, 0, 0, 2, 1, 0, 1, 2];
 const U64_MASK = (1n << 64n) - 1n;
 
@@ -36,6 +45,8 @@ const S = {
   resultShown: false,
   resultFinal: false,
   frozen: Boolean(reviewState),
+  runToken: 0,
+  activeRunRaidId: 0,
   raidId: 0,
   raidStartedAt: 0,
   raidDeadline: 0,
@@ -47,11 +58,13 @@ const S = {
   responseHead: -1,
   phase: "waiting",
   hp: 24,
+  visualHp: 24,
   maxHp: 24,
   lives: 3,
   chainLives: 3,
   score: 0,
   raidHits: 0,
+  localHits: 0,
   raidAttempts: 0,
   wrongHits: 0,
   timeouts: 0,
@@ -68,9 +81,13 @@ const S = {
   localResponses: new Map(),
   pendingHits: new Map(),
   settlementTargets: new Map(),
-  settlementSentThrough: new Map(),
+  settlementRequests: new Map(),
+  settlementConfirmedThrough: new Map(),
   settlementInFlight: false,
   settlementTimer: 0,
+  refreshInFlight: false,
+  refreshSequence: 0,
+  appliedRefreshSequence: 0,
   raidContexts: new Map(),
   offeredRaidId: 0,
   offerScheduledRaidId: 0,
@@ -184,11 +201,12 @@ function setStatus(kind, copy) {
 
 function raidAccuracy() {
   if (!S.raidAttempts) return 0;
-  return Math.min(100, Math.round((S.raidHits / S.raidAttempts) * 100));
+  return Math.min(100, Math.round((S.localHits / S.raidAttempts) * 100));
 }
 
 function resetRunStats() {
   S.raidHits = 0;
+  S.localHits = 0;
   S.raidAttempts = 0;
   S.wrongHits = 0;
   S.timeouts = 0;
@@ -241,11 +259,7 @@ function showResult({ raidWon, pending = false }) {
   S.resultFinal = !pending;
   S.combatReady = false;
   S.phase = "ended";
-  // The run is over: push any of the player's still-unsettled hits onchain now
-  // rather than waiting on the throttled pump, which may never fire if the tab
-  // is about to close. Deduped against settlementSentThrough, so a kill already
-  // flushed in handleHeadClick is not sent twice.
-  flushAllPendingSettlements();
+  clearNextTimer();
   render();
 
   const eliminated = S.lives === 0;
@@ -262,19 +276,21 @@ function showResult({ raidWon, pending = false }) {
     reason = "You survived and the team dealt all 24 damage.";
   } else if (eliminated) {
     title = "THE HYDRA ESCAPED";
-    reason = `Three bites ended your run. The Hydra escaped with ${S.hp} HP.`;
+    reason = `Three bites ended your run. The Hydra escaped with ${visibleHydraHp()} HP.`;
   } else {
     title = "THE HYDRA ESCAPED";
-    reason = `Time expired with ${S.hp} Hydra HP remaining.`;
+    reason = `Time expired with ${visibleHydraHp()} Hydra HP remaining.`;
   }
 
   $("resultKicker").textContent = pending ? "Your run is over" : raidWon ? "Raid won" : "Raid lost";
   $("resultTitle").textContent = title;
   $("resultReason").textContent = reason;
+  // Arcade score is always the value read back from the hub. Immediate local
+  // feedback lives in HP, accuracy, and streak instead.
   $("resultDamage").textContent = String(S.raidHits);
   $("resultAccuracy").textContent = `${raidAccuracy()}%`;
   $("resultStreak").textContent = String(S.bestStreak);
-  $("resultHp").textContent = String(S.hp);
+  $("resultHp").textContent = String(visibleHydraHp());
   $("resultCause").textContent = eliminated
     ? `${biteSummary()} ended your run.`
     : `${S.lives} ${S.lives === 1 ? "life" : "lives"} remaining.`;
@@ -297,15 +313,7 @@ function showResult({ raidWon, pending = false }) {
 }
 
 function visibleHydraHp() {
-  return Math.max(0, S.hp - S.pendingHits.size);
-}
-
-function removeOldestPendingHits(count) {
-  for (const key of S.pendingHits.keys()) {
-    if (count <= 0) break;
-    S.pendingHits.delete(key);
-    count -= 1;
-  }
+  return Math.max(0, S.visualHp);
 }
 
 function updateStats() {
@@ -375,6 +383,23 @@ function clearNextTimer() {
   S.nextTimer = 0;
 }
 
+function finishVictory() {
+  if (S.resultShown || S.phase === "victory") return;
+  S.visualHp = 0;
+  S.combatReady = false;
+  S.phase = "victory";
+  clearNextTimer();
+  setInstruction("hit", "HYDRA SLAIN", "You landed the final blow.");
+  setStatus("ok", "The Hydra is down.");
+  $("mode").textContent = "Raid won";
+  $("screen").classList.add("victory");
+  render();
+  window.setTimeout(() => {
+    $("screen").classList.remove("victory");
+    showResult({ raidWon: true });
+  }, VICTORY_REVEAL_MS);
+}
+
 function showDamage() {
   const pop = $("damagePop");
   pop.classList.remove("show");
@@ -417,6 +442,7 @@ function showCorrectHit(head) {
   S.phase = "hit";
   S.responseHead = head;
   S.raidAttempts += 1;
+  S.localHits += 1;
   S.currentStreak += 1;
   S.bestStreak = Math.max(S.bestStreak, S.currentStreak);
   setInstruction("hit", "HIT · HYDRA HURT", "−1 Hydra HP. Watch for the next head.");
@@ -429,6 +455,20 @@ function scheduleResolution(raidId, attackId) {
   if (!S.live) return;
   const previous = S.settlementTargets.get(raidId) ?? -1;
   if (attackId > previous) S.settlementTargets.set(raidId, attackId);
+  const player = client.address;
+  if (!player) return;
+  const eligibleAt = settlementEligibleAt(
+    attackBounds(attackId, raidId)[1],
+    S.config.settlementGrace,
+  );
+  void fetch("/api/hydra/settle", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ player, raidId, attackId, eligibleAt }),
+    keepalive: true,
+  }).catch(() => {
+    // The in-page settlement pump remains active as the immediate fallback.
+  });
 }
 
 function readySettlementTarget(raidId, target) {
@@ -439,29 +479,41 @@ function readySettlementTarget(raidId, target) {
   return Math.min(target, Math.max(-1, attackAtTime(readyAt, raidId) - 1));
 }
 
-// One resolveMiss settles the hub *through* `attackId` (nextSettlement advances
-// past it). All settlement sends — the throttled pump and the immediate
-// kill/end flush — funnel through here so the bookkeeping stays identical and
-// nothing double-sends: settlementInFlight is the single in-flight guard, and
-// settlementSentThrough records the high-water mark the pump checks against.
 async function sendSettlement(raidId, attackId) {
   if (attackId < 0) return false;
-  if ((S.settlementSentThrough.get(raidId) ?? -1) >= attackId) return false;
-  const head = expectedHead(attackId, raidId);
+  const confirmedThrough = S.settlementConfirmedThrough.get(raidId) ?? 0;
+  const previous = S.settlementRequests.get(raidId);
+  if (!settlementRetryDue({
+    confirmedThrough,
+    attackId,
+    previousRequest: previous,
+    now: chainNow(),
+    retryMs: SETTLEMENT_RETRY_MS,
+  })) {
+    return false;
+  }
+  const player = client.addressHex();
+  if (!player) return false;
   try {
-    await client.sendActionTo(
-      HEADS[head],
-      "resolveMiss",
-      [client.u64ToHex(raidId), client.u64ToHex(attackId)],
-      RESOLVE_GAS,
+    const receipt = await client.sendAction(
+      "settlePlayer",
+      [player, client.u64ToHex(raidId), client.u64ToHex(attackId)],
+      SETTLE_GAS,
     );
-    const sentThrough = S.settlementSentThrough.get(raidId) ?? -1;
-    if (attackId > sentThrough) S.settlementSentThrough.set(raidId, attackId);
-    if ((S.settlementTargets.get(raidId) ?? -1) <= attackId) {
-      S.settlementTargets.delete(raidId);
-    }
+    // Relay acceptance is not settlement. Keep the target queued until the
+    // hub's nextSettlement value proves that this attack was processed.
+    S.settlementRequests.set(raidId, {
+      attackId,
+      sentAt: chainNow(),
+      txHash: receipt.txHash,
+    });
     return true;
   } catch {
+    S.settlementRequests.set(raidId, {
+      attackId,
+      sentAt: chainNow() - SETTLEMENT_RETRY_MS + 750,
+      txHash: "",
+    });
     setStatus(
       "warn",
       "The raid is reconnecting. Keep playing.",
@@ -475,8 +527,8 @@ async function pumpResolutions() {
   let candidate = null;
   for (const [raidId, target] of S.settlementTargets) {
     const readyThrough = readySettlementTarget(raidId, target);
-    const sentThrough = S.settlementSentThrough.get(raidId) ?? -1;
-    if (readyThrough > sentThrough) {
+    const confirmedThrough = S.settlementConfirmedThrough.get(raidId) ?? 0;
+    if (readyThrough >= confirmedThrough) {
       candidate = { raidId, attackId: readyThrough };
       break;
     }
@@ -491,64 +543,33 @@ async function pumpResolutions() {
   }
 }
 
-// Bypass the ~grace throttle for one decisive settlement: the killing blow (or
-// the last hit before the raid ends) must reach the hub even if the player
-// closes the tab immediately, otherwise award_hit never runs and the score +
-// shared HP under-count. Still respects settlementInFlight / settlementSentThrough,
-// so it never races or duplicates the pump's normal mid-raid sends.
-async function flushSettlementNow(raidId, attackId) {
-  if (!S.live || attackId < 0) return;
-  if ((S.settlementSentThrough.get(raidId) ?? -1) >= attackId) return;
-  while (S.settlementInFlight) {
-    await new Promise((resolve) => window.setTimeout(resolve, 60));
-    if ((S.settlementSentThrough.get(raidId) ?? -1) >= attackId) return;
-  }
-  S.settlementInFlight = true;
+async function submitHit(head, raidId, attackId, attempt = 0) {
+  const key = `${raidId}:${attackId}`;
   try {
-    await sendSettlement(raidId, attackId);
-  } finally {
-    S.settlementInFlight = false;
-  }
-}
-
-// Best-effort sweep of every still-pending attack when the run ends or the tab
-// goes away. Settling through the highest pending attack clears all lower ones
-// in a single hub call, so the player's landed hits are not lost on exit.
-function flushAllPendingSettlements() {
-  if (!S.live) return;
-  let pendingMax = -1;
-  let pendingRaid = -1;
-  for (const pending of S.pendingHits.values()) {
-    if (pending.raidId === S.raidId && pending.attackId > pendingMax) {
-      pendingMax = pending.attackId;
-      pendingRaid = pending.raidId;
-    }
-  }
-  const targetForRaid = S.settlementTargets.get(S.raidId) ?? -1;
-  if (targetForRaid > pendingMax) {
-    pendingMax = targetForRaid;
-    pendingRaid = S.raidId;
-  }
-  if (pendingMax < 0) return;
-  if ((S.settlementSentThrough.get(pendingRaid) ?? -1) >= pendingMax) return;
-  void flushSettlementNow(pendingRaid, pendingMax);
-}
-
-async function submitHit(head, raidId, attackId) {
-  try {
-    await client.sendActionTo(
+    const receipt = await client.sendActionTo(
       HEADS[head],
       "hit",
       [client.u64ToHex(raidId), client.u64ToHex(attackId)],
       HIT_GAS,
     );
+    const pending = S.pendingHits.get(key);
+    if (pending) {
+      pending.txHash = receipt.txHash;
+      pending.status = "submitted";
+    }
   } catch {
-    S.pendingHits.delete(`${raidId}:${attackId}`);
-    S.combatReady = true;
-    render();
+    const retryDeadline = attackBounds(attackId, raidId)[1] + 3_000;
+    if (attempt < 2 && chainNow() < retryDeadline) {
+      window.setTimeout(() => {
+        void submitHit(head, raidId, attackId, attempt + 1);
+      }, 500 * (attempt + 1));
+      return;
+    }
+    const pending = S.pendingHits.get(key);
+    if (pending) pending.status = "failed";
     setStatus(
       "err",
-      `That hit did not land on Shard ${head}. Watch for the next head.`,
+      "That hit could not reach the Hydra. Keep fighting.",
     );
   }
 }
@@ -572,36 +593,30 @@ function handleHeadClick(head) {
   S.localResponses.set(attackId, head);
   scheduleResolution(raidId, attackId);
 
-  let decisiveKill = false;
   if (head === S.activeHead) {
-    S.pendingHits.set(responseKey, { raidId, attackId });
+    S.visualHp = Math.max(0, S.visualHp - 1);
+    S.pendingHits.set(responseKey, {
+      raidId,
+      attackId,
+      status: "queued",
+      txHash: "",
+    });
     showCorrectHit(head);
     if (visibleHydraHp() === 0) {
-      S.combatReady = false;
-      decisiveKill = true;
-      setInstruction("hit", "FINAL BLOW", "The Hydra is falling.");
-      setStatus("ok", "The shared fight is over.");
-      render();
+      finishVictory();
     }
   } else {
     showBite("wrong", head);
   }
 
   if (S.live) {
-    void (async () => {
-      await submitHit(head, raidId, attackId);
-      // The killing blow must settle now (not on the throttled pump) so it
-      // lands onchain even if the tab closes the instant the Hydra dies. The
-      // hit must register at the hub first, hence after submitHit resolves.
-      if (decisiveKill) await flushSettlementNow(raidId, attackId);
-    })();
+    void submitHit(head, raidId, attackId);
   }
   else if (head === S.activeHead) {
     S.score += 1;
     S.raidHits += 1;
-    S.hp = Math.max(0, S.hp - 1);
+    S.hp = S.visualHp;
     render();
-    if (S.hp === 0) showResult({ raidWon: true });
   }
 }
 
@@ -654,25 +669,58 @@ function handleAttackAdvance(attackId, head) {
   render();
 }
 
+function beginJoinedRun(raidId, startedAt, chainJoinAttack) {
+  const now = chainNow();
+  S.activeRunRaidId = raidId;
+  S.started = true;
+  S.joined = true;
+  S.joining = false;
+  S.combatReady = false;
+  S.phase = "countdown";
+  S.lives = S.chainLives;
+
+  if (now < startedAt) {
+    S.readyAt = startedAt;
+    S.joinAttack = Math.max(0, chainJoinAttack);
+  } else {
+    const currentAttack = attackAtTime(now, raidId);
+    const nextAttack = Math.max(chainJoinAttack, currentAttack + 1);
+    S.readyAt = attackBounds(nextAttack, raidId)[0];
+    S.joinAttack = nextAttack;
+  }
+  S.lastObservedAttack = S.joinAttack - 1;
+  $("mode").textContent = "Live · shared fight";
+  setInstruction("", "GET READY", "The first head is about to strike.");
+  setStatus("", "Three lives. Kill the Hydra.");
+  render();
+}
+
 async function joinLiveRaid() {
   if (S.joining) return;
+  const runToken = ++S.runToken;
   S.joining = true;
+  S.started = false;
+  S.joined = false;
+  S.activeRunRaidId = 0;
+  S.phase = "joining";
   resetRunStats();
-  S.readyAt = Date.now() + 1_200;
   S.combatReady = false;
   $("start").disabled = true;
-  $("start").textContent = "Get ready";
+  $("start").textContent = "Starting";
   hideGate();
-  S.started = true;
-  setInstruction("", "GET READY · 3", "Watch the heads.");
+  setInstruction("", "THE HYDRA AWAKENS", "Get ready to strike.");
   setStatus("", "Three lives. Kill the Hydra.");
   render();
   try {
     await client.sendAction("joinRaid", [], JOIN_GAS);
-    setStatus("", "Watch the heads.");
-  } catch (error) {
+    if (runToken !== S.runToken) return;
+    setStatus("", "The first head is about to strike.");
+    void refreshChain();
+  } catch {
+    if (runToken !== S.runToken) return;
     S.joining = false;
     S.started = false;
+    S.phase = "waiting";
     showGatePanel("briefing");
     $("start").disabled = false;
     $("start").textContent = "Try again";
@@ -682,17 +730,20 @@ async function joinLiveRaid() {
 
 function startPractice() {
   if (S.started) return;
+  S.runToken += 1;
   S.started = true;
   S.joined = true;
+  S.activeRunRaidId = 1;
   resetRunStats();
   S.readyAt = Date.now() + 1_200;
   S.combatReady = false;
+  S.visualHp = S.maxHp;
   S.raidId = 1;
   S.raidStartedAt = S.readyAt;
   S.raidDeadline = S.readyAt + S.config.raidDuration;
   S.raidContexts.set(1, { seed: 0n, startedAt: S.raidStartedAt });
   S.joinAttack = 0;
-  S.lastObservedAttack = 0;
+  S.lastObservedAttack = -1;
   hideGate();
   $("mode").textContent = "Practice";
   setInstruction("", "GET READY · 3", "Watch the heads.");
@@ -720,6 +771,8 @@ function handleResultAction() {
   S.started = false;
   S.joined = false;
   S.joining = false;
+  S.runToken += 1;
+  S.activeRunRaidId = 0;
   S.combatReady = false;
   S.localResponses.clear();
   S.pendingHits.clear();
@@ -728,141 +781,184 @@ function handleResultAction() {
   else startPractice();
 }
 
-async function refreshChain() {
-  if (!S.live) return;
-  const raidRaw = await client.query("getRaidState");
-  const raid = decodeMany(raidRaw, 9);
-  if (!raid) return;
-
-  const [
-    raidId,
-    hp,
-    maxHp,
-    startedAt,
-    deadline,
-  ] = raid;
-
-  const raidChanged = raidId !== S.raidId;
-  const raidExpired = startedAt > 0 && chainNow() >= deadline;
-  const raidEnded = hp === 0 || raidExpired;
-  S.raidId = raidId;
-  S.raidStartedAt = startedAt;
-  S.raidDeadline = deadline;
-  S.raidSeed = decodeU64BigInt(raidRaw[5]);
-  S.raidContexts.set(raidId, {
-    seed: S.raidSeed,
-    startedAt,
-  });
-  S.hp = hp;
-  S.maxHp = maxHp || S.maxHp;
-
+async function fetchChainSnapshot() {
   await client.ensureKey();
   const addressHex = client.addressHex();
-  const mine = addressHex
-    ? decodeMany(await client.query("getPlayerState", [addressHex]), 6)
-    : null;
-  let settledWithoutPoint = 0;
-  if (mine) {
-    const [joined, lives, joinAttack, nextSettlement, score, raidHits] = mine;
-    const wasJoined = S.joined;
-    const previousScore = S.score;
-    S.joined = Boolean(joined) && !raidEnded;
-    S.chainLives = lives;
-    S.lives = raidChanged || !wasJoined ? lives : Math.min(S.lives, lives);
-    S.joinAttack =
-      S.joined && !wasJoined
-        ? attackAtTime(chainNow(), raidId)
-        : Math.max(S.joinAttack, joinAttack);
-    S.nextSettlement = nextSettlement;
-    S.score = score;
-    S.raidHits = raidHits;
-    const scoreDelta = Math.max(0, score - previousScore);
-    removeOldestPendingHits(scoreDelta);
-    for (const [key, pending] of S.pendingHits) {
-      if (
-        pending.raidId === raidId &&
-        pending.attackId < nextSettlement
-      ) {
-        S.pendingHits.delete(key);
-        settledWithoutPoint += 1;
-      }
-    }
-    if (S.joined && !wasJoined) {
-      S.joining = false;
-      S.started = true;
-      S.lives = lives;
-      $("mode").textContent = "Live · shared fight";
-      setStatus("", "Three lives. Kill the Hydra.");
-    }
+  if (!addressHex) return null;
+
+  const snapshotRaw = await client.query("getPlayerRaidSnapshot", [addressHex]);
+  const snapshot = decodeMany(snapshotRaw, 15);
+  if (snapshot) {
+    return {
+      raidRaw: snapshotRaw.slice(0, 9),
+      raid: snapshot.slice(0, 9),
+      mine: snapshot.slice(9, 15),
+    };
   }
 
-  if (raidChanged) {
-    if (S.offerTimer) {
-      window.clearTimeout(S.offerTimer);
-      S.offerTimer = 0;
+  // Backward-compatible only during a coordinated contract rollout.
+  const raidRaw = await client.query("getRaidState");
+  const raid = decodeMany(raidRaw, 9);
+  if (!raid) return null;
+  const mine = decodeMany(await client.query("getPlayerState", [addressHex]), 6);
+  return mine ? { raidRaw, raid, mine } : null;
+}
+
+async function refreshChain() {
+  if (!S.live || S.refreshInFlight) return;
+  const sequence = ++S.refreshSequence;
+  const runToken = S.runToken;
+  S.refreshInFlight = true;
+  try {
+    const snapshot = await fetchChainSnapshot();
+    if (!snapshot || !snapshotCanApply({
+      sequence,
+      appliedSequence: S.appliedRefreshSequence,
+      requestRunToken: runToken,
+      currentRunToken: S.runToken,
+    })) {
+      return;
     }
-    S.offerScheduledRaidId = 0;
-    S.localResponses.clear();
-    resetRunStats();
-    S.lastObservedAttack = -1;
-    S.lastObservedHp = hp;
-    S.lastObservedScore = S.score;
-    S.offeredRaidId = 0;
-    if (S.joined) {
-      S.started = true;
-      S.joining = false;
+    S.appliedRefreshSequence = sequence;
+
+    const [raidId, hp, maxHp, startedAt, deadline] = snapshot.raid;
+    const [joined, lives, chainJoinAttack, nextSettlement, score, raidHits] =
+      snapshot.mine;
+    const raidChanged = raidId !== S.raidId;
+    const raidExpired = startedAt > 0 && chainNow() >= deadline;
+    const raidEnded = hp === 0 || raidExpired;
+    const previousRaidHits = S.raidHits;
+    const previousChainHp = S.hp;
+    const previousChainLives = S.chainLives;
+    const previousLocalLives = S.lives;
+
+    S.raidId = raidId;
+    S.raidStartedAt = startedAt;
+    S.raidDeadline = deadline;
+    S.raidSeed = decodeU64BigInt(snapshot.raidRaw[5]);
+    S.raidContexts.set(raidId, { seed: S.raidSeed, startedAt });
+    S.hp = hp;
+    S.maxHp = maxHp || S.maxHp;
+    S.chainLives = lives;
+    S.nextSettlement = nextSettlement;
+    S.settlementConfirmedThrough.set(raidId, nextSettlement);
+    S.score = score;
+    S.raidHits = raidHits;
+
+    if (raidChanged) {
+      if (S.offerTimer) {
+        window.clearTimeout(S.offerTimer);
+        S.offerTimer = 0;
+      }
+      S.offerScheduledRaidId = 0;
+      S.offeredRaidId = 0;
+      S.lastObservedHp = hp;
+      S.lastObservedScore = score;
+      if (!S.started) {
+        S.visualHp = raidEnded ? S.maxHp : hp;
+        S.localResponses.clear();
+        S.pendingHits.clear();
+        S.lastObservedAttack = -1;
+      }
+    }
+
+    const joinedThisRaid = Boolean(joined) && !raidEnded;
+    if (S.joining && joinedThisRaid) {
+      S.visualHp = hp;
+      S.lives = lives;
       hideGate();
-      $("mode").textContent = "Live · shared fight";
-    } else {
-      S.started = false;
+      beginJoinedRun(raidId, startedAt, chainJoinAttack);
+    } else if (S.activeRunRaidId === raidId) {
+      S.joined = joinedThisRaid;
+      S.lives = Math.min(S.lives, lives);
+      S.visualHp = monotonicHp(S.visualHp, hp);
+      S.joinAttack = Math.max(S.joinAttack, chainJoinAttack);
+    }
+
+    let settledWithoutPoint = 0;
+    const scoreDelta = Math.max(0, raidHits - previousRaidHits);
+    let confirmedHits = scoreDelta;
+    for (const [key, pending] of S.pendingHits) {
+      if (pending.raidId === raidId && pending.attackId < nextSettlement) {
+        S.pendingHits.delete(key);
+        if (confirmedHits > 0) confirmedHits -= 1;
+        else settledWithoutPoint += 1;
+      }
+    }
+    const settlementTarget = S.settlementTargets.get(raidId);
+    if (settlementTarget !== undefined && settlementTarget < nextSettlement) {
+      S.settlementTargets.delete(raidId);
+    }
+    const request = S.settlementRequests.get(raidId);
+    if (request && request.attackId < nextSettlement) {
+      S.settlementRequests.delete(raidId);
+    }
+
+    if (
+      S.activeRunRaidId === raidId &&
+      hp < previousChainHp &&
+      scoreDelta === 0
+    ) {
+      S.visualHp = monotonicHp(S.visualHp, hp);
+      showDamage();
+      setStatus("ok", "Another player struck the Hydra.");
+    } else if (
+      S.activeRunRaidId === raidId &&
+      lives < previousChainLives &&
+      lives < previousLocalLives
+    ) {
+      S.lives = lives;
+      setStatus(
+        "err",
+        `The Hydra bit you. ${S.lives} ${S.lives === 1 ? "life" : "lives"} left.`,
+      );
+      if (S.lives === 0) showResult({ raidWon: false, pending: true });
+    } else if (settledWithoutPoint > 0 && S.activeRunRaidId === raidId) {
+      setStatus("warn", "That strike missed. Watch the next head.");
+    }
+
+    S.lastObservedHp = hp;
+    S.lastObservedScore = score;
+
+    if (!S.started && !S.joining) {
+      S.joined = false;
+      S.visualHp = raidEnded ? S.maxHp : hp;
+      S.lives = S.config.maxLives;
+      S.chainLives = S.config.maxLives;
+      S.raidHits = 0;
       showGatePanel("briefing");
       $("mode").textContent = "Ready";
-      document.querySelector(".rules-kicker").textContent = "How to play";
-      document.querySelector(".rules h2").textContent = "Kill the Hydra.";
-      document.querySelector(".rules > p").textContent = "Hit the glowing head before it bites. Three bites and you’re out.";
       $("start").disabled = false;
       $("start").textContent = "Fight";
     }
-  }
-  if (mine) S.raidHits = mine[5];
 
-  if (hp < S.lastObservedHp) {
-    showDamage();
-    if (S.score === S.lastObservedScore) {
-      setStatus("ok", "Another player hit! The Hydra lost 1 HP.");
+    if (runOwnsRaid({
+      started: S.started,
+      activeRunRaidId: S.activeRunRaidId,
+      snapshotRaidId: raidId,
+    }) && hp === 0) {
+      if (S.resultShown) showResult({ raidWon: true });
+      else finishVictory();
+    } else if (
+      runOwnsRaid({
+        started: S.started,
+        activeRunRaidId: S.activeRunRaidId,
+        snapshotRaidId: raidId,
+      }) &&
+      raidExpired
+    ) {
+      setInstruction("bite", "THE HYDRA ESCAPED", "Time ran out.");
+      $("mode").textContent = "Raid over";
+      showResult({ raidWon: false });
+    } else {
+      if (S.resultShown) {
+        $("resultDamage").textContent = String(S.raidHits);
+        $("resultAccuracy").textContent = `${raidAccuracy()}%`;
+      }
+      render();
     }
-  } else if (S.chainLives < S.lives) {
-    S.lives = S.chainLives;
-    setStatus("err", `The Hydra bit you. ${S.lives} ${S.lives === 1 ? "life" : "lives"} left.`);
-    if (S.lives === 0) showResult({ raidWon: false, pending: true });
-  } else if (settledWithoutPoint > 0) {
-    setStatus("warn", "Too late—no damage. Watch for the next head.");
-  }
-
-  S.lastObservedHp = hp;
-  S.lastObservedScore = S.score;
-
-  // A dormant shared raid is historical state, not the promise shown to the next
-  // player. The next Fight call creates a fresh 24-HP raid with three lives.
-  if (!S.started && !S.joined && raidEnded) {
-    S.hp = S.maxHp;
-    S.lives = S.config.maxLives;
-    S.chainLives = S.config.maxLives;
-    S.raidHits = 0;
-  }
-
-  // Raid and personal outcomes resolve separately: the player may be eliminated
-  // before the shared Hydra is killed or escapes.
-  if (S.started && hp === 0) {
-    setInstruction("hit", "HYDRA DEAD", "The shared fight is over.");
-    $("mode").textContent = "Raid won";
-    showResult({ raidWon: true });
-  } else if (S.started && raidExpired) {
-    setInstruction("bite", "THE HYDRA ESCAPED", "Time ran out.");
-    $("mode").textContent = "Raid over";
-    showResult({ raidWon: false });
-  } else {
-    render();
+  } finally {
+    S.refreshInFlight = false;
   }
 }
 
@@ -974,6 +1070,7 @@ async function bootstrap() {
     S.config.settlementGrace,
   ] = config;
   S.hp = raid[1];
+  S.visualHp = raid[1];
   S.live = true;
   S.booted = true;
   $("chainCopy").innerHTML = "<b>No wallet. No gas. Just react.</b> Take the Hydra on solo, or pile on with the crowd.";
@@ -982,7 +1079,7 @@ async function bootstrap() {
   $("start").textContent = "Fight";
   setStatus("", "Three lives. Sixty seconds. Kill the Hydra.");
   await refreshChain();
-  S.refreshTimer = window.setInterval(refreshChain, 900);
+  S.refreshTimer = window.setInterval(() => void refreshChain(), 600);
   S.settlementTimer = window.setInterval(pumpResolutions, 750);
 }
 
@@ -995,17 +1092,11 @@ function tick() {
     if (!S.combatReady && !S.resultShown) {
       const countdownMs = S.readyAt - now;
       if (countdownMs > 0) {
-        const count = Math.max(1, Math.ceil(countdownMs / 400));
+        const count = Math.max(1, Math.ceil(countdownMs / 1_000));
         setInstruction("", `GET READY · ${count}`, "Watch the heads.");
       } else if (S.joined) {
         S.combatReady = true;
-        const currentAttack = attackAtTime(now);
-        if (S.live) {
-          const [, closesAt] = attackBounds(currentAttack);
-          const enoughTime = closesAt - now >= attackDuration(currentAttack) * 0.65;
-          S.joinAttack = enoughTime ? currentAttack : currentAttack + 1;
-          S.lastObservedAttack = S.joinAttack - 1;
-        } else {
+        if (!S.live) {
           S.joinAttack = 0;
           S.lastObservedAttack = -1;
         }
@@ -1018,7 +1109,8 @@ function tick() {
     if (
       S.joined &&
       S.combatReady &&
-      S.hp > 0 &&
+      visibleHydraHp() > 0 &&
+      !S.resultShown &&
       S.raidStartedAt > 0 &&
       now < S.raidDeadline
     ) {
@@ -1078,8 +1170,10 @@ function applyReviewState(state) {
     S.phase = "hit";
     S.responseHead = 1;
     S.hp = 23;
+    S.visualHp = 23;
     S.score = 1;
     S.raidHits = 1;
+    S.localHits = 1;
     S.raidAttempts = 1;
     S.bestStreak = 1;
     setInstruction("hit", "HIT · HYDRA HURT", "−1 Hydra HP. Watch for the next head.");
@@ -1096,20 +1190,26 @@ function applyReviewState(state) {
     $("screen").classList.add("bitten");
   } else if (state === "victory") {
     S.hp = 0;
+    S.visualHp = 0;
     S.raidHits = 9;
+    S.localHits = 9;
     S.raidAttempts = 11;
     S.bestStreak = 6;
     showResult({ raidWon: true });
   } else if (state === "escape") {
     S.hp = 4;
+    S.visualHp = 4;
     S.raidHits = 7;
+    S.localHits = 7;
     S.raidAttempts = 10;
     S.bestStreak = 4;
     showResult({ raidWon: false });
   } else if (state === "dead") {
     S.hp = 11;
+    S.visualHp = 11;
     S.lives = 0;
     S.raidHits = 5;
+    S.localHits = 5;
     S.raidAttempts = 8;
     S.wrongHits = 2;
     S.timeouts = 1;
@@ -1134,20 +1234,7 @@ $("handle")?.addEventListener("keydown", (e) => {
 }
 renderBoard();
 S.boardTimer = window.setInterval(renderBoard, 2500);
-// Best-effort: if the player leaves mid-flight with hits not yet settled (e.g.
-// closes the tab right after the killing blow), try once more to push them
-// onchain before teardown. It is fine if this does not complete — the kill path
-// already flushes the decisive hit — but the attempt recovers the common case.
-function flushSettlementsOnExit() {
-  if (!S.live) return;
-  flushAllPendingSettlements();
-}
-window.addEventListener("pagehide", flushSettlementsOnExit);
-document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "hidden") flushSettlementsOnExit();
-});
 window.addEventListener("beforeunload", () => {
-  flushSettlementsOnExit();
   clearNextTimer();
   if (S.frame) window.cancelAnimationFrame(S.frame);
   if (S.refreshTimer) window.clearInterval(S.refreshTimer);

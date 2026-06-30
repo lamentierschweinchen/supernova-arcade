@@ -91,9 +91,11 @@ import {
   JOIN_RAID_FUNCTION,
   HIT_FUNCTION,
   RESOLVE_MISS_FUNCTION,
+  SETTLE_PLAYER_FUNCTION,
   JOIN_RAID_GAS_LIMIT,
   HIT_GAS_LIMIT,
   RESOLVE_MISS_GAS_LIMIT,
+  SETTLE_PLAYER_GAS_LIMIT,
   isPlaceholder,
 } from "@/lib/onchain/arcade.config";
 
@@ -266,8 +268,8 @@ const RELAY_OPS: Record<string, RelayOp> = {
     rateMax: 60,
   },
   // Shard Hydra: join the shared fight at the hub, hit the visibly attacking
-  // shard head, then resolve that attack through its expected head after the
-  // cross-shard grace period. All three writes are signed Relayed-v3 txs.
+  // shard head, then advance deterministic settlement directly on the hub after
+  // the cross-shard grace period. All writes are signed Relayed-v3 txs.
   [JOIN_RAID_FUNCTION]: {
     receivers: isPlaceholder(SHARD_HYDRA_HUB_CONTRACT) ? [] : [SHARD_HYDRA_HUB_CONTRACT],
     maxGasLimit: JOIN_RAID_GAS_LIMIT + 100_000,
@@ -281,6 +283,11 @@ const RELAY_OPS: Record<string, RelayOp> = {
   [RESOLVE_MISS_FUNCTION]: {
     receivers: SHARD_HYDRA_HEAD_CONTRACTS.filter((address) => !isPlaceholder(address)),
     maxGasLimit: RESOLVE_MISS_GAS_LIMIT + 100_000,
+    rateMax: 1200,
+  },
+  [SETTLE_PLAYER_FUNCTION]: {
+    receivers: isPlaceholder(SHARD_HYDRA_HUB_CONTRACT) ? [] : [SHARD_HYDRA_HUB_CONTRACT],
+    maxGasLimit: SETTLE_PLAYER_GAS_LIMIT + 100_000,
     rateMax: 1200,
   },
 };
