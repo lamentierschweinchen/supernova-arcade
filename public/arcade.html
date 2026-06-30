@@ -235,6 +235,16 @@ h1,h2,h3,p{text-wrap:balance;}
 .hyh.atk::before,.hyh.atk::after{background:var(--coral);box-shadow:0 0 5px var(--coral);}
 .hyfloor{position:absolute;left:5%;right:5%;bottom:5px;height:1px;background:linear-gradient(90deg,transparent,color-mix(in srgb,var(--c) 34%,transparent),transparent);}
 @keyframes hybite{0%{transform:translateX(-50%) translateY(0) scale(1)}100%{transform:translateX(-50%) translateY(-4px) scale(1.16)}}
+/* triptych: three shard-panels — narrow·wide·narrow — filling in parallel (the cross-shard mural).
+   Per-panel tint via --tc (wing blue · center teal · wing lavender); the gaps are the hinge. */
+.tri3{position:relative;display:flex;align-items:flex-end;justify-content:center;gap:6px;height:46px;}
+.trip{display:grid;grid-auto-rows:4px;gap:2px;padding:3px;border-radius:3px;
+  border:1px solid color-mix(in srgb,var(--tc) 48%,transparent);background:rgba(7,10,16,.55);
+  box-shadow:0 0 7px color-mix(in srgb,var(--tc) 20%,transparent);}
+.trip.wing{grid-template-columns:repeat(2,4px);}
+.trip.center{grid-template-columns:repeat(4,4px);box-shadow:0 0 11px color-mix(in srgb,var(--tc) 34%,transparent);}
+.trip i{width:4px;height:4px;border-radius:1px;background:color-mix(in srgb,var(--tc) 16%,transparent);animation:tritw 2.6s ease-in-out infinite;}
+@keyframes tritw{0%,100%{background:color-mix(in srgb,var(--tc) 14%,transparent)}50%{background:var(--tc);box-shadow:0 0 5px var(--tc)}}
 
 /* ---------- featured community strip ---------- */
 .feat{margin-top:30px;border:1px solid var(--border);border-radius:14px;background:rgba(14,17,23,.55);padding:14px 16px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;backdrop-filter:blur(4px);}
@@ -464,19 +474,26 @@ const CABINETS = [
     counter: { address: GAMES.shardhydra.contract, view: "getGlobalActions" },
   },
   {
+    id: "triptych", name: "Three-Shard Canvas", status: "live", href: "/three-shard-canvas", art: "triptych",
+    color: "#23F7DD", shard: "3 shards",
+    line: "One mural across three shards. A wide center board flanked by two wings, each on its own shard, painting in parallel. Every pixel is a real cross-shard transaction.",
+    metaSuffix: "pixels onchain",
+    // sum of getGlobalActions across the three boards (center shard 0 + the two wings).
+    // address (center) lets it pass the counters filter; addresses drives the sum.
+    counter: { address: GAMES.triptych.contract, addresses: GAMES.triptych.boards.map((b) => b.contract), view: "getGlobalActions" },
+  },
+  {
     id: "tugofwar", name: "Tug of War", status: "live", href: "/tug-of-war", art: "tug",
     color: "#23F7DD", shard: "shard 1",
     line: "Two teams, one rope. Every pull is a transaction. Drag the knot across the line to your side before the buzzer.",
     metaSuffix: "pulls onchain",
     counter: { address: GAMES.tugofwar.contract, view: "getGlobalActions" },
   },
-  {
-    id: "canvas", name: "Supernova Canvas", status: "live", href: "/canvas", art: "canvas",
-    color: "#A78BFA", shard: "shard 1",
-    line: "A shared pixel canvas. Every pixel you place is an onchain write. Build something together, one tap at a time.",
-    metaSuffix: "pixels onchain",
-    counter: { address: GAMES.canvas.contract, view: "getGlobalActions" },
-  },
+  // Supernova Canvas (the single 32x32 board) is replaced in the grid by the
+  // Three-Shard Canvas triptych above (its center IS this board, data preserved).
+  // The old single board is parked at /canvas as a fallback — still routable, just
+  // not featured. (Removing it here also stops double-counting the center's pixels,
+  // which the triptych counter already sums.)
   {
     id: "button", name: "The Button", status: "live", href: "/button", art: "button",
     color: "#5B8DEF", shard: "shard 2",
@@ -545,6 +562,18 @@ function artHTML(kind) {
         + '<span class="fall" style="left:46%;color:var(--lavender);background:rgba(167,139,250,.16);animation-delay:1.8s">+9</span></span>';
     case "reaction":
       return '<span class="gx"><span class="rxring"></span><span class="rxcore"></span></span>';
+    case "triptych": {
+      const panel = (cls, tc, cols, rows) => {
+        let cells = "";
+        for (let i = 0; i < cols * rows; i++) cells += '<i style="animation-delay:' + ((i * 0.11) % 2.6).toFixed(2) + 's"></i>';
+        return '<span class="trip ' + cls + '" style="--tc:' + tc + '">' + cells + "</span>";
+      };
+      return '<span class="gx"><span class="tri3">'
+        + panel("wing", "#5B8DEF", 2, 6)    // shard 1 wing
+        + panel("center", "#23F7DD", 4, 6)  // shard 0 center (hero)
+        + panel("wing", "#A78BFA", 2, 6)    // shard 2 wing
+        + "</span></span>";
+    }
     case "hydra":
       return '<span class="gx"><span class="hydra3">'
         + '<span class="hyh" style="left:18%"></span>'
@@ -659,8 +688,16 @@ const score = embedded
 window.arcadeScore = score; // console mixer: arcadeScore.setLevel('canvas',0.55); arcadeScore.getMix()
 
 async function readCounter(c) {
-  const rd = await client.query(c.counter.view, [], c.counter.address);
-  const v = rd && rd.length ? client.decodeU64(rd[0]) : 0;
+  let v;
+  if (c.counter.addresses) {
+    // sum the view across several contracts (the Three-Shard Canvas mural). A
+    // placeholder/undeployed address returns null from query() -> contributes 0.
+    const reads = await Promise.all(c.counter.addresses.map((a) => client.query(c.counter.view, [], a)));
+    v = reads.reduce((s, rd) => s + (rd && rd.length ? client.decodeU64(rd[0]) : 0), 0);
+  } else {
+    const rd = await client.query(c.counter.view, [], c.counter.address);
+    v = rd && rd.length ? client.decodeU64(rd[0]) : 0;
+  }
   // live-update this cabinet's meta number if it shows one
   if (c.metaSuffix) {
     const el = document.getElementById("meta-" + c.id);

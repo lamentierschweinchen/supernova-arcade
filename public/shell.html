@@ -131,6 +131,7 @@
         sprint: "/onchain.html",
         tugofwar: "/tug-of-war.html",
         canvas: "/canvas.html",
+        triptych: "/triptych.html",
         button: "/button.html",
         reaction: "/reaction.html",
         shardhydra: "/shard-hydra/app.html",
@@ -147,6 +148,7 @@
         sprint: "/sprint",
         tugofwar: "/tug-of-war",
         canvas: "/canvas",
+        triptych: "/three-shard-canvas",
         button: "/button",
         reaction: "/reaction",
         shardhydra: "/shard-hydra",
@@ -202,6 +204,11 @@
           { id: "sprint",     address: SPRINT_TAP_COUNTER,        view: "getGlobalTaps" },
           { id: "tugofwar",   address: GAMES.tugofwar.contract,   view: "getGlobalActions" },
           { id: "canvas",     address: GAMES.canvas.contract,     view: "getGlobalActions" },
+          // Three-Shard Canvas wings (shard 1 + shard 2). The center is already
+          // counted as `canvas` (same contract), so only the wings are added here.
+          // Placeholder until deployed -> query() returns null -> safely skipped.
+          { id: "triptych",   address: GAMES.triptych.boards[0].contract, view: "getGlobalActions" },
+          { id: "triptych",   address: GAMES.triptych.boards[2].contract, view: "getGlobalActions" },
           { id: "button",     address: GAMES.button.contract,     view: "getGlobalActions" },
           { id: "reaction",   address: GAMES.reaction.contract,   view: "getGlobalActions" },
           { id: "clawback",   address: GAMES.clawback.contract,   view: "getGlobalActions" },

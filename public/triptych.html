@@ -1,0 +1,550 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <title>Three-Shard Canvas · Supernova Arcade</title>
+    <meta name="description" content="One mural across three shards. A wide center board flanked by two wings, each on its own shard, all painting in parallel. Every pixel is a real onchain transaction, gasless and no wallet." />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Three-Shard Canvas · Supernova Arcade" />
+    <meta property="og:description" content="One mural across three shards, painting in parallel. Every pixel is a real onchain transaction on MultiversX. Gasless, no wallet." />
+    <meta property="og:url" content="https://supernova-arcade.xyz/three-shard-canvas" />
+    <meta property="og:image" content="https://supernova-arcade.xyz/og/canvas-og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content="https://supernova-arcade.xyz/og/canvas-og.png" />
+    <link rel="icon" href="/favicon.svg" />
+    <link rel="stylesheet" href="/arcade-shell.css" />
+    <style>
+      /* ============================================================
+         Three-Shard Canvas — the Triptych. Canon (Roobert, cosmos,
+         chrome) from /arcade-shell.css. The three boards live inside
+         ONE cabinet (the altarpiece object); per-panel shard tint via
+         --pc. The triptych reference is carried by PROPORTION + LIGHT
+         (wide teal-hero center, two narrower wings) and the recessed
+         HINGE seams — never gilt/gold. Distinct, gapped, shard-labeled.
+         ============================================================ */
+      .triptych-wrap { padding: 6px 4px 2px; }
+
+      /* DESKTOP: the opened triptych — wing · center(2x) · wing, gapped, on a
+         shared baseline so the shard plaques sit on one predella line. */
+      .triptych {
+        display: grid;
+        grid-template-columns: 1fr 2fr 1fr;
+        gap: 16px;
+        align-items: end;
+        perspective: 1500px;
+        margin: 2px 0 4px;
+      }
+      .panel { position: relative; display: flex; flex-direction: column; gap: 9px; }
+
+      /* one-time opened reveal: the wings swing open from the center hinge */
+      .panel.wing.left  { transform-origin: right center; animation: openLeft  .72s var(--ease) both; }
+      .panel.wing.right { transform-origin: left center;  animation: openRight .72s var(--ease) both; }
+      .panel.center     { animation: openCenter .6s var(--ease) both; }
+      @keyframes openLeft   { from { transform: rotateY(74deg);  opacity: .15; } to { transform: rotateY(0); opacity: 1; } }
+      @keyframes openRight  { from { transform: rotateY(-74deg); opacity: .15; } to { transform: rotateY(0); opacity: 1; } }
+      @keyframes openCenter { from { transform: translateY(6px) scale(.985); opacity: .4; } to { transform: none; opacity: 1; } }
+      @media (prefers-reduced-motion: reduce) { .panel { animation: none !important; } }
+
+      /* a panel of the one artwork: hairline tinted frame + inner matte, no gold */
+      .frame {
+        position: relative; border-radius: 8px; overflow: hidden; background: #070a10;
+        border: 1px solid color-mix(in srgb, var(--pc) 32%, var(--border));
+        box-shadow: 0 0 0 1px color-mix(in srgb, var(--pc) 12%, transparent),
+                    inset 0 0 18px rgba(0,0,0,.62), 0 12px 26px rgba(0,0,0,.42);
+        touch-action: manipulation;
+        transition: border-color .18s var(--ease), box-shadow .18s var(--ease);
+      }
+      .frame::after { content: ""; position: absolute; inset: 4px; border-radius: 5px;
+        border: 1px solid color-mix(in srgb, var(--pc) 14%, transparent); pointer-events: none; z-index: 4; }
+      .panel.center .frame {
+        border-color: color-mix(in srgb, var(--pc) 46%, var(--border));
+        box-shadow: 0 0 0 1px color-mix(in srgb, var(--pc) 20%, transparent),
+                    0 0 26px color-mix(in srgb, var(--pc) 22%, transparent),
+                    inset 0 0 20px rgba(0,0,0,.6), 0 14px 30px rgba(0,0,0,.45);
+      }
+      /* the active panel reads brighter — clarity for "which shard am I on" */
+      .panel.active .frame {
+        border-color: color-mix(in srgb, var(--pc) 70%, transparent);
+        box-shadow: 0 0 0 1px color-mix(in srgb, var(--pc) 40%, transparent),
+                    0 0 26px color-mix(in srgb, var(--pc) 32%, transparent),
+                    inset 0 0 18px rgba(0,0,0,.55), 0 14px 30px rgba(0,0,0,.45);
+      }
+      .wing .frame   { aspect-ratio: 1 / 2; }   /* 16x32 */
+      .center .frame { aspect-ratio: 1 / 1; }   /* 32x32 */
+      .frame canvas {
+        width: 100%; height: 100%; display: block;
+        image-rendering: pixelated; image-rendering: crisp-edges; cursor: crosshair;
+      }
+      /* selected-cell aim preview (thumbs on the tiny cells) */
+      .sel-cell { position: absolute; border: 2px solid var(--pc); box-shadow: 0 0 6px color-mix(in srgb, var(--pc) 50%, transparent);
+        border-radius: 2px; pointer-events: none; opacity: 0; transition: opacity .12s; z-index: 5; }
+      .sel-cell.show { opacity: 1; }
+      .sel-cell.pop { animation: cell-pop .3s ease-out; }
+      @keyframes cell-pop { 0% { transform: scale(1.7); border-color: #fff; } 100% { transform: scale(1); } }
+      @media (prefers-reduced-motion: reduce) { .sel-cell.pop { animation: none; } }
+
+      /* per-panel cooldown — three shards, three independent clocks */
+      .cool { position: absolute; left: 5px; right: 5px; bottom: 5px; height: 3px; border-radius: 3px;
+        background: rgba(255,255,255,.06); overflow: hidden; z-index: 6; }
+      .cool > span { display: block; height: 100%; width: 100%; transform-origin: left; transform: scaleX(0);
+        background: linear-gradient(90deg, var(--pc), color-mix(in srgb, var(--pc) 40%, #fff)); }
+      /* a wing not yet deployed: subtle "warming up" wash */
+      .panel.pending-deploy .frame { opacity: .82; }
+
+      /* shard plaque — the predella label, part of the composition */
+      .plaque { display: flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer;
+        font-family: var(--mono); font-size: 9px; letter-spacing: .14em; text-transform: uppercase; color: var(--pc); }
+      .plaque .ix { width: 5px; height: 5px; border-radius: 50%; background: var(--pc); box-shadow: 0 0 6px var(--pc); }
+      .plaque .role { color: var(--text-faint); }
+      .panel.center .plaque { font-weight: 600; }
+
+      /* recessed hinge seam in each desktop gap — hinged panels, not brass */
+      .seam { position: absolute; top: 12%; bottom: 16%; width: 2px; z-index: 2; pointer-events: none;
+        background: linear-gradient(180deg, transparent, rgba(255,255,255,.06), transparent); }
+      .seam::before, .seam::after { content: ""; position: absolute; left: 50%; transform: translateX(-50%);
+        width: 4px; height: 4px; border-radius: 50%; background: color-mix(in srgb, var(--mint) 55%, #2a323f);
+        box-shadow: 0 0 5px rgba(35,247,221,.3); }
+      .seam::before { top: -2px; } .seam::after { bottom: -2px; }
+
+      /* shard-nav: mobile-only quick-switch between the three boards */
+      .shardnav { display: none; gap: 8px; margin: 0 0 12px; }
+      .shardnav button { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px;
+        font: inherit; cursor: pointer; border-radius: 11px; padding: 8px 6px; color: var(--text-dim);
+        background: var(--surface); border: 1px solid color-mix(in srgb, var(--pcn) 26%, var(--border));
+        border-bottom: 2px solid color-mix(in srgb, var(--pcn) 30%, #11151d); transition: all .15s var(--ease); }
+      .shardnav button .sn-k { font-family: var(--mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--pcn); }
+      .shardnav button .sn-r { font-size: 10px; color: var(--text-faint); }
+      .shardnav button.on { color: var(--text); background: color-mix(in srgb, var(--pcn) 12%, var(--surface));
+        border-color: color-mix(in srgb, var(--pcn) 55%, transparent); box-shadow: 0 0 14px color-mix(in srgb, var(--pcn) 22%, transparent); }
+
+      /* shared palette */
+      .palette { display: grid; grid-template-columns: repeat(8, 1fr); gap: 7px; margin: 14px 0 2px; }
+      .swatch { aspect-ratio: 1/1; border-radius: 8px; cursor: pointer; border: 1px solid rgba(255,255,255,.08);
+        transition: transform .06s, box-shadow .12s; }
+      .swatch:active { transform: scale(.9); }
+      .swatch.sel { border-color: transparent; box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--mint), 0 0 8px rgba(35,247,221,.35); }
+      .hint { font-family: var(--mono); font-size: 10.5px; letter-spacing: .04em; text-transform: uppercase;
+        color: var(--text-faint); text-align: center; margin-top: 9px; min-height: 14px; }
+      .hint b { color: var(--mint); font-weight: 500; }
+
+      /* MOBILE: the triptych folds for the phone. The CENTER (the main board) sits
+         on TOP, full width; the two WINGS sit BELOW in a row, clearly separated so
+         they never read as one continuous canvas. The shard-nav makes switching
+         between the main board and the wings one tap. */
+      @media (max-width: 600px) {
+        .triptych { grid-template-columns: 1fr 1fr; gap: 16px 26px; align-items: start; column-gap: 26px; }
+        .panel.center { grid-column: 1 / 3; grid-row: 1; max-width: 84%; margin: 0 auto 2px; }
+        .panel.wing.left  { grid-column: 1; grid-row: 2; }
+        .panel.wing.right { grid-column: 2; grid-row: 2; }
+        .seam { display: none; }
+        /* a bold divider between the two wings — two distinct shards, not one board */
+        .wing.left::after { content: ""; position: absolute; top: 4%; bottom: 22%; right: -14px; width: 2px;
+          background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--mint) 30%, #2a323f), transparent); }
+        .shardnav { display: flex; }
+        .frame { scroll-margin-top: 84px; }
+      }
+    </style>
+    <script defer src="/_vercel/insights/script.js"></script>
+  </head>
+  <body style="--c:#23F7DD" data-shard="3 shards">
+    <div class="scan"></div><div class="vignette"></div><div class="floor"></div>
+    <div class="brk tl"></div><div class="brk tr"></div><div class="brk bl"></div><div class="brk br"></div>
+    <div class="wrap">
+      <header class="abar">
+        <a class="back" href="/arcade"><span aria-hidden="true">&larr;</span> Arcade</a>
+        <span class="lockup"><img src="/mvx-wordmark.svg" alt="MultiversX" /><span class="shard">3 shards</span></span>
+      </header>
+
+      <h1>Three-Shard Canvas</h1>
+      <p class="sub">One mural across <b>three shards</b>. A wide center board flanked by two wings, each on its own shard, all painting <b>in parallel</b>. Pick a color, tap any panel. Every pixel is a <b>real onchain transaction</b>.</p>
+      <div class="onetap"><span class="ic"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M13 2 3 14h7l-1 8 10-12h-7z" stroke="#23F7DD" stroke-width="1.6" stroke-linejoin="round"/></svg></span><span class="t"><b>No wallet, just play.</b> A key is created in your browser and we cover the gas on every shard.</span></div>
+
+      <div class="cabinet">
+        <div class="cab-marquee">Three-Shard Canvas · one mural, three shards</div>
+        <div class="triptych-wrap">
+          <!-- mobile quick-switch between the main board and the wings -->
+          <div class="shardnav" id="shardnav"></div>
+          <div class="triptych" id="triptych"></div>
+          <div class="palette" id="palette"></div>
+          <div class="hint" id="hint">Pick a color, then tap any of the three shards to paint</div>
+        </div>
+      </div>
+
+      <a class="why" href="/why#parallel">
+        <span class="why-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.5c.6.6 1 1.5 1 2.5h6c0-1 .4-1.9 1-2.5A6 6 0 0 0 12 3Z"/></svg></span>
+        <span class="why-tx"><span class="why-k">Why it works</span>Three independent shards paint at the same time. The center lives on shard 0; placing on a wing is a real cross-shard transaction, final in a fraction of a second.</span>
+        <span class="why-go" aria-hidden="true">&rarr;</span>
+      </a>
+
+      <div class="stats">
+        <div class="stat"><div class="num" id="yourPixels">0</div><div class="lbl">Your pixels</div></div>
+        <div class="stat"><div class="num on" id="globalActions">0</div><div class="lbl">Pixels placed</div></div>
+        <div class="stat"><div class="num" id="players">0</div><div class="lbl">Painters</div></div>
+      </div>
+
+      <div class="status" id="status" style="margin-top: 14px">
+        <span class="dot"></span><span id="statusText">Warming up…</span>
+      </div>
+
+      <div class="card" style="margin-top: 14px">
+        <p class="card-title"><span class="gd"></span>Top painters · all three shards</p>
+        <ul class="lb" id="leaderboard">
+          <li><span class="empty">No pixels yet. Place the first.</span></li>
+        </ul>
+        <div class="row hidden" id="nameRow" style="margin-top: 12px">
+          <input class="name-input" id="nameInput" maxlength="32" placeholder="Add a name for the board" />
+          <button class="btn ghost" id="nameBtn" style="width:auto; padding:12px 16px">Save</button>
+        </div>
+        <button class="btn ghost share-btn" data-game="triptych" data-score="yourPixels" style="width:100%;margin-top:12px;display:inline-flex;align-items:center;justify-content:center;gap:8px">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7"/><path d="M16 6l-4-4-4 4M12 2v13"/></svg>
+          Share my score
+        </button>
+      </div>
+
+      <div class="card hidden" id="feedCard">
+        <p class="card-title"><span class="gd"></span>Recent transactions</p>
+        <ul class="feed" id="feed"></ul>
+      </div>
+
+      <footer class="afoot"><span class="sn">Supernova · live on testnet</span> · 500ms rounds on MultiversX · three shards, one mural · gasless, no wallet</footer>
+    </div>
+
+    <script type="module">
+      import { createArcadeClient, GAMES, UNDEPLOYED_PLACEHOLDER } from "/arcade-core.js";
+      import { mountGalaxy } from "/arcade-galaxy.js";
+      import { fetchGameBoard, topPlusSelf, BOARD_GAP } from "/arcade-board.js";
+      import { getHandle } from "/passport.js";
+
+      const client = createArcadeClient("triptych");
+      const galaxy = mountGalaxy({ intensity: 0.5 });
+      const $ = (id) => document.getElementById(id);
+      const fmt = (n) => (n == null ? "···" : Number(n).toLocaleString("en-US"));
+
+      const COOLDOWN_MS = 500; // mirrors the contract
+      const SCALE = 16;        // internal px per cell (crisp pixelation)
+      const PALETTE = [
+        "#0e1320", "#F4F6FA", "#23F7DD", "#5B8DEF", "#A78BFA", "#F5B544", "#FF6B9D", "#4ADE80",
+        "#9BA3B4", "#6B7385", "#1ec8b4", "#3a6fc4", "#7a5bd0", "#c98f2e", "#cf4f7e", "#2fae5f",
+      ];
+
+      // the three boards, left→right as rendered: wing(s1) · center(s0) · wing(s2)
+      const BOARDS = (GAMES.triptych.boards || []).map((b, i) => ({
+        ...b,
+        idx: i,
+        n: b.w * b.h,
+        live: b.contract !== UNDEPLOYED_PLACEHOLDER && client.deployed,
+        board: new Uint8Array(b.w * b.h),
+        pending: new Map(), // index -> { color, t }
+        cooldownUntil: 0,
+        yourPixels: 0,
+        global: 0,
+        cv: null, ctx: null, sel: null, coolBar: null, el: null,
+      }));
+      const centerIdx = BOARDS.findIndex((b) => b.role === "center");
+
+      const S = {
+        color: 2,            // selected palette index (mint)
+        active: centerIdx,   // focused board (clarity on mobile)
+        named: false,
+        lastPainted: centerIdx,
+        feed: [],
+        players: 0,
+        global: 0,
+      };
+
+      // ---------- build the panels ----------
+      function buildPanels() {
+        const wrap = $("triptych");
+        wrap.innerHTML = "";
+        BOARDS.forEach((b) => {
+          const side = b.role === "center" ? "center" : b.idx < centerIdx ? "wing left" : "wing right";
+          const panel = document.createElement("div");
+          panel.className = "panel " + side + (b.idx === S.active ? " active" : "") + (b.live ? "" : " pending-deploy");
+          panel.style.setProperty("--pc", b.tint);
+          panel.dataset.idx = b.idx;
+
+          const frame = document.createElement("div");
+          frame.className = "frame";
+          const cv = document.createElement("canvas");
+          cv.width = b.w * SCALE; cv.height = b.h * SCALE;
+          const sel = document.createElement("div");
+          sel.className = "sel-cell";
+          sel.style.width = "calc(100% / " + b.w + ")";
+          sel.style.height = "calc(100% / " + b.h + ")";
+          const cool = document.createElement("div"); cool.className = "cool";
+          const coolBar = document.createElement("span"); cool.appendChild(coolBar);
+          frame.append(cv, sel, cool);
+
+          // desktop hinge seams flank the center
+          if (b.role === "center") {
+            const sl = document.createElement("div"); sl.className = "seam"; sl.style.left = "-9px";
+            const sr = document.createElement("div"); sr.className = "seam"; sr.style.right = "-9px";
+            panel.append(frame, sl, sr);
+          } else {
+            panel.append(frame);
+          }
+
+          const plaque = document.createElement("div");
+          plaque.className = "plaque";
+          plaque.innerHTML = '<span class="ix"></span>Shard ' + b.shard + (b.role === "center" ? ' <span class="role">· center</span>' : "");
+          plaque.addEventListener("click", () => focusBoard(b.idx, true));
+          panel.append(plaque);
+
+          wrap.appendChild(panel);
+          b.cv = cv; b.ctx = cv.getContext("2d"); b.sel = sel; b.coolBar = coolBar; b.el = panel;
+
+          cv.addEventListener("click", (e) => place(b, e));
+          cv.addEventListener("touchstart", (e) => place(b, e), { passive: false });
+          cv.addEventListener("pointermove", (e) => aim(b, e));
+          cv.addEventListener("pointerdown", (e) => { focusBoard(b.idx, false); aim(b, e); });
+          cv.addEventListener("pointerleave", () => b.sel.classList.remove("show"));
+          drawBoard(b);
+        });
+      }
+
+      // ---------- mobile shard-nav ----------
+      function buildNav() {
+        const nav = $("shardnav");
+        nav.innerHTML = "";
+        // order: center first (the main board), then the two wings
+        const order = [centerIdx, ...BOARDS.map((b) => b.idx).filter((i) => i !== centerIdx)];
+        order.forEach((i) => {
+          const b = BOARDS[i];
+          const btn = document.createElement("button");
+          btn.style.setProperty("--pcn", b.tint);
+          btn.className = i === S.active ? "on" : "";
+          btn.dataset.idx = i;
+          btn.innerHTML = '<span class="sn-k">Shard ' + b.shard + '</span><span class="sn-r">' + (b.role === "center" ? "center" : "wing") + "</span>";
+          btn.addEventListener("click", () => focusBoard(i, true));
+          nav.appendChild(btn);
+        });
+      }
+
+      function focusBoard(idx, scroll) {
+        S.active = idx;
+        BOARDS.forEach((b) => b.el.classList.toggle("active", b.idx === idx));
+        [...$("shardnav").children].forEach((el) => el.classList.toggle("on", +el.dataset.idx === idx));
+        if (scroll && BOARDS[idx].el) BOARDS[idx].el.querySelector(".frame").scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+
+      // ---------- palette ----------
+      function buildPalette() {
+        const pal = $("palette");
+        pal.innerHTML = "";
+        PALETTE.forEach((c, i) => {
+          const sw = document.createElement("div");
+          sw.className = "swatch" + (i === S.color ? " sel" : "");
+          sw.style.background = c;
+          sw.title = "Color " + i;
+          sw.addEventListener("click", () => {
+            S.color = i;
+            [...pal.children].forEach((el, j) => el.classList.toggle("sel", j === i));
+          });
+          pal.appendChild(sw);
+        });
+      }
+
+      // ---------- drawing ----------
+      function drawBoard(b) {
+        for (let i = 0; i < b.n; i++) {
+          const x = (i % b.w) * SCALE, y = Math.floor(i / b.w) * SCALE;
+          b.ctx.fillStyle = PALETTE[b.board[i]] || PALETTE[0];
+          b.ctx.fillRect(x, y, SCALE, SCALE);
+        }
+      }
+      function drawCell(b, i) {
+        const x = (i % b.w) * SCALE, y = Math.floor(i / b.w) * SCALE;
+        b.ctx.fillStyle = PALETTE[b.board[i]] || PALETTE[0];
+        b.ctx.fillRect(x, y, SCALE, SCALE);
+      }
+
+      function cellFromEvent(b, ev) {
+        const rect = b.cv.getBoundingClientRect();
+        const t = ev.touches && ev.touches[0] ? ev.touches[0] : ev;
+        const col = Math.floor(((t.clientX - rect.left) / rect.width) * b.w);
+        const row = Math.floor(((t.clientY - rect.top) / rect.height) * b.h);
+        if (col < 0 || col >= b.w || row < 0 || row >= b.h) return -1;
+        return row * b.w + col;
+      }
+      function showAim(b, index) {
+        if (index < 0) { b.sel.classList.remove("show"); return; }
+        b.sel.style.left = ((index % b.w) / b.w) * 100 + "%";
+        b.sel.style.top = (Math.floor(index / b.w) / b.h) * 100 + "%";
+        b.sel.classList.add("show");
+      }
+      function aim(b, ev) { showAim(b, cellFromEvent(b, ev)); }
+
+      // ---------- placing ----------
+      async function place(b, ev) {
+        ev.preventDefault();
+        focusBoard(b.idx, false);
+        galaxy.pulse(1);
+        const now = Date.now();
+        if (now < b.cooldownUntil) { $("hint").textContent = "Shard " + b.shard + " cooling down…"; return; }
+        const index = cellFromEvent(b, ev);
+        if (index < 0) return;
+        showAim(b, index);
+        b.sel.classList.remove("pop"); void b.sel.offsetWidth; b.sel.classList.add("pop");
+        setTimeout(() => b.sel.classList.remove("pop"), 320);
+
+        // optimistic local paint — sticks until the chain catches up (see poll reconcile)
+        b.board[index] = S.color;
+        b.pending.set(index, { color: S.color, t: Date.now() });
+        b.yourPixels++;
+        S.lastPainted = b.idx;
+        drawCell(b, index);
+        $("hint").innerHTML = "Shard " + b.shard + " · (" + (index % b.w) + ", " + Math.floor(index / b.w) + ")";
+        startCooldown(b);
+        render();
+
+        if (b.live) {
+          try {
+            const { txHash } = await client.sendActionTo(b.contract, "placePixel", [client.u32ToHex(index), client.u8ToHex(S.color)]);
+            const entry = { hash: txHash, state: "pending", shard: b.shard };
+            S.feed.unshift(entry); if (S.feed.length > 8) S.feed.length = 8;
+            renderFeed(); pollTx(b, entry, index);
+          } catch (err) { handleSendError(err); }
+        }
+        maybeShowNameRow();
+      }
+
+      function startCooldown(b) {
+        b.cooldownUntil = Date.now() + COOLDOWN_MS;
+        b.coolBar.style.transition = "none";
+        b.coolBar.style.transform = "scaleX(1)";
+        requestAnimationFrame(() => {
+          b.coolBar.style.transition = "transform " + COOLDOWN_MS + "ms linear";
+          b.coolBar.style.transform = "scaleX(0)";
+        });
+      }
+
+      async function pollTx(b, entry, index) {
+        for (let i = 0; i < 26; i++) {
+          await new Promise((r) => setTimeout(r, 600));
+          const st = await client.txStatus(entry.hash);
+          if (st === "success") { entry.state = "final"; renderFeed(); return; }
+          if (st === "fail" || st === "invalid") { entry.state = "failed"; b.pending.delete(index); renderFeed(); return; }
+        }
+      }
+
+      function handleSendError(err) {
+        const code = err && err.code;
+        if (code === "rate_limited") setStatus("warn", "Going fast. You hit the relayer's per-minute limit. Your pixels still show here; onchain resumes in a moment.");
+        else if (code === "relayer_unavailable" || code === "not_deployed") setStatus("warn", "The onchain layer is <b>warming up</b>. Your pixels show here for now and go onchain shortly.");
+        else if (code === "network") setStatus("err", "Network hiccup reaching the relayer. Your pixels still show here.");
+        else setStatus("warn", "Onchain submission is unavailable this moment. Your pixels still show here.");
+      }
+
+      // ---------- render ----------
+      function setStatus(kind, html) { $("status").className = "status " + (kind || ""); $("statusText").innerHTML = html; }
+      function yourTotal() { return BOARDS.reduce((s, b) => s + b.yourPixels, 0); }
+      function placedTotal() { return BOARDS.reduce((s, b) => s + (b.live ? b.global : countPlaced(b)), 0); }
+      function countPlaced(b) { let n = 0; for (let i = 0; i < b.n; i++) if (b.board[i] !== 0) n++; return n; }
+      function anyLive() { return BOARDS.some((b) => b.live); }
+      function render() {
+        $("yourPixels").textContent = fmt(yourTotal());
+        $("globalActions").textContent = fmt(anyLive() ? S.global : placedTotal());
+        $("players").textContent = fmt(S.players);
+      }
+
+      function renderFeed() {
+        if (!S.feed.length) return;
+        $("feedCard").classList.remove("hidden");
+        $("feed").innerHTML = S.feed.map((e) =>
+          '<li><span class="tag ' + e.state + '">' + e.state + "</span>" +
+          (e.hash ? '<a href="' + client.explorer + "/transactions/" + e.hash + '" target="_blank" rel="noopener">shard ' + e.shard + " · " + e.hash.slice(0, 8) + "…</a>" : '<span>shard ' + e.shard + "</span>") +
+          "</li>").join("");
+      }
+
+      function renderLeaderboard(entries) {
+        const ul = $("leaderboard");
+        if (!entries || !entries.length) { ul.innerHTML = '<li><span class="empty">No pixels yet. Place the first.</span></li>'; return; }
+        const me = String(client.address || "").toLowerCase();
+        const row = (e) => {
+          const you = String(e.address).toLowerCase() === me;
+          const name = e.handle && e.handle.length ? e.handle : e.address.slice(0, 6) + "…" + e.address.slice(-4);
+          return '<li><span class="rank">' + e.rank + '</span><span class="who ' + (you ? "you" : "") + '">' + escapeHtml(name) + (you ? " (you)" : "") + '</span><span class="sc">' + fmt(e.score) + "</span></li>";
+        };
+        const { visible, self } = topPlusSelf(entries, client.address, 10);
+        ul.innerHTML = visible.map(row).join("") + (self ? BOARD_GAP + row(self) : "");
+      }
+      function escapeHtml(s) { return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+
+      // ---------- poll onchain (each board independently → parallel shards) ----------
+      async function pollBoard(b) {
+        if (!b.live) return;
+        const canvas = await client.query("getCanvas", [], b.contract);
+        if (canvas && canvas.length) {
+          const bytes = client.b64ToBytes(canvas[0]);
+          if (bytes.length === b.n) {
+            const now = Date.now();
+            for (const [i, p] of b.pending) {
+              if (bytes[i] === p.color || now - p.t > 20000) b.pending.delete(i);
+              else bytes[i] = p.color;
+            }
+            b.board = bytes; drawBoard(b);
+          }
+        }
+        const g = await client.query("getGlobalActions", [], b.contract);
+        if (g && g.length) b.global = client.decodeU64(g[0]);
+        // authoritative per-board "your pixels" (so the stat survives reloads)
+        if (client.address) {
+          const pe = await client.query("getPlayerEntry", [client.addressHex()], b.contract);
+          if (pe && pe.length) { const v = client.decodeU64(pe[0]); if (v >= b.yourPixels) b.yourPixels = v; }
+        }
+      }
+      async function poll() {
+        await Promise.all(BOARDS.map(pollBoard));
+        S.global = placedTotal();
+        const board = await fetchGameBoard("triptych"); // aggregated across the three shards
+        renderLeaderboard(board);
+        S.players = board ? board.length : 0;
+        render();
+      }
+
+      // ---------- name ----------
+      function maybeShowNameRow() { if (yourTotal() > 0 && !S.named) $("nameRow").classList.remove("hidden"); }
+      async function saveName() {
+        const name = $("nameInput").value.trim();
+        if (!name) return;
+        // set the handle on a board the player has actually painted (the contract
+        // requires >=1 pixel from the caller); prefer the last one they painted.
+        let target = BOARDS[S.lastPainted];
+        if (!target.live || target.yourPixels === 0) target = BOARDS.find((b) => b.live && b.yourPixels > 0) || target;
+        if (!target.live) { S.named = true; $("nameRow").classList.add("hidden"); setStatus("ok", "Name saved here. It goes onchain with the board once the wings are live."); return; }
+        try {
+          await client.sendActionTo(target.contract, "setHandle", [client.strToHex(name)]);
+          S.named = true; $("nameRow").classList.add("hidden");
+          setStatus("ok", "Name sent onchain. It will show on the board shortly.");
+        } catch (err) { handleSendError(err); }
+      }
+
+      // ---------- wire ----------
+      $("nameBtn").addEventListener("click", saveName);
+
+      (async function () {
+        buildPalette(); buildPanels(); buildNav(); focusBoard(centerIdx, false); render();
+        { const h = getHandle(); if (h && $("nameInput")) $("nameInput").value = h; }
+        const live = anyLive();
+        if (!live) setStatus("warn", "Local preview. Paint freely; placements go onchain as a shared mural once the wings are live.");
+        else {
+          const allLive = BOARDS.every((b) => b.live);
+          setStatus("ok", allLive
+            ? "One tap, no wallet. Each pixel is a real transaction across three shards, gasless."
+            : "The center is live now; the two wings go onchain once deployed. Paint freely.");
+          client.ensureKey().then((ok) => { if (!ok) setStatus("warn", "Onchain layer unavailable right now. Your pixels still show here."); });
+        }
+        poll();
+        setInterval(poll, 2000);
+      })();
+    </script>
+    <p style="position:relative;z-index:3;margin:22px auto 16px;text-align:center;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:#6B7385;line-height:1.6;">Built with &#10084;&#65039; on MultiversX &middot; <a href="https://github.com/lamentierschweinchen/supernova-arcade" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;text-underline-offset:2px;">GitHub</a> &middot; <a href="https://github.com/lamentierschweinchen/supernova-arcade/issues/new?template=bug-report.yml" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;text-underline-offset:2px;">Report a bug</a></p>
+    <script src="/arcade-lock.js"></script>
+    <script type="module" src="/arcade-share.js"></script>
+    <script src="/arcade-info.js"></script>
+    <script type="module" src="/arcade-bridge.js"></script>
+  </body>
+</html>

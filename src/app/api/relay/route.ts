@@ -57,6 +57,8 @@ import {
 import {
   TUGOFWAR_CONTRACT,
   CANVAS_CONTRACT,
+  CANVAS_SHARD1_CONTRACT,
+  CANVAS_SHARD2_CONTRACT,
   BUTTON_CONTRACT,
   REACTION_CONTRACT,
   CLAWBACK_CONTRACT,
@@ -105,6 +107,8 @@ import {
 const ARCADE_RECEIVERS = [
   TUGOFWAR_CONTRACT,
   CANVAS_CONTRACT,
+  CANVAS_SHARD1_CONTRACT, // three-shard canvas wing (shard 1)
+  CANVAS_SHARD2_CONTRACT, // three-shard canvas wing (shard 2)
   BUTTON_CONTRACT,
   REACTION_CONTRACT,
   CLAWBACK_CONTRACT,
@@ -196,10 +200,18 @@ const RELAY_OPS: Record<string, RelayOp> = {
   // Canvas: one `placePixel` = one tx = one pixel. The contract enforces a
   // per-address cooldown and the client mirrors it, so a single key paces itself;
   // this per-IP budget caps a single source painting from many keys at once.
+  // Receivers: the original center (shard 0) PLUS the two Three-Shard Canvas wings
+  // (shards 1 + 2) — same `placePixel`, additive. Cooldown is per-contract, so a
+  // triptych player can paint all three boards at once; the budget is raised to
+  // ~3x the single-board ceiling so an active painter isn't throttled mid-mural.
   [PLACE_PIXEL_FUNCTION]: {
-    receivers: isPlaceholder(CANVAS_CONTRACT) ? [] : [CANVAS_CONTRACT],
+    receivers: [
+      CANVAS_CONTRACT,
+      CANVAS_SHARD1_CONTRACT,
+      CANVAS_SHARD2_CONTRACT,
+    ].filter((addr) => !isPlaceholder(addr)),
     maxGasLimit: PLACE_PIXEL_GAS_LIMIT + 100_000,
-    rateMax: 240,
+    rateMax: 600,
   },
   // The Button: one `press` = one tx = one press (resets the shared timer). A
   // human presses a handful of times per round, but allow headroom for a hot

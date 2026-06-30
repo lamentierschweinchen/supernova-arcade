@@ -62,6 +62,23 @@ export const GAMES = {
     contract: "erd1qqqqqqqqqqqqqpgqxex6j5ucqqmgurwpxunf428jnrck53a9ppuqg93s3t", // NEXT_PUBLIC_CANVAS_CONTRACT (testnet, shard 0)
     gasLimit: 15000000,
   },
+  triptych: {
+    // THREE-SHARD CANVAS (the Triptych): one mural across three shards. The CENTER
+    // is the existing 32x32 canvas (shard 0, data preserved); the two 16x32 WINGS
+    // live on shards 1 + 2. `contract` (the center) is the default + the deployed
+    // check; the three panels are listed in `boards` (left→right as rendered).
+    // EDIT AFTER DEPLOY: set each wing's `contract` to its deploy address (and the
+    // matching NEXT_PUBLIC_CANVAS_SHARD{1,2}_CONTRACT for the relayer). Until then a
+    // wing stays on the placeholder and paints locally while the center is live.
+    label: "Three-Shard Canvas",
+    contract: "erd1qqqqqqqqqqqqqpgqxex6j5ucqqmgurwpxunf428jnrck53a9ppuqg93s3t", // center = shard 0 (existing)
+    gasLimit: 15000000,
+    boards: [
+      { shard: 1, role: "wing",   w: 16, h: 32, tint: "#5B8DEF", contract: "erd1qqqqqqqqqqqqqpgqphkmpc6ryf0ha9fnymhawyetkwknf907x63s9kfv5h" },
+      { shard: 0, role: "center", w: 32, h: 32, tint: "#23F7DD", contract: "erd1qqqqqqqqqqqqqpgqxex6j5ucqqmgurwpxunf428jnrck53a9ppuqg93s3t" },
+      { shard: 2, role: "wing",   w: 16, h: 32, tint: "#A78BFA", contract: "erd1qqqqqqqqqqqqqpgqj4pwlwf2ujuhy9x0fxmfuuhal4llxl3n5cdq3hgrfd" },
+    ],
+  },
   button: {
     label: "The Button",
     contract: "erd1qqqqqqqqqqqqqpgqm4z4vf7h2y0dmcadrj66ucxkda7950mqppuqz09pgl", // NEXT_PUBLIC_BUTTON_CONTRACT (testnet, shard 0)

@@ -4,6 +4,7 @@
     { "source": "/arcade", "destination": "/shell.html" },
     { "source": "/tug-of-war", "destination": "/shell.html" },
     { "source": "/canvas", "destination": "/shell.html" },
+    { "source": "/three-shard-canvas", "destination": "/shell.html" },
     { "source": "/button", "destination": "/shell.html" },
     { "source": "/reaction", "destination": "/shell.html" },
     { "source": "/shard-hydra", "destination": "/shell.html" },

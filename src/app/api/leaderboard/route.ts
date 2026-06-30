@@ -14,6 +14,9 @@ import { NextResponse } from "next/server";
 import {
   TUGOFWAR_CONTRACT,
   CANVAS_CONTRACT,
+  CANVAS_SHARD1_CONTRACT,
+  CANVAS_SHARD2_CONTRACT,
+  CANVAS_TRIPTYCH_CONTRACTS,
   BUTTON_CONTRACT,
   REACTION_CONTRACT,
   CLAWBACK_CONTRACT,
@@ -39,6 +42,8 @@ function gameContracts(): string[] {
   return [
     TUGOFWAR_CONTRACT,
     CANVAS_CONTRACT,
+    CANVAS_SHARD1_CONTRACT, // three-shard canvas wings count toward the daily board
+    CANVAS_SHARD2_CONTRACT,
     BUTTON_CONTRACT,
     REACTION_CONTRACT,
     CLAWBACK_CONTRACT,
@@ -212,7 +217,41 @@ async function globalHandles(): Promise<Map<string, string>> {
   return map;
 }
 
+// THREE-SHARD CANVAS (the Triptych): ONE board summing playerPixels across the
+// three canvas contracts (center shard 0 + the two wings on shards 1 + 2) per
+// address. Each contract's /keys is player-scaling (cheap); we reuse the same
+// storage-parse as the single canvas board, sum per addrHex, and keep any handle
+// seen on any of the three (then fall back to the global handle map).
+async function triptychBoard(): Promise<GameRow[] | null> {
+  const contracts = CANVAS_TRIPTYCH_CONTRACTS.filter((a) => !isPlaceholder(a));
+  if (!contracts.length) return null; // none deployed yet
+  const hit = boardCache.get("triptych");
+  if (hit && Date.now() - hit.at < CACHE_MS) return hit.rows;
+
+  const sums = new Map<string, { handle: string; score: number }>();
+  await Promise.all(
+    contracts.map(async (contract, i) => {
+      const rows = await fetchRows(`triptych:${i}`, { contract, scoreMapper: "playerPixels" });
+      for (const r of rows) {
+        const e = sums.get(r.addrHex) || { handle: "", score: 0 };
+        e.score += r.score;
+        if (!e.handle && r.handle) e.handle = r.handle;
+        sums.set(r.addrHex, e);
+      }
+    }),
+  );
+  const gh = await globalHandles();
+  const rows = [...sums.entries()]
+    .filter(([, e]) => e.score > 0)
+    .map(([addrHex, e]) => ({ address: toBech32(addrHex), handle: e.handle || gh.get(addrHex) || "", score: e.score }))
+    .filter((e) => e.address)
+    .sort((a, b) => b.score - a.score);
+  boardCache.set("triptych", { at: Date.now(), rows });
+  return rows;
+}
+
 async function gameBoard(game: string): Promise<GameRow[] | null> {
+  if (game === "triptych") return triptychBoard(); // one board across three shards
   const cfg = GAME_BOARDS[game];
   if (!cfg || isPlaceholder(cfg.contract)) return null;
   const hit = boardCache.get(game);

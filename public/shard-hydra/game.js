@@ -7,6 +7,9 @@ import { topPlusSelf, fetchGameBoard, BOARD_GAP } from "/arcade-board.js";
 import { getHandle, setHandle as savePassportHandle, getAddress } from "/passport.js";
 import {
   monotonicHp,
+  progressiveAttackAtElapsed,
+  progressiveAttackDuration,
+  progressiveAttackOffset,
   runOwnsRaid,
   settlementEligibleAt,
   settlementRetryDue,
@@ -95,10 +98,15 @@ const S = {
   config: {
     raidDuration: 60_000,
     maxLives: 3,
+    progressive: false,
     firstAttacks: 6,
     firstWindow: 2_600,
     secondWindow: 2_200,
     finalWindow: 1_800,
+    rampAttacks: 29,
+    startWindow: 2_940,
+    windowStep: 62,
+    minWindow: 1_200,
     settlementGrace: 5_000,
   },
 };
@@ -117,6 +125,9 @@ function expectedHead(attackId, raidId = S.raidId) {
 }
 
 function attackDuration(index) {
+  if (S.config.progressive) {
+    return progressiveAttackDuration(index, S.config);
+  }
   if (index < S.config.firstAttacks) return S.config.firstWindow;
   if (index < S.config.firstAttacks + 8) return S.config.secondWindow;
   return S.config.finalWindow;
@@ -124,6 +135,10 @@ function attackDuration(index) {
 
 function attackBounds(index, raidId = S.raidId) {
   const startedAt = S.raidContexts.get(raidId)?.startedAt ?? S.raidStartedAt;
+  if (S.config.progressive) {
+    const opensAt = startedAt + progressiveAttackOffset(index, S.config);
+    return [opensAt, opensAt + attackDuration(index)];
+  }
   const secondAttacks = 8;
   let offset;
   if (index < S.config.firstAttacks) {
@@ -144,7 +159,13 @@ function attackBounds(index, raidId = S.raidId) {
 
 function attackAtTime(now, raidId = S.raidId) {
   const startedAt = S.raidContexts.get(raidId)?.startedAt ?? S.raidStartedAt;
-  const elapsed = Math.max(0, now - startedAt);
+  const elapsed = Math.min(
+    S.config.raidDuration,
+    Math.max(0, now - startedAt),
+  );
+  if (S.config.progressive) {
+    return progressiveAttackAtElapsed(elapsed, S.config);
+  }
   const firstSpan = S.config.firstAttacks * S.config.firstWindow;
   const secondSpan = 8 * S.config.secondWindow;
   if (elapsed < firstSpan) {
@@ -635,7 +656,7 @@ function enterAttack(attackId, head) {
   if (S.lives === 0) {
     S.phase = "spectating";
     setInstruction("", "YOU'RE OUT · WATCH THE RAID", "Other players can finish this Hydra. You rejoin with three lives next raid.");
-    setStatus("", `Spectating the shared fight at ${S.hp} Hydra HP.`);
+    setStatus("", `Spectating the shared fight at ${visibleHydraHp()} Hydra HP.`);
     $("mode").textContent = "Spectating";
     return;
   }
@@ -763,7 +784,7 @@ function handleResultAction() {
     S.phase = "spectating";
     $("mode").textContent = "Spectating";
     setInstruction("", "WATCH THE RAID", "Your team can still finish the Hydra.");
-    setStatus("", `The Hydra has ${S.hp} HP left.`);
+    setStatus("", `The Hydra has ${visibleHydraHp()} HP left.`);
     render();
     return;
   }
@@ -954,6 +975,10 @@ async function refreshChain() {
       if (S.resultShown) {
         $("resultDamage").textContent = String(S.raidHits);
         $("resultAccuracy").textContent = `${raidAccuracy()}%`;
+        $("resultHp").textContent = String(visibleHydraHp());
+        if (!S.resultFinal && S.lives === 0) {
+          setStatus("", `Spectating the shared fight at ${visibleHydraHp()} Hydra HP.`);
+        }
       }
       render();
     }
@@ -1059,16 +1084,33 @@ async function bootstrap() {
     return;
   }
 
-  [
-    S.maxHp,
-    S.config.raidDuration,
-    S.config.maxLives,
-    S.config.firstAttacks,
-    S.config.firstWindow,
-    S.config.secondWindow,
-    S.config.finalWindow,
-    S.config.settlementGrace,
+  const [
+    maxHp,
+    raidDuration,
+    maxLives,
+    scheduleCount,
+    windowA,
+    windowB,
+    windowC,
+    settlementGrace,
   ] = config;
+  S.maxHp = maxHp;
+  S.config.raidDuration = raidDuration;
+  S.config.maxLives = maxLives;
+  S.config.settlementGrace = settlementGrace;
+  S.config.progressive = scheduleCount >= 20;
+  if (S.config.progressive) {
+    S.config.rampAttacks = scheduleCount;
+    S.config.startWindow = windowA;
+    S.config.windowStep = windowB;
+    S.config.minWindow = windowC;
+  } else {
+    // Backward-compatible during the coordinated frontend/contract rollout.
+    S.config.firstAttacks = scheduleCount;
+    S.config.firstWindow = windowA;
+    S.config.secondWindow = windowB;
+    S.config.finalWindow = windowC;
+  }
   S.hp = raid[1];
   S.visualHp = raid[1];
   S.live = true;

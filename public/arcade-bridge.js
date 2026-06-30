@@ -45,6 +45,8 @@
   // ---- which game is this? (mirrors arcade-sound.js / arcade-info.js) ----
   function gameFromPath(p) {
     p = (p || "").toLowerCase();
+    // before the generic /canvas/ test below — /three-shard-canvas also contains "canvas"
+    if (/three[-_]?shard[-_]?canvas|triptych/.test(p)) return "triptych";
     if (/degen[-_]?dash/.test(p)) return "degendash";
     if (/wen[-_]?moon/.test(p)) return "wenmoon";
     if (/clawback/.test(p)) return "clawback";

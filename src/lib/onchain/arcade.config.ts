@@ -57,6 +57,26 @@ export const CANVAS_CONTRACT =
   "erd1qqqqqqqqqqqqqpgqxex6j5ucqqmgurwpxunf428jnrck53a9ppuqg93s3t"; // testnet, shard 0
 
 /**
+ * THREE-SHARD CANVAS (the Triptych) — the two WINGS. The CENTER is the existing
+ * 32x32 `CANVAS_CONTRACT` above (shard 0, data preserved). The two 16x32 wings are
+ * deployed on shard 1 and shard 2 (one board per shard, the cross-shard mural), so
+ * placing on a wing is a real cross-shard transaction. Undeployed by default
+ * (placeholder), so the relayer drops them from its allow-list and the wings show
+ * as "warming up" until the coordinator deploys them and sets these env vars. See
+ * marketing/games/onchain/canvas-contract/scripts/deploy-wing-testnet.sh.
+ */
+export const CANVAS_SHARD1_CONTRACT =
+  process.env.NEXT_PUBLIC_CANVAS_SHARD1_CONTRACT || "erd1qqqqqqqqqqqqqpgqphkmpc6ryf0ha9fnymhawyetkwknf907x63s9kfv5h"; // testnet, shard 1 wing (16x32)
+export const CANVAS_SHARD2_CONTRACT =
+  process.env.NEXT_PUBLIC_CANVAS_SHARD2_CONTRACT || "erd1qqqqqqqqqqqqqpgqj4pwlwf2ujuhy9x0fxmfuuhal4llxl3n5cdq3hgrfd"; // testnet, shard 2 wing (16x32)
+/** All three triptych boards, left→right as rendered: wing(shard 1) · center(shard 0) · wing(shard 2). */
+export const CANVAS_TRIPTYCH_CONTRACTS = [
+  CANVAS_SHARD1_CONTRACT,
+  CANVAS_CONTRACT,
+  CANVAS_SHARD2_CONTRACT,
+];
+
+/**
  * THE BUTTON contract (shard 0). Set NEXT_PUBLIC_BUTTON_CONTRACT after deploy.
  * See marketing/games/onchain/button-contract.
  */
