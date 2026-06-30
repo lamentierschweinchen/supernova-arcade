@@ -130,6 +130,22 @@
         color: var(--text-faint); text-align: center; margin-top: 9px; min-height: 14px; }
       .hint b { color: var(--mint); font-weight: 500; }
 
+      /* DESKTOP: this is the showcase board, and a desktop has room — so the cabinet
+         breaks OUT of the narrow 560px reading column and centers on the viewport.
+         The 32x32 center + the two 16x32 wings roughly double in size (comfortably
+         tappable pixels) while the heading, copy, stats and leaderboard stay in the
+         readable column. Width scales with the viewport, capped so it never sprawls. */
+      @media (min-width: 601px) {
+        .cabinet {
+          width: min(1040px, 94vw);
+          margin-left: calc(50% - min(520px, 47vw));
+        }
+        .triptych { gap: 22px; }
+        /* keep the color swatches a sane size under the now-wide boards */
+        .palette { max-width: 560px; margin: 16px auto 2px; }
+        .hint { font-size: 11.5px; }
+      }
+
       /* MOBILE: the triptych folds for the phone. The CENTER (the main board) sits
          on TOP, full width; the two WINGS sit BELOW in a row, clearly separated so
          they never read as one continuous canvas. The shard-nav makes switching
