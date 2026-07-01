@@ -38,15 +38,11 @@ export function progressiveAttackDuration(
   return Math.max(minWindow, startWindow - attackId * windowStep);
 }
 
-export function progressiveAttackOffset(
-  attackId,
-  { rampAttacks, startWindow, windowStep, minWindow },
-) {
-  const rampCount = Math.min(attackId, rampAttacks);
-  const rampSpan =
-    rampCount * startWindow -
-    (windowStep * rampCount * (rampCount - 1)) / 2;
-  return rampSpan + Math.max(0, attackId - rampCount) * minWindow;
+export function progressiveAttackOffset(attackId, { attackSpacing }) {
+  // Decoupled from the reaction window: bites land on a steady beat. MUST match the
+  // hub contract's attack_bounds offset (attack_id * ATTACK_SPACING_MS), so the UI
+  // and onchain settlement agree on when each bite opens.
+  return attackId * attackSpacing;
 }
 
 export function progressiveAttackAtElapsed(elapsed, config) {

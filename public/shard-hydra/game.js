@@ -96,17 +96,18 @@ const S = {
   offerScheduledRaidId: 0,
   offerTimer: 0,
   config: {
-    raidDuration: 60_000,
+    raidDuration: 30_000,
     maxLives: 2,
-    progressive: true, // HARD MODE — MUST match hub contract getConfig: 1.9s -> 0.55s by attack 8, then held
+    progressive: true, // decoupled model — MUST match hub getConfig: steady 1.5s beat + window 1.4s->0.6s
+    attackSpacing: 1_500,
     firstAttacks: 6,
     firstWindow: 2_600,
     secondWindow: 2_200,
     finalWindow: 1_800,
     rampAttacks: 8,
-    startWindow: 1_900,
-    windowStep: 175,
-    minWindow: 550,
+    startWindow: 1_400,
+    windowStep: 80,
+    minWindow: 600,
     settlementGrace: 5_000,
   },
 };
@@ -1088,29 +1089,23 @@ async function bootstrap() {
     maxHp,
     raidDuration,
     maxLives,
-    scheduleCount,
-    windowA,
-    windowB,
-    windowC,
+    attackSpacing,
+    startWindow,
+    windowStep,
+    minWindow,
     settlementGrace,
   ] = config;
   S.maxHp = maxHp;
   S.config.raidDuration = raidDuration;
   S.config.maxLives = maxLives;
   S.config.settlementGrace = settlementGrace;
-  S.config.progressive = scheduleCount >= 20;
-  if (S.config.progressive) {
-    S.config.rampAttacks = scheduleCount;
-    S.config.startWindow = windowA;
-    S.config.windowStep = windowB;
-    S.config.minWindow = windowC;
-  } else {
-    // Backward-compatible during the coordinated frontend/contract rollout.
-    S.config.firstAttacks = scheduleCount;
-    S.config.firstWindow = windowA;
-    S.config.secondWindow = windowB;
-    S.config.finalWindow = windowC;
-  }
+  // Decoupled model: getConfig slot 4 is now the steady beat between bites
+  // (ATTACK_SPACING_MS), not a ramp count. Window ramps independently.
+  S.config.progressive = true;
+  S.config.attackSpacing = attackSpacing;
+  S.config.startWindow = startWindow;
+  S.config.windowStep = windowStep;
+  S.config.minWindow = minWindow;
   S.hp = raid[1];
   S.visualHp = raid[1];
   S.live = true;
@@ -1119,7 +1114,7 @@ async function bootstrap() {
   $("mode").textContent = "Live · shared fight";
   $("start").disabled = false;
   $("start").textContent = "Fight";
-  setStatus("", "Two lives. Sixty seconds. Kill the Hydra.");
+  setStatus("", "Two lives. Thirty seconds. Kill the Hydra.");
   await refreshChain();
   S.refreshTimer = window.setInterval(() => void refreshChain(), 600);
   S.settlementTimer = window.setInterval(pumpResolutions, 750);
