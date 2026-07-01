@@ -53,12 +53,30 @@
       objective: "Pick a team and pull the rope your way. Whoever has the most pulls when the 45-second round ends wins.",
       controls: ["Pick Super or Nova to join a team", "Tap PULL to pull the rope your way", "Each pull is one real transaction", "Most pulls when the round ends takes it"],
     },
+    triptych: {
+      title: "Three-Shard Canvas",
+      objective: "One mural spread across three shards, a wide center board and two wings, each on its own shard. Paint anywhere and it lands live for everyone.",
+      controls: ["Pick a color from the palette", "Tap any panel, the center or a wing, to place a pixel", "Painting a wing is a real cross-shard transaction", "The mural is shared, so build it together"],
+    },
+    wenmoon: {
+      title: "Wen Moon",
+      objective: "Press-your-luck, provably fair. Pick how likely a MOON is, wager some NOVA, and the chain itself draws the result. A MOON grows your stack, a rug shrinks it. Cash out before you bust.",
+      controls: ["Pick a risk band, safer or bolder", "Wager a slice of your NOVA", "Call it, one real transaction draws the result onchain", "Cash out any time before a rug"],
+    },
+    shardhydra: {
+      title: "Shard Hydra",
+      objective: "A shared boss spread across three shards. One head rears up to bite, hit that head before it does. Everyone's hits stack on the same Hydra.",
+      controls: ["Watch for the head that lights up to attack", "Tap it before it bites", "A wrong head or too slow costs a life", "Every correct hit is one real cross-shard transaction"],
+    },
   };
 
   // Map a pathname to a game key. Handles /canvas, /canvas.html, /clawback/,
   // /degen-dash, /onchain, /sprint, /supernova-sprint, etc.
   function gameFromPath() {
     var p = (location.pathname || "").toLowerCase();
+    if (/three[-_]?shard[-_]?canvas|triptych/.test(p)) return "triptych";
+    if (/wen[-_]?moon/.test(p)) return "wenmoon";
+    if (/shard[-_]?hydra|shardhydra/.test(p)) return "shardhydra";
     if (/degen[-_]?dash/.test(p)) return "degendash";
     if (/clawback/.test(p)) return "clawback";
     if (/reaction/.test(p)) return "reaction";

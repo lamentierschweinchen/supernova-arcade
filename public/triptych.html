@@ -197,7 +197,7 @@
         </div>
       </div>
 
-      <a class="why" href="/why#parallel">
+      <a class="why" href="/why#crossshard">
         <span class="why-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.5c.6.6 1 1.5 1 2.5h6c0-1 .4-1.9 1-2.5A6 6 0 0 0 12 3Z"/></svg></span>
         <span class="why-tx"><span class="why-k">Why it works</span>Three independent shards paint at the same time. The center lives on shard 0; placing on a wing is a real cross-shard transaction, final in a fraction of a second.</span>
         <span class="why-go" aria-hidden="true">&rarr;</span>
@@ -249,10 +249,6 @@
 
       const COOLDOWN_MS = 500; // mirrors the contract
       const SCALE = 16;        // internal px per cell (crisp pixelation)
-      // Announcement/preview mode (?announce): fill the not-yet-deployed wings with a
-      // cool MvX color so an expansion screenshot reads complete. Off by default, so
-      // the live page honestly shows undeployed wings as empty/"warming up".
-      const ANNOUNCE = new URLSearchParams(location.search).has("announce");
       const PALETTE = [
         "#0e1320", "#F4F6FA", "#23F7DD", "#5B8DEF", "#A78BFA", "#F5B544", "#FF6B9D", "#4ADE80",
         "#9BA3B4", "#6B7385", "#1ec8b4", "#3a6fc4", "#7a5bd0", "#c98f2e", "#cf4f7e", "#2fae5f",
@@ -329,18 +325,6 @@
           cv.addEventListener("pointermove", (e) => aim(b, e));
           cv.addEventListener("pointerdown", (e) => { focusBoard(b.idx, false); aim(b, e); });
           cv.addEventListener("pointerleave", () => b.sel.classList.remove("show"));
-          drawBoard(b);
-        });
-      }
-
-      // fill the wings solid with their cool shard tint (blue s1 / lavender s2) for
-      // the expansion announcement. Wings only — the center keeps the real mural.
-      function announceFillWings() {
-        BOARDS.forEach((b) => {
-          if (b.role === "center") return;
-          const idx = Math.max(1, PALETTE.indexOf(b.tint)); // the wing's tint is in the palette
-          b.board.fill(idx);
-          b.el.classList.remove("pending-deploy"); // drop the "warming up" dim
           drawBoard(b);
         });
       }
@@ -516,7 +500,6 @@
       // ---------- poll onchain (each board independently → parallel shards) ----------
       async function pollBoard(b) {
         if (!b.live) return;
-        if (ANNOUNCE && b.role !== "center") return; // keep the announce solid-fill on the wings
         const canvas = await client.query("getCanvas", [], b.contract);
         if (canvas && canvas.length) {
           const bytes = client.b64ToBytes(canvas[0]);
@@ -568,7 +551,6 @@
 
       (async function () {
         buildPalette(); buildPanels(); buildNav(); focusBoard(centerIdx, false); render();
-        if (ANNOUNCE) announceFillWings(); // expansion screenshot: solid cool wings
         { const h = getHandle(); if (h && $("nameInput")) $("nameInput").value = h; }
         const live = anyLive();
         if (!live) setStatus("warn", "Local preview. Paint freely; placements go onchain as a shared mural once the wings are live.");

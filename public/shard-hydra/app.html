@@ -768,17 +768,17 @@
         <ul class="lb" id="lbRows"><li class="empty">Reading the chain…</li></ul>
       </section>
 
-      <details class="proof">
-        <summary>Why this is a MultiversX game</summary>
-        <div class="proof-copy">
-          Each head lives on a different execution shard. A correct tap lands on that head’s shard, which records the trusted launch time. The hub combines every player’s hits into one shared Hydra. <strong>Supernova makes that cross-shard loop fast enough to feel like play.</strong>
-        </div>
-      </details>
+      <a class="why" href="/why#crossshard">
+        <span class="why-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.5c.6.6 1 1.5 1 2.5h6c0-1 .4-1.9 1-2.5A6 6 0 0 0 12 3Z"/></svg></span>
+        <span class="why-tx"><span class="why-k">Why it works</span>Each head lives on a different execution shard, and every player's hits fuse into one shared Hydra. A real cross-shard loop, final in a fraction of a second, fast enough to feel like play.</span>
+        <span class="why-go" aria-hidden="true">&rarr;</span>
+      </a>
 
       <footer class="afoot"><span class="sn">Unlisted Supernova Arcade test build</span> · live testnet contracts · main Arcade unchanged</footer>
     </main>
 
     <script type="module" src="/shard-hydra/game.js"></script>
     <script src="/arcade-bridge.js"></script>
+    <script src="/arcade-info.js"></script>
   </body>
 </html>
