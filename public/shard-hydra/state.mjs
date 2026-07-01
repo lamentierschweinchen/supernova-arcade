@@ -31,6 +31,14 @@ export function settlementEligibleAt(closesAt, graceMs, safetyMs = 1_000) {
   return closesAt + graceMs + safetyMs;
 }
 
+export function combatDuration(
+  raidDuration,
+  settlementGrace,
+  safetyMs = 1_000,
+) {
+  return Math.max(0, raidDuration - settlementGrace - safetyMs);
+}
+
 export function progressiveAttackDuration(
   attackId,
   { startWindow, windowStep, minWindow },

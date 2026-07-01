@@ -3,33 +3,14 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>Shard Hydra · Supernova Arcade Playtest</title>
+    <title>Shard Hydra · Supernova Arcade</title>
     <meta
       name="description"
-      content="A shared three-shard boss fight. Hit the attacking Hydra head before it bites."
+      content="A shared three-shard boss fight. All three heads flare; hit the red one before it bites."
     />
     <link rel="icon" href="/favicon.svg" />
     <link rel="stylesheet" href="/arcade-shell.css" />
     <style>
-      .test-tag {
-        display: inline-flex;
-        align-items: center;
-        gap: 7px;
-        margin-bottom: 9px;
-        color: var(--amber);
-        font-family: var(--mono);
-        font-size: 9px;
-        letter-spacing: .14em;
-        text-transform: uppercase;
-      }
-      .test-tag::before {
-        width: 7px;
-        height: 7px;
-        border-radius: 50%;
-        background: var(--amber);
-        box-shadow: 0 0 8px var(--amber);
-        content: "";
-      }
       .sub strong { color: var(--text); }
       .screen {
         min-height: 475px;
@@ -290,6 +271,24 @@
         box-shadow: 0 0 8px rgba(255, 107, 157, .6);
         transform: scaleX(1);
         transform-origin: left;
+      }
+      .threat-chorus > .head {
+        border-color: color-mix(in srgb, var(--c) 28%, var(--border));
+        background: radial-gradient(110% 80% at 50% 20%, color-mix(in srgb, var(--c) 10%, transparent), #101820 62%, #080b10);
+        box-shadow: 0 0 18px color-mix(in srgb, var(--c) 12%, transparent);
+        opacity: .82;
+        transform: translateY(6px) scale(.985);
+      }
+      .threat-chorus > .head .skull {
+        fill: #10201f;
+        stroke: color-mix(in srgb, var(--c) 58%, #7e8a9a);
+      }
+      .threat-chorus > .head .jaw {
+        stroke: color-mix(in srgb, var(--c) 42%, #657182);
+      }
+      .threat-chorus > .head .eye {
+        fill: color-mix(in srgb, var(--c) 72%, #536171);
+        filter: drop-shadow(0 0 4px color-mix(in srgb, var(--c) 55%, transparent));
       }
       .head.attacking {
         z-index: 2;
@@ -591,6 +590,9 @@
         .head.attacking {
           animation: threat-pulse 900ms ease-in-out infinite alternate;
         }
+        .threat-chorus > .head:not(.attacking) {
+          animation: decoy-pulse 450ms cubic-bezier(0.4, 0, 0.2, 1) infinite alternate;
+        }
         .screen.bitten {
           animation: bite-shake 300ms cubic-bezier(0.4, 0, 0.2, 1);
         }
@@ -599,6 +601,9 @@
         }
         @keyframes threat-pulse {
           to { filter: brightness(1.12); transform: translateY(-9px) scale(1.055); }
+        }
+        @keyframes decoy-pulse {
+          to { filter: brightness(1.08); transform: translateY(4px) scale(.995); }
         }
         @keyframes bite-shake {
           30% { transform: translateX(-3px); }
@@ -644,7 +649,7 @@
       </header>
 
       <h1>Shard Hydra</h1>
-      <p class="sub"><strong>A head is about to bite. Hit that head first.</strong> Every correct hit hurts the shared Hydra. Hit the wrong head—or wait too long—and it takes one of your lives.</p>
+      <p class="sub"><strong>All three heads flare. One turns red and opens its jaws.</strong> Hit that head before it bites. Every correct hit hurts the shared Hydra; hit wrong—or wait too long—and it takes a life.</p>
 
       <div class="onetap">
         <span class="ic" aria-hidden="true">
@@ -654,25 +659,25 @@
       </div>
 
       <section class="cabinet" aria-label="Shard Hydra game">
-        <div class="cab-marquee">Hit the attacking head before it bites</div>
+        <div class="cab-marquee">Hit the red head before it bites</div>
         <div class="screen" id="screen">
           <div class="raid-bar">
             <span class="raid-label">Shared Hydra</span>
-            <span class="raid-clock"><span id="raidClock">1:00</span><small>Raid left</small></span>
+            <span class="raid-clock"><span id="raidClock">0:30</span><small>Raid left</small></span>
             <span class="mode" id="mode">Getting ready</span>
           </div>
 
           <div class="boss">
             <div class="boss-number"><span id="hp">15</span><small>Hydra HP</small></div>
             <div>
-              <div class="hp-topline"><strong id="hpCopy">24 of 24</strong><span>Every hit = 1 damage</span></div>
-              <div class="hp-track" role="progressbar" aria-label="Hydra health" aria-valuemin="0" aria-valuemax="24" aria-valuenow="24"><i id="hpFill"></i></div>
+              <div class="hp-topline"><strong id="hpCopy">15 of 15</strong><span>Every hit = 1 damage</span></div>
+              <div class="hp-track" role="progressbar" aria-label="Hydra health" aria-valuemin="0" aria-valuemax="15" aria-valuenow="15"><i id="hpFill"></i></div>
             </div>
           </div>
 
           <div class="instruction" id="instruction" aria-live="polite">
             <strong id="instructionTitle">Watch the heads</strong>
-            <span id="instructionCopy">When one rises and glows, hit it before it bites.</span>
+            <span id="instructionCopy">When all three glow, hit the one that turns red.</span>
           </div>
 
           <div class="arena" id="arena">
@@ -720,7 +725,7 @@
             <div class="rules gate-panel" id="briefingPanel">
               <span class="rules-kicker">How to play</span>
               <h2>Kill the Hydra.</h2>
-              <p>Hit the glowing head before it bites. Two bites and you’re out.</p>
+              <p>Hit the red, open-mouthed head before it bites. Two bites and you’re out.</p>
               <div class="rules-list">
                 <div class="rule"><b aria-hidden="true">15</b><span><strong>Hydra HP</strong>Every correct hit deals 1 damage.</span></div>
                 <div class="rule"><b aria-hidden="true">♥</b><span><strong>Two lives</strong>Wrong or too slow costs one.</span></div>
@@ -753,7 +758,7 @@
 
       <div class="stats" aria-label="Your raid status">
         <div class="stat"><div class="num on" id="score">0</div><div class="lbl">Raid hits</div></div>
-        <div class="stat"><div class="num hearts" id="lives">♥♥♥</div><div class="lbl">Your lives</div></div>
+        <div class="stat"><div class="num hearts" id="lives">♥♥</div><div class="lbl">Your lives</div></div>
         <div class="stat"><div class="num" id="accuracy">—</div><div class="lbl">Accuracy</div></div>
       </div>
 

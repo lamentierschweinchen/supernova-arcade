@@ -6,6 +6,7 @@ import { mountGalaxy } from "/arcade-galaxy.js";
 import { topPlusSelf, fetchGameBoard, BOARD_GAP } from "/arcade-board.js";
 import { getHandle, setHandle as savePassportHandle, getAddress } from "/passport.js";
 import {
+  combatDuration,
   monotonicHp,
   progressiveAttackAtElapsed,
   progressiveAttackDuration,
@@ -33,6 +34,8 @@ const JOIN_GAS = 10_000_000;
 const HIT_GAS = 14_000_000;
 const SETTLE_GAS = 30_000_000;
 const SETTLEMENT_RETRY_MS = 3_000;
+const SETTLEMENT_DISPATCH_SAFETY_MS = 250;
+const COMBAT_TAIL_SAFETY_MS = 1_000;
 const VICTORY_REVEAL_MS = 400;
 const REVIEW_ATTACK_ORDER = [1, 0, 2, 1, 2, 0, 0, 2, 1, 0, 1, 2];
 const U64_MASK = (1n << 64n) - 1n;
@@ -60,9 +63,9 @@ const S = {
   nextSettlement: 0,
   responseHead: -1,
   phase: "waiting",
-  hp: 24,
-  visualHp: 24,
-  maxHp: 24,
+  hp: 15,
+  visualHp: 15,
+  maxHp: 15,
   lives: 2,
   chainLives: 2,
   score: 0,
@@ -79,7 +82,7 @@ const S = {
   frame: 0,
   refreshTimer: 0,
   lastObservedAttack: -1,
-  lastObservedHp: 24,
+  lastObservedHp: 15,
   lastObservedScore: 0,
   localResponses: new Map(),
   pendingHits: new Map(),
@@ -96,9 +99,9 @@ const S = {
   offerScheduledRaidId: 0,
   offerTimer: 0,
   config: {
-    raidDuration: 30_000,
+    raidDuration: 36_000,
     maxLives: 2,
-    progressive: true, // decoupled model — MUST match hub getConfig: steady 1.5s beat + window 1.4s->0.6s
+    progressive: true, // decoupled model — MUST match hub getConfig: steady 1.5s beat + window 1.4s->0.4s
     attackSpacing: 1_500,
     firstAttacks: 6,
     firstWindow: 2_600,
@@ -107,7 +110,7 @@ const S = {
     rampAttacks: 8,
     startWindow: 1_400,
     windowStep: 80,
-    minWindow: 600,
+    minWindow: 400,
     settlementGrace: 5_000,
   },
 };
@@ -190,6 +193,32 @@ function chainNow() {
   // raid anchor, wall time is smoother and fresher than polling a block-backed
   // "now" value every attack.
   return Date.now();
+}
+
+function combatEndsAt(startedAt = S.raidStartedAt) {
+  return (
+    startedAt +
+    combatDuration(
+      S.config.raidDuration,
+      S.config.settlementGrace,
+      COMBAT_TAIL_SAFETY_MS,
+    )
+  );
+}
+
+function scheduleNextRaidOffer(raidId, deadline) {
+  if (S.offerScheduledRaidId === raidId) return;
+  if (S.offerTimer) window.clearTimeout(S.offerTimer);
+  S.offerScheduledRaidId = raidId;
+  S.offerTimer = window.setTimeout(() => {
+    S.offerTimer = 0;
+    if (S.started || S.joining || S.raidId !== raidId) return;
+    S.offeredRaidId = raidId;
+    $("mode").textContent = "Ready";
+    $("start").disabled = false;
+    $("start").textContent = "Fight";
+    setStatus("", "The next Hydra is ready.");
+  }, Math.max(0, deadline - chainNow() + 100));
 }
 
 function formatClock(ms) {
@@ -295,7 +324,7 @@ function showResult({ raidWon, pending = false }) {
     reason = "Your team finished the Hydra after you fell.";
   } else if (raidWon) {
     title = "HYDRA SLAIN";
-    reason = "You survived and the team dealt all 24 damage.";
+    reason = `You survived and the team dealt all ${S.maxHp} damage.`;
   } else if (eliminated) {
     title = "THE HYDRA ESCAPED";
     reason = `Two bites ended your run. The Hydra escaped with ${visibleHydraHp()} HP.`;
@@ -353,6 +382,7 @@ function updateStats() {
 }
 
 function renderHeads() {
+  $("arena").classList.toggle("threat-chorus", S.phase === "attack");
   headEls.forEach((head, index) => {
     const action = head.querySelector(".head-action");
     const eligible =
@@ -397,7 +427,7 @@ function renderHeads() {
 function render() {
   updateStats();
   renderHeads();
-  if (!S.started) $("raidClock").textContent = "1:00";
+  if (!S.started) $("raidClock").textContent = formatClock(combatEndsAt(0));
 }
 
 function clearNextTimer() {
@@ -420,6 +450,26 @@ function finishVictory() {
     $("screen").classList.remove("victory");
     showResult({ raidWon: true });
   }, VICTORY_REVEAL_MS);
+}
+
+function enterSettlementTail() {
+  if (
+    !S.live ||
+    S.resultShown ||
+    S.phase === "settling" ||
+    S.phase === "victory" ||
+    visibleHydraHp() === 0
+  ) {
+    return;
+  }
+  S.combatReady = false;
+  S.phase = "settling";
+  S.activeHead = -1;
+  clearNextTimer();
+  setInstruction("hit", "THE HYDRA REELS", "No more heads. Final blows are landing.");
+  setStatus("", "The fight ends when the last strikes land.");
+  $("mode").textContent = "Final blows";
+  render();
 }
 
 function showDamage() {
@@ -482,6 +532,7 @@ function scheduleResolution(raidId, attackId) {
   const eligibleAt = settlementEligibleAt(
     attackBounds(attackId, raidId)[1],
     S.config.settlementGrace,
+    SETTLEMENT_DISPATCH_SAFETY_MS,
   );
   void fetch("/api/hydra/settle", {
     method: "POST",
@@ -496,7 +547,10 @@ function scheduleResolution(raidId, attackId) {
 function readySettlementTarget(raidId, target) {
   const context = S.raidContexts.get(raidId);
   if (!context) return -1;
-  const readyAt = chainNow() - S.config.settlementGrace - 750;
+  const readyAt =
+    chainNow() -
+    S.config.settlementGrace -
+    SETTLEMENT_DISPATCH_SAFETY_MS;
   if (readyAt <= context.startedAt) return -1;
   return Math.min(target, Math.max(-1, attackAtTime(readyAt, raidId) - 1));
 }
@@ -669,7 +723,7 @@ function enterAttack(attackId, head) {
   }
 
   S.phase = "attack";
-  setInstruction("attack", "HIT THE GLOWING HEAD", "Tap it before the red timer empties.");
+  setInstruction("attack", "HIT THE RED HEAD", "Only the open mouth is about to bite.");
   setStatus("warn", "It is about to bite.");
 }
 
@@ -849,6 +903,10 @@ async function refreshChain() {
     const raidChanged = raidId !== S.raidId;
     const raidExpired = startedAt > 0 && chainNow() >= deadline;
     const raidEnded = hp === 0 || raidExpired;
+    const raidSettling =
+      !raidEnded &&
+      startedAt > 0 &&
+      chainNow() >= combatEndsAt(startedAt);
     const previousRaidHits = S.raidHits;
     const previousChainHp = S.hp;
     const previousChainLives = S.chainLives;
@@ -949,9 +1007,17 @@ async function refreshChain() {
       S.chainLives = S.config.maxLives;
       S.raidHits = 0;
       showGatePanel("briefing");
-      $("mode").textContent = "Ready";
-      $("start").disabled = false;
-      $("start").textContent = "Fight";
+      if (raidSettling) {
+        $("mode").textContent = "Final blows";
+        $("start").disabled = true;
+        $("start").textContent = "Next raid soon";
+        setStatus("", "Final blows are landing. The next Hydra follows.");
+        scheduleNextRaidOffer(raidId, deadline);
+      } else {
+        $("mode").textContent = "Ready";
+        $("start").disabled = false;
+        $("start").textContent = "Fight";
+      }
     }
 
     if (runOwnsRaid({
@@ -1149,7 +1215,7 @@ function tick() {
       visibleHydraHp() > 0 &&
       !S.resultShown &&
       S.raidStartedAt > 0 &&
-      now < S.raidDeadline
+      now < (S.live ? combatEndsAt() : S.raidDeadline)
     ) {
       const attackId = attackAtTime(now);
       if (attackId !== S.lastObservedAttack) {
@@ -1173,6 +1239,17 @@ function tick() {
         scheduleResolution(S.raidId, S.attackIndex);
       }
     }
+
+    if (
+      S.live &&
+      S.joined &&
+      S.combatReady &&
+      !S.resultShown &&
+      now >= combatEndsAt() &&
+      now < S.raidDeadline
+    ) {
+      enterSettlementTail();
+    }
   }
   S.frame = window.requestAnimationFrame(tick);
 }
@@ -1188,26 +1265,26 @@ function applyReviewState(state) {
   S.joined = true;
   S.combatReady = true;
   S.raidId = 12;
-  S.raidStartedAt = Date.now() - 17_000;
-  S.raidDeadline = Date.now() + 43_000;
+  S.raidStartedAt = Date.now() - 10_000;
+  S.raidDeadline = Date.now() + 20_000;
   S.attackIndex = 7;
   S.activeHead = 1;
   S.joinAttack = 0;
   hideGate();
-  $("raidClock").textContent = "0:43";
+  $("raidClock").textContent = "0:20";
   $("mode").textContent = "Shared fight";
 
   if (state === "attack") {
     S.phase = "attack";
-    S.attackDuration = 2_600;
-    setInstruction("attack", "HIT THE GLOWING HEAD", "Tap it before the red timer empties.");
+    S.attackDuration = attackDuration(S.attackIndex);
+    setInstruction("attack", "HIT THE RED HEAD", "Only the open mouth is about to bite.");
     setStatus("warn", "It is about to bite.");
     headEls[1].querySelector(".attack-meter i").style.transform = "scaleX(.58)";
   } else if (state === "hit") {
     S.phase = "hit";
     S.responseHead = 1;
-    S.hp = 23;
-    S.visualHp = 23;
+    S.hp = 14;
+    S.visualHp = 14;
     S.score = 1;
     S.raidHits = 1;
     S.localHits = 1;
@@ -1219,12 +1296,22 @@ function applyReviewState(state) {
   } else if (state === "bite") {
     S.phase = "bite";
     S.responseHead = 0;
-    S.lives = 2;
+    S.lives = 1;
     S.raidAttempts = 1;
     S.wrongHits = 1;
-    setInstruction("bite", "BITTEN · WRONG HEAD", "2 lives left. Watch for the next attacking head.");
+    setInstruction("bite", "BITTEN · WRONG HEAD", "1 life left. Watch for the next attacking head.");
     setStatus("err", "Wrong head. You lost 1 life.");
     $("screen").classList.add("bitten");
+  } else if (state === "settling") {
+    S.raidDeadline = Date.now() + 6_000;
+    S.hp = 3;
+    S.visualHp = 3;
+    S.raidHits = 12;
+    S.localHits = 12;
+    S.raidAttempts = 14;
+    $("raidClock").textContent = "0:06";
+    S.live = true;
+    enterSettlementTail();
   } else if (state === "victory") {
     S.hp = 0;
     S.visualHp = 0;
@@ -1242,13 +1329,13 @@ function applyReviewState(state) {
     S.bestStreak = 4;
     showResult({ raidWon: false });
   } else if (state === "dead") {
-    S.hp = 11;
-    S.visualHp = 11;
+    S.hp = 9;
+    S.visualHp = 9;
     S.lives = 0;
     S.raidHits = 5;
     S.localHits = 5;
-    S.raidAttempts = 8;
-    S.wrongHits = 2;
+    S.raidAttempts = 7;
+    S.wrongHits = 1;
     S.timeouts = 1;
     S.bestStreak = 3;
     showResult({ raidWon: false, pending: true });

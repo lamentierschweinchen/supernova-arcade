@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  combatDuration,
   monotonicHp,
   progressiveAttackAtElapsed,
   progressiveAttackDuration,
@@ -66,22 +67,32 @@ test("only the raid bound to the foreground run may end it", () => {
 
 test("deferred settlement waits through the contract grace and safety buffer", () => {
   assert.equal(settlementEligibleAt(10_000, 5_000), 16_000);
+  assert.equal(settlementEligibleAt(10_000, 5_000, 250), 15_250);
 });
 
-test("Hydra: reaction window ramps 1.4s->0.6s while bites stay on a steady 1.5s beat", () => {
+test("Hydra: full 30s of combat, then a 6s tail for the final onchain strikes", () => {
+  // raid window = combat(30s) + settle tail(6s) = 36s. Combat is NOT cut short:
+  // combat = raid - grace - safety, so raid 36s yields the full 30s of play.
+  assert.equal(combatDuration(36_000, 5_000), 30_000);
+});
+
+test("Hydra: reaction window ramps 1.4s->0.4s while bites stay on a steady 1.5s beat", () => {
   // decoupled model — must match the hub contract's getConfig + attack_bounds.
   const config = {
     attackSpacing: 1_500,
     startWindow: 1_400,
     windowStep: 80,
-    minWindow: 600,
+    minWindow: 400,
   };
 
-  // reaction window shrinks smoothly to the 0.6s floor by attack 10, then holds
+  // The familiar opening is unchanged; only the solo endgame tightens further.
   assert.equal(progressiveAttackDuration(0, config), 1_400);
   assert.equal(progressiveAttackDuration(5, config), 1_000);
   assert.equal(progressiveAttackDuration(10, config), 600);
-  assert.equal(progressiveAttackDuration(20, config), 600);
+  assert.equal(progressiveAttackDuration(11, config), 520);
+  assert.equal(progressiveAttackDuration(12, config), 440);
+  assert.equal(progressiveAttackDuration(13, config), 400);
+  assert.equal(progressiveAttackDuration(20, config), 400);
 
   for (let attackId = 1; attackId <= 20; attackId += 1) {
     assert.ok(
