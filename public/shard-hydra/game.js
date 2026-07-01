@@ -63,8 +63,8 @@ const S = {
   hp: 24,
   visualHp: 24,
   maxHp: 24,
-  lives: 3,
-  chainLives: 3,
+  lives: 2,
+  chainLives: 2,
   score: 0,
   raidHits: 0,
   localHits: 0,
@@ -97,16 +97,16 @@ const S = {
   offerTimer: 0,
   config: {
     raidDuration: 60_000,
-    maxLives: 3,
-    progressive: true, // HARD MODE: continuous ramp, reaction window 1.5s -> 0.65s by ~attack 13 (then held)
+    maxLives: 2,
+    progressive: true, // HARD MODE — MUST match hub contract getConfig: 1.9s -> 0.55s by attack 8, then held
     firstAttacks: 6,
     firstWindow: 2_600,
     secondWindow: 2_200,
     finalWindow: 1_800,
-    rampAttacks: 13,
-    startWindow: 1_500,
-    windowStep: 70,
-    minWindow: 650,
+    rampAttacks: 8,
+    startWindow: 1_900,
+    windowStep: 175,
+    minWindow: 550,
     settlementGrace: 5_000,
   },
 };
@@ -271,7 +271,7 @@ function biteSummary() {
   const parts = [];
   if (S.wrongHits) parts.push(`${S.wrongHits} wrong ${S.wrongHits === 1 ? "head" : "heads"}`);
   if (S.timeouts) parts.push(`${S.timeouts} ${S.timeouts === 1 ? "timeout" : "timeouts"}`);
-  return parts.length ? parts.join(" · ") : "3 bites";
+  return parts.length ? parts.join(" · ") : "2 bites";
 }
 
 function showResult({ raidWon, pending = false }) {
@@ -288,7 +288,7 @@ function showResult({ raidWon, pending = false }) {
   let reason;
   if (pending) {
     title = "YOU WERE DEVOURED";
-    reason = `Three bites ended your run. ${biteSummary()}.`;
+    reason = `Two bites ended your run. ${biteSummary()}.`;
   } else if (raidWon && eliminated) {
     title = "HYDRA SLAIN";
     reason = "Your team finished the Hydra after you fell.";
@@ -297,7 +297,7 @@ function showResult({ raidWon, pending = false }) {
     reason = "You survived and the team dealt all 24 damage.";
   } else if (eliminated) {
     title = "THE HYDRA ESCAPED";
-    reason = `Three bites ended your run. The Hydra escaped with ${visibleHydraHp()} HP.`;
+    reason = `Two bites ended your run. The Hydra escaped with ${visibleHydraHp()} HP.`;
   } else {
     title = "THE HYDRA ESCAPED";
     reason = `Time expired with ${visibleHydraHp()} Hydra HP remaining.`;
@@ -655,7 +655,7 @@ function enterAttack(attackId, head) {
   }
   if (S.lives === 0) {
     S.phase = "spectating";
-    setInstruction("", "YOU'RE OUT · WATCH THE RAID", "Other players can finish this Hydra. You rejoin with three lives next raid.");
+    setInstruction("", "YOU'RE OUT · WATCH THE RAID", "Other players can finish this Hydra. You rejoin with two lives next raid.");
     setStatus("", `Spectating the shared fight at ${visibleHydraHp()} Hydra HP.`);
     $("mode").textContent = "Spectating";
     return;
@@ -712,7 +712,7 @@ function beginJoinedRun(raidId, startedAt, chainJoinAttack) {
   S.lastObservedAttack = S.joinAttack - 1;
   $("mode").textContent = "Live · shared fight";
   setInstruction("", "GET READY", "The first head is about to strike.");
-  setStatus("", "Three lives. Kill the Hydra.");
+  setStatus("", "Two lives. Kill the Hydra.");
   render();
 }
 
@@ -730,7 +730,7 @@ async function joinLiveRaid() {
   $("start").textContent = "Starting";
   hideGate();
   setInstruction("", "THE HYDRA AWAKENS", "Get ready to strike.");
-  setStatus("", "Three lives. Kill the Hydra.");
+  setStatus("", "Two lives. Kill the Hydra.");
   render();
   try {
     await client.sendAction("joinRaid", [], JOIN_GAS);
@@ -768,7 +768,7 @@ function startPractice() {
   hideGate();
   $("mode").textContent = "Practice";
   setInstruction("", "GET READY · 3", "Watch the heads.");
-  setStatus("", "Three lives. Kill the Hydra.");
+  setStatus("", "Two lives. Kill the Hydra.");
   render();
 }
 
@@ -1119,7 +1119,7 @@ async function bootstrap() {
   $("mode").textContent = "Live · shared fight";
   $("start").disabled = false;
   $("start").textContent = "Fight";
-  setStatus("", "Three lives. Sixty seconds. Kill the Hydra.");
+  setStatus("", "Two lives. Sixty seconds. Kill the Hydra.");
   await refreshChain();
   S.refreshTimer = window.setInterval(() => void refreshChain(), 600);
   S.settlementTimer = window.setInterval(pumpResolutions, 750);
