@@ -211,7 +211,11 @@ const RELAY_OPS: Record<string, RelayOp> = {
       CANVAS_SHARD2_CONTRACT,
     ].filter((addr) => !isPlaceholder(addr)),
     maxGasLimit: PLACE_PIXEL_GAS_LIMIT + 100_000,
-    rateMax: 600,
+    // ~1500/min per IP: a solo triptych painter uses ~360/min (3 boards x 500ms
+    // cooldown), so this leaves room for several people sharing one network (event
+    // WiFi) before the budget bites — and the client now retries anyway, so an
+    // over-budget pixel re-broadcasts until it lands rather than dropping.
+    rateMax: 1500,
   },
   // The Button: one `press` = one tx = one press (resets the shared timer). A
   // human presses a handful of times per round, but allow headroom for a hot

@@ -424,14 +424,7 @@
         startCooldown(b);
         render();
 
-        if (b.live) {
-          try {
-            const { txHash } = await client.sendActionTo(b.contract, "placePixel", [client.u32ToHex(index), client.u8ToHex(S.color)]);
-            const entry = { hash: txHash, state: "pending", shard: b.shard };
-            S.feed.unshift(entry); if (S.feed.length > 8) S.feed.length = 8;
-            renderFeed(); pollTx(b, entry, index);
-          } catch (err) { handleSendError(err); }
-        }
+        if (b.live) broadcastPixel(b, index, S.color);
         maybeShowNameRow();
       }
 
@@ -460,6 +453,28 @@
         else if (code === "relayer_unavailable" || code === "not_deployed") setStatus("warn", "The onchain layer is <b>warming up</b>. Your pixels show here for now and go onchain shortly.");
         else if (code === "network") setStatus("err", "Network hiccup reaching the relayer. Your pixels still show here.");
         else setStatus("warn", "Onchain submission is unavailable this moment. Your pixels still show here.");
+      }
+
+      // Broadcast a painted pixel, RETRYING transient failures (rate-limit / network /
+      // relayer warming up) so EVERY pixel actually lands onchain — never a local-only
+      // ghost that reverts. pollBoard keeps the optimistic pixel alive while we retry.
+      async function broadcastPixel(b, index, color, attempt = 0) {
+        // stop if this cell was re-painted a different color or already reconciled away
+        const p = b.pending.get(index);
+        if (!p || p.color !== color) return;
+        try {
+          const { txHash } = await client.sendActionTo(b.contract, "placePixel", [client.u32ToHex(index), client.u8ToHex(color)]);
+          const entry = { hash: txHash, state: "pending", shard: b.shard };
+          S.feed.unshift(entry); if (S.feed.length > 8) S.feed.length = 8;
+          renderFeed(); pollTx(b, entry, index);
+        } catch (err) {
+          handleSendError(err);
+          const code = err && err.code;
+          const retryable = code === "rate_limited" || code === "network" || code === "relayer_unavailable";
+          if (retryable && attempt < 8) {
+            setTimeout(() => broadcastPixel(b, index, color, attempt + 1), 1400 + attempt * 900);
+          }
+        }
       }
 
       // ---------- render ----------
@@ -506,7 +521,7 @@
           if (bytes.length === b.n) {
             const now = Date.now();
             for (const [i, p] of b.pending) {
-              if (bytes[i] === p.color || now - p.t > 20000) b.pending.delete(i);
+              if (bytes[i] === p.color || now - p.t > 40000) b.pending.delete(i);
               else bytes[i] = p.color;
             }
             b.board = bytes; drawBoard(b);
