@@ -2,6 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   monotonicHp,
+  progressiveAttackAtElapsed,
+  progressiveAttackDuration,
+  progressiveAttackOffset,
   runOwnsRaid,
   settlementEligibleAt,
   settlementRetryDue,
@@ -63,4 +66,38 @@ test("only the raid bound to the foreground run may end it", () => {
 
 test("deferred settlement waits through the contract grace and safety buffer", () => {
   assert.equal(settlementEligibleAt(10_000, 5_000), 16_000);
+});
+
+test("Hydra: reaction window ramps 1.4s->0.6s while bites stay on a steady 1.5s beat", () => {
+  // decoupled model — must match the hub contract's getConfig + attack_bounds.
+  const config = {
+    attackSpacing: 1_500,
+    startWindow: 1_400,
+    windowStep: 80,
+    minWindow: 600,
+  };
+
+  // reaction window shrinks smoothly to the 0.6s floor by attack 10, then holds
+  assert.equal(progressiveAttackDuration(0, config), 1_400);
+  assert.equal(progressiveAttackDuration(5, config), 1_000);
+  assert.equal(progressiveAttackDuration(10, config), 600);
+  assert.equal(progressiveAttackDuration(20, config), 600);
+
+  for (let attackId = 1; attackId <= 20; attackId += 1) {
+    assert.ok(
+      progressiveAttackDuration(attackId, config) <=
+        progressiveAttackDuration(attackId - 1, config),
+    );
+  }
+
+  // bites land on a steady beat, DECOUPLED from the window: offset is linear
+  // (attack_id * ATTACK_SPACING_MS), matching the contract's attack_bounds.
+  assert.equal(progressiveAttackOffset(0, config), 0);
+  assert.equal(progressiveAttackOffset(1, config), 1_500);
+  assert.equal(progressiveAttackOffset(10, config), 15_000);
+  assert.equal(progressiveAttackOffset(20, config), 30_000);
+
+  assert.equal(progressiveAttackAtElapsed(0, config), 0);
+  assert.equal(progressiveAttackAtElapsed(1_600, config), 1);
+  assert.equal(progressiveAttackAtElapsed(15_000, config), 10);
 });
