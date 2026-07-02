@@ -909,12 +909,12 @@ async function fetchChainSnapshot() {
   if (!addressHex) return null;
 
   const snapshotRaw = await client.query("getPlayerRaidSnapshot", [addressHex]);
-  const snapshot = decodeMany(snapshotRaw, 15);
+  const snapshot = decodeMany(snapshotRaw, 16);
   if (snapshot) {
     return {
-      raidRaw: snapshotRaw.slice(0, 9),
-      raid: snapshot.slice(0, 9),
-      mine: snapshot.slice(9, 15),
+      raidRaw: snapshotRaw.slice(0, 10),
+      raid: snapshot.slice(0, 10), // [raidId, hp, maxHp, startedAt, deadline, seed, attackId, expectedHead, now, raidPlayers]
+      mine: snapshot.slice(10, 16),
     };
   }
 
@@ -943,7 +943,8 @@ async function refreshChain() {
     }
     S.appliedRefreshSequence = sequence;
 
-    const [raidId, hp, maxHp, startedAt, deadline] = snapshot.raid;
+    const [raidId, hp, maxHp, startedAt, deadline, , , , , raidPlayerCount] =
+      snapshot.raid;
     const [joined, lives, chainJoinAttack, nextSettlement, score, raidHits] =
       snapshot.mine;
     const raidChanged = raidId !== S.raidId;
@@ -961,6 +962,14 @@ async function refreshChain() {
     S.raidId = raidId;
     S.raidStartedAt = startedAt;
     S.raidDeadline = deadline;
+    S.raidPlayerCount = Math.max(1, raidPlayerCount || 0); // live "N fighting" headcount
+    const sharedNote = $("sharedNoteText");
+    if (sharedNote) {
+      sharedNote.textContent =
+        S.raidPlayerCount > 1
+          ? `${S.raidPlayerCount} fighting this Hydra together`
+          : "Everyone sees the same attacking head";
+    }
     S.raidSeed = decodeU64BigInt(snapshot.raidRaw[5]);
     S.raidContexts.set(raidId, { seed: S.raidSeed, startedAt });
     S.hp = hp;
@@ -1027,7 +1036,14 @@ async function refreshChain() {
     ) {
       S.visualHp = monotonicHp(S.visualHp, hp);
       showDamage();
-      setStatus("ok", "Another player struck the Hydra.");
+      // TEAMMATE HIT: the shared HP fell but not from your own strike — flash a
+      // distinct cue so you see a friend chipping the same Hydra in real time.
+      const teammateN = Math.max(1, previousChainHp - hp);
+      $("screen").classList.remove("teammate-hit");
+      void $("screen").offsetWidth; // restart the flash on rapid teammate hits
+      $("screen").classList.add("teammate-hit");
+      window.setTimeout(() => $("screen").classList.remove("teammate-hit"), 520);
+      setStatus("ok", teammateN > 1 ? `Your team hit the Hydra ${teammateN}x.` : "A teammate hit the Hydra.");
     } else if (
       S.activeRunRaidId === raidId &&
       lives < previousChainLives &&
@@ -1228,7 +1244,9 @@ async function bootstrap() {
   $("start").textContent = "Fight";
   setStatus("", "Two lives. Thirty seconds. Kill the Hydra.");
   await refreshChain();
-  S.refreshTimer = window.setInterval(() => void refreshChain(), 600);
+  // Poll faster than before so teammates' hits + the shared HP feel live (the flash
+  // latency is bounded by this interval). Re-entrancy + sequence guards keep it safe.
+  S.refreshTimer = window.setInterval(() => void refreshChain(), 400);
   S.settlementTimer = window.setInterval(pumpResolutions, 750);
 }
 
@@ -1244,7 +1262,21 @@ function tick() {
       const countdownMs = S.readyAt - now;
       if (countdownMs > 0) {
         const count = Math.max(1, Math.ceil(countdownMs / 1_000));
-        setInstruction("", `GET READY · ${count}`, "Watch the heads.");
+        const n = S.raidPlayerCount || 1;
+        if (countdownMs > 3_000) {
+          // the forming lobby — anyone who joins now shares this same Hydra
+          setInstruction(
+            "",
+            n > 1 ? `RAID FORMING · ${n} FIGHTING` : "RAID FORMING",
+            n > 1 ? `Combat in ${count}s.` : `Combat in ${count}s. Grab a friend to pile on.`,
+          );
+        } else {
+          setInstruction(
+            "",
+            `GET READY · ${count}`,
+            n > 1 ? `${n} fighting. Heads incoming.` : "Heads incoming.",
+          );
+        }
       } else if (S.joined) {
         S.combatReady = true;
         if (!S.live) {

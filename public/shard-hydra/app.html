@@ -569,6 +569,13 @@
       .screen.settling {
         box-shadow: inset 0 0 65px rgba(35, 247, 221, .16), 0 0 0 1px var(--c);
       }
+      /* TEAMMATE HIT: a distinct teal pulse of the whole screen when a friend chips the
+         shared HP. Your own hits flash the HEAD, not the screen, so the two never blur. */
+      .screen.teammate-hit { animation: teammate-flash .5s ease-out; }
+      @keyframes teammate-flash {
+        0%, 100% { box-shadow: inset 0 0 60px rgba(35, 247, 221, 0), 0 0 0 1px var(--c); }
+        25% { box-shadow: inset 0 0 82px rgba(35, 247, 221, .45), 0 0 0 2px var(--c); }
+      }
       /* The settle beat plays on EVERY result, including reduced-motion (it's a core
          game beat, brief and gentle, not decorative chrome) so it's never silently
          suppressed on a phone with Reduce Motion on. */
@@ -745,7 +752,7 @@
             <span class="damage-pop" id="damagePop" aria-hidden="true">−1 HP</span>
           </div>
 
-          <p class="shared-note"><i aria-hidden="true"></i>Everyone sees the same attacking head</p>
+          <p class="shared-note"><i aria-hidden="true"></i><span id="sharedNoteText">Everyone sees the same attacking head</span></p>
 
           <div class="gate" id="gate">
             <div class="rules gate-panel" id="briefingPanel">
