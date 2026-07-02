@@ -40,6 +40,10 @@ const VICTORY_REVEAL_MS = 400;
 // A brief serpentine "settle" beat before EVERY result: the Hydra slithers while the
 // last onchain strike settles, then the result panel drops.
 const SETTLE_BEAT_MS = 1_500;
+// Input grace: a tap still counts as a hit for this long AFTER the reaction meter
+// visually closes. Human perception + render lag the exact deadline millisecond, so
+// without it an on-time tap loses the race to the timeout and is scored as a bite.
+const INPUT_GRACE_MS = 200;
 const REVIEW_ATTACK_ORDER = [1, 0, 2, 1, 2, 0, 0, 2, 1, 0, 1, 2];
 const U64_MASK = (1n << 64n) - 1n;
 
@@ -341,7 +345,7 @@ function showResult({ raidWon, pending = false }) {
   $("resultReason").textContent = reason;
   // Arcade score is always the value read back from the hub. Immediate local
   // feedback lives in HP, accuracy, and streak instead.
-  $("resultDamage").textContent = String(S.raidHits);
+  $("resultDamage").textContent = String(Math.max(S.localHits, S.raidHits));
   $("resultAccuracy").textContent = `${raidAccuracy()}%`;
   $("resultStreak").textContent = String(S.bestStreak);
   $("resultHp").textContent = String(visibleHydraHp());
@@ -399,7 +403,7 @@ function updateStats() {
   $("hp").textContent = visibleHp;
   $("hpCopy").textContent = `${visibleHp} of ${S.maxHp}`;
   $("hpFill").style.transform = `scaleX(${Math.max(0, visibleHp / Math.max(1, S.maxHp))})`;
-  $("score").textContent = S.raidHits;
+  $("score").textContent = Math.max(S.localHits, S.raidHits);
   $("lives").textContent =
     "♥".repeat(S.lives) + "♡".repeat(Math.max(0, S.config.maxLives - S.lives));
   $("accuracy").textContent = S.raidAttempts ? `${raidAccuracy()}%` : "—";
@@ -1082,7 +1086,7 @@ async function refreshChain() {
       showResult({ raidWon: false });
     } else {
       if (S.resultShown) {
-        $("resultDamage").textContent = String(S.raidHits);
+        $("resultDamage").textContent = String(Math.max(S.localHits, S.raidHits));
         $("resultAccuracy").textContent = `${raidAccuracy()}%`;
         $("resultHp").textContent = String(visibleHydraHp());
         if (!S.resultFinal && S.lives === 0) {
@@ -1273,7 +1277,7 @@ function tick() {
       const meter = headEls[S.activeHead]?.querySelector(".attack-meter i");
       if (meter) meter.style.transform = `scaleX(${scale})`;
       if (
-        attackMs === 0 &&
+        now >= S.attackDeadline + INPUT_GRACE_MS &&
         S.joined &&
         S.attackIndex >= S.joinAttack &&
         !S.localResponses.has(S.attackIndex)
