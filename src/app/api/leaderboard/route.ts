@@ -287,6 +287,66 @@ async function pointsBoard(game: string): Promise<GameRow[] | null> {
   return rows;
 }
 
+// ---- all-time PURE-VOLUME hub board ----
+// One honest cross-game metric: each player's total onchain ACTIONS (= their real tx
+// count) summed across every game. Uncheatable, uniform, no weighting. Per game the
+// action count is: the mapper the cabinet already ranks by where that IS the action
+// (canvas pixels / tug pulls / reaction reactions / hydra hits / degen grabs); an
+// explicit getTopActions view for Button/Wen Moon/Clawback (their cabinet metric is a
+// derived score, not a tx count); and the tap-counter's playerTaps for Sprint. A game
+// with several boards (the three-shard canvas) sums them but counts as one game.
+const VOLUME_SOURCES: Record<string, GameCfg[]> = {
+  sprint: [{ contract: TAP_COUNTER_CONTRACT, scoreMapper: "playerTaps" }],
+  reaction: [{ contract: REACTION_CONTRACT, scoreMapper: "reactions" }],
+  tugofwar: [{ contract: TUGOFWAR_CONTRACT, scoreMapper: "playerPulls" }],
+  canvas: [
+    { contract: CANVAS_CONTRACT, scoreMapper: "playerPixels" },
+    { contract: CANVAS_SHARD1_CONTRACT, scoreMapper: "playerPixels" },
+    { contract: CANVAS_SHARD2_CONTRACT, scoreMapper: "playerPixels" },
+  ],
+  shardhydra: [{ contract: SHARD_HYDRA_HUB_CONTRACT, view: "getLeaderboard" }],
+  degendash: [{ contract: DEGENDASH_CONTRACT, view: "getTopPoints" }],
+  button: [{ contract: BUTTON_CONTRACT, view: "getTopActions" }],
+  wenmoon: [{ contract: WENMOON_CONTRACT, view: "getTopActions" }],
+  clawback: [{ contract: CLAWBACK_CONTRACT, view: "getTopActions" }],
+};
+
+type VolumeRow = { address: string; handle: string; actions: number; games: number };
+let volumeCache: { at: number; rows: VolumeRow[] } | null = null;
+
+async function volumeBoard(): Promise<VolumeRow[]> {
+  if (volumeCache && Date.now() - volumeCache.at < CACHE_MS) return volumeCache.rows;
+  const tally = new Map<string, { actions: number; games: number }>();
+  await Promise.all(
+    Object.entries(VOLUME_SOURCES).map(async ([game, cfgs]) => {
+      const live = cfgs.filter((c) => c.contract && !isPlaceholder(c.contract));
+      if (!live.length) return;
+      const results = await Promise.all(live.map((cfg, i) => fetchRows(`vol:${game}:${i}`, cfg)));
+      // sum a game's boards per player first (the three-shard canvas has three), so
+      // the game counts once toward "games" regardless of how many boards it has.
+      const perGame = new Map<string, number>();
+      for (const rows of results) {
+        for (const e of rows) {
+          if (e.score > 0) perGame.set(e.addrHex, (perGame.get(e.addrHex) || 0) + e.score);
+        }
+      }
+      for (const [addrHex, actions] of perGame) {
+        const cur = tally.get(addrHex) || { actions: 0, games: 0 };
+        cur.actions += actions;
+        cur.games += 1;
+        tally.set(addrHex, cur);
+      }
+    }),
+  );
+  const gh = await globalHandles();
+  const rows = [...tally.entries()]
+    .map(([addrHex, v]) => ({ address: toBech32(addrHex), handle: gh.get(addrHex) || "", actions: v.actions, games: v.games }))
+    .filter((e) => e.address)
+    .sort((a, b) => b.actions - a.actions);
+  volumeCache = { at: Date.now(), rows };
+  return rows;
+}
+
 export async function GET(request: Request) {
   // ?game=X -> that game's cabinet board (best run); &metric=points -> the hub's
   // cumulative-points board for that game. No game -> the daily board.
@@ -297,6 +357,11 @@ export async function GET(request: Request) {
     const rows = metric === "points" ? await pointsBoard(game) : await gameBoard(game);
     if (rows === null) return NextResponse.json({ error: "unknown_game" }, { status: 404 });
     return NextResponse.json({ game, metric: metric === "points" ? "points" : "best", count: rows.length, rows });
+  }
+  if (params.get("window") === "alltime") {
+    // the hub's all-time board: total onchain actions per player across every game
+    const rows = await volumeBoard();
+    return NextResponse.json({ window: "alltime", count: rows.length, rows });
   }
   const after = utcMidnight();
   if (cache && cache.day === after && Date.now() - cache.at < CACHE_MS) {
