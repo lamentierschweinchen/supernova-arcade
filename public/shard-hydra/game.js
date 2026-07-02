@@ -828,8 +828,21 @@ function startPractice() {
   render();
 }
 
+function scrollBoardIntoView() {
+  // On mobile, bring the play area on-screen so the heads are visible and thumb-tappable
+  // without scrolling mid-reaction — the intro copy otherwise pushes them below the fold.
+  if (window.innerWidth > 640) return;
+  const el = document.getElementById("screen");
+  if (el) {
+    try {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+    } catch (_e) {}
+  }
+}
+
 function startGame() {
   if (!S.booted || S.joining) return;
+  scrollBoardIntoView();
   if (S.live) joinLiveRaid();
   else startPractice();
 }
@@ -854,6 +867,7 @@ function handleResultAction() {
   S.localResponses.clear();
   S.pendingHits.clear();
   S.lastObservedAttack = -1;
+  scrollBoardIntoView();
   if (S.live) void joinLiveRaid();
   else startPractice();
 }
