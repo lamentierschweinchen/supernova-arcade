@@ -53,11 +53,8 @@ export function progressiveAttackOffset(attackId, { attackSpacing }) {
   return attackId * attackSpacing;
 }
 
-export function progressiveAttackAtElapsed(elapsed, config) {
-  for (let attackId = 0; attackId < 128; attackId += 1) {
-    if (elapsed < progressiveAttackOffset(attackId + 1, config)) {
-      return attackId;
-    }
-  }
-  return 127;
+export function progressiveAttackAtElapsed(elapsed, { attackSpacing }) {
+  // Offsets are linear (attackId * attackSpacing), so "the attack whose beat we are
+  // inside" is plain arithmetic. Capped at 127 like the historical scan.
+  return Math.min(127, Math.max(0, Math.floor(elapsed / attackSpacing)));
 }

@@ -40,9 +40,13 @@ const VICTORY_REVEAL_MS = 400;
 // A brief serpentine "settle" beat before EVERY result: the Hydra slithers while the
 // last onchain strike settles, then the result panel drops.
 const SETTLE_BEAT_MS = 1_500;
-// Input grace: a tap still counts as a hit for this long AFTER the reaction meter
-// visually closes. Human perception + render lag the exact deadline millisecond, so
-// without it an on-time tap loses the race to the timeout and is scored as a bite.
+// Input grace: a tap still counts for the CURRENT attack for this long AFTER the
+// reaction meter visually closes. Human perception, render lag, and touch latency all
+// trail the exact deadline millisecond. The grace must gate BOTH the timeout mark and
+// the advance to the next attack — if the advance fires at the raw deadline it re-aims
+// a just-late tap at the next head (a guaranteed "wrong head" bite that reads as a
+// stolen tap). The hub's onchain window is far looser (+7s), so a grace hit still
+// settles as a hit.
 const INPUT_GRACE_MS = 200;
 const REVIEW_ATTACK_ORDER = [1, 0, 2, 1, 2, 0, 0, 2, 1, 0, 1, 2];
 const U64_MASK = (1n << 64n) - 1n;
@@ -63,11 +67,11 @@ const S = {
   raidId: 0,
   raidStartedAt: 0,
   raidDeadline: 0,
+  raidPlayerCount: 1,
   raidSeed: 0n,
   attackIndex: 0,
   activeHead: -1,
   joinAttack: 0,
-  nextSettlement: 0,
   responseHead: -1,
   phase: "waiting",
   hp: 15,
@@ -75,7 +79,6 @@ const S = {
   maxHp: 15,
   lives: 2,
   chainLives: 2,
-  score: 0,
   raidHits: 0,
   localHits: 0,
   raidAttempts: 0,
@@ -85,12 +88,9 @@ const S = {
   bestStreak: 0,
   attackDeadline: 0,
   attackDuration: 2_200,
-  nextTimer: 0,
   frame: 0,
   refreshTimer: 0,
   lastObservedAttack: -1,
-  lastObservedHp: 15,
-  lastObservedScore: 0,
   localResponses: new Map(),
   pendingHits: new Map(),
   settlementTargets: new Map(),
@@ -102,19 +102,13 @@ const S = {
   refreshSequence: 0,
   appliedRefreshSequence: 0,
   raidContexts: new Map(),
-  offeredRaidId: 0,
   offerScheduledRaidId: 0,
   offerTimer: 0,
   config: {
+    // Decoupled model — MUST match hub getConfig: steady 1.5s beat + shrinking window.
     raidDuration: 36_000,
     maxLives: 2,
-    progressive: true, // decoupled model — MUST match hub getConfig: steady 1.5s beat + window 1.4s->0.4s
     attackSpacing: 1_500,
-    firstAttacks: 6,
-    firstWindow: 2_600,
-    secondWindow: 2_200,
-    finalWindow: 1_800,
-    rampAttacks: 8,
     startWindow: 1_400,
     windowStep: 80,
     minWindow: 400,
@@ -136,35 +130,12 @@ function expectedHead(attackId, raidId = S.raidId) {
 }
 
 function attackDuration(index) {
-  if (S.config.progressive) {
-    return progressiveAttackDuration(index, S.config);
-  }
-  if (index < S.config.firstAttacks) return S.config.firstWindow;
-  if (index < S.config.firstAttacks + 8) return S.config.secondWindow;
-  return S.config.finalWindow;
+  return progressiveAttackDuration(index, S.config);
 }
 
 function attackBounds(index, raidId = S.raidId) {
   const startedAt = S.raidContexts.get(raidId)?.startedAt ?? S.raidStartedAt;
-  if (S.config.progressive) {
-    const opensAt = startedAt + progressiveAttackOffset(index, S.config);
-    return [opensAt, opensAt + attackDuration(index)];
-  }
-  const secondAttacks = 8;
-  let offset;
-  if (index < S.config.firstAttacks) {
-    offset = index * S.config.firstWindow;
-  } else if (index < S.config.firstAttacks + secondAttacks) {
-    offset =
-      S.config.firstAttacks * S.config.firstWindow +
-      (index - S.config.firstAttacks) * S.config.secondWindow;
-  } else {
-    offset =
-      S.config.firstAttacks * S.config.firstWindow +
-      secondAttacks * S.config.secondWindow +
-      (index - S.config.firstAttacks - secondAttacks) * S.config.finalWindow;
-  }
-  const opensAt = startedAt + offset;
+  const opensAt = startedAt + progressiveAttackOffset(index, S.config);
   return [opensAt, opensAt + attackDuration(index)];
 }
 
@@ -174,25 +145,7 @@ function attackAtTime(now, raidId = S.raidId) {
     S.config.raidDuration,
     Math.max(0, now - startedAt),
   );
-  if (S.config.progressive) {
-    return progressiveAttackAtElapsed(elapsed, S.config);
-  }
-  const firstSpan = S.config.firstAttacks * S.config.firstWindow;
-  const secondSpan = 8 * S.config.secondWindow;
-  if (elapsed < firstSpan) {
-    return Math.floor(elapsed / S.config.firstWindow);
-  }
-  if (elapsed < firstSpan + secondSpan) {
-    return (
-      S.config.firstAttacks +
-      Math.floor((elapsed - firstSpan) / S.config.secondWindow)
-    );
-  }
-  return (
-    S.config.firstAttacks +
-    8 +
-    Math.floor((elapsed - firstSpan - secondSpan) / S.config.finalWindow)
-  );
+  return progressiveAttackAtElapsed(elapsed, S.config);
 }
 
 function chainNow() {
@@ -200,6 +153,20 @@ function chainNow() {
   // raid anchor, wall time is smoother and fresher than polling a block-backed
   // "now" value every attack.
   return Date.now();
+}
+
+// The bar emptying is NOT the tap cutoff. Hold the current attack through the input
+// grace so a tap landing right after the meter closes still counts for the head the
+// player was aiming at. Advance immediately once the player has responded (snappier).
+// The scheduler only reports the next attack once its window OPENS, so for most
+// attacks the grace has long expired by then and this holds nothing; only the widest
+// early windows (whose close + grace overruns the next open) get held, revealing the
+// next head up to INPUT_GRACE_MS late. Never cap the hold at the next open — that
+// re-cancels the grace exactly where it is needed.
+function attackAdvanceDue(now) {
+  const previous = S.lastObservedAttack;
+  if (previous < 0 || S.localResponses.has(previous)) return true;
+  return now >= attackBounds(previous)[1] + INPUT_GRACE_MS;
 }
 
 function combatEndsAt(startedAt = S.raidStartedAt) {
@@ -220,7 +187,6 @@ function scheduleNextRaidOffer(raidId, deadline) {
   S.offerTimer = window.setTimeout(() => {
     S.offerTimer = 0;
     if (S.started || S.joining || S.raidId !== raidId) return;
-    S.offeredRaidId = raidId;
     $("mode").textContent = "Ready";
     $("start").disabled = false;
     $("start").textContent = "Fight";
@@ -263,6 +229,12 @@ function raidAccuracy() {
 }
 
 function resetRunStats() {
+  // Every run starter passes through here, so the response slate is owned in ONE
+  // place — a missed clear silently swallows taps (localResponses is keyed by bare
+  // attack ids, not raid-scoped).
+  S.localResponses.clear();
+  S.pendingHits.clear();
+  S.lastObservedAttack = -1;
   S.raidHits = 0;
   S.localHits = 0;
   S.raidAttempts = 0;
@@ -318,7 +290,6 @@ function showResult({ raidWon, pending = false }) {
   S.resultShown = true;
   S.resultFinal = !pending;
   S.combatReady = false;
-  clearNextTimer();
 
   const eliminated = S.lives === 0;
   let title;
@@ -345,7 +316,7 @@ function showResult({ raidWon, pending = false }) {
   $("resultReason").textContent = reason;
   // Arcade score is always the value read back from the hub. Immediate local
   // feedback lives in HP, accuracy, and streak instead.
-  $("resultDamage").textContent = String(Math.max(S.localHits, S.raidHits));
+  $("resultDamage").textContent = String(displayHits());
   $("resultAccuracy").textContent = `${raidAccuracy()}%`;
   $("resultStreak").textContent = String(S.bestStreak);
   $("resultHp").textContent = String(visibleHydraHp());
@@ -398,12 +369,18 @@ function visibleHydraHp() {
   return Math.max(0, S.visualHp);
 }
 
+function displayHits() {
+  // The shown score never dips below what the player locally landed: optimistic
+  // local hits lead, chain-confirmed hits catch up (and win once settled).
+  return Math.max(S.localHits, S.raidHits);
+}
+
 function updateStats() {
   const visibleHp = visibleHydraHp();
   $("hp").textContent = visibleHp;
   $("hpCopy").textContent = `${visibleHp} of ${S.maxHp}`;
   $("hpFill").style.transform = `scaleX(${Math.max(0, visibleHp / Math.max(1, S.maxHp))})`;
-  $("score").textContent = Math.max(S.localHits, S.raidHits);
+  $("score").textContent = displayHits();
   $("lives").textContent =
     "♥".repeat(S.lives) + "♡".repeat(Math.max(0, S.config.maxLives - S.lives));
   $("accuracy").textContent = S.raidAttempts ? `${raidAccuracy()}%` : "—";
@@ -462,17 +439,11 @@ function render() {
   if (!S.started) $("raidClock").textContent = formatClock(combatEndsAt(0));
 }
 
-function clearNextTimer() {
-  if (S.nextTimer) window.clearTimeout(S.nextTimer);
-  S.nextTimer = 0;
-}
-
 function finishVictory() {
   if (S.resultShown || S.phase === "victory") return;
   S.visualHp = 0;
   S.combatReady = false;
   S.phase = "victory";
-  clearNextTimer();
   setInstruction("hit", "HYDRA SLAIN", "You landed the final blow.");
   setStatus("ok", "The Hydra is down.");
   $("mode").textContent = "Raid won";
@@ -497,7 +468,6 @@ function enterSettlementTail() {
   S.combatReady = false;
   S.phase = "settling";
   S.activeHead = -1;
-  clearNextTimer();
   setInstruction("hit", "THE HYDRA REELS", "No more heads. Final blows are landing.");
   setStatus("", "The fight ends when the last strikes land.");
   $("mode").textContent = "Final blows";
@@ -510,6 +480,30 @@ function showDamage() {
   void pop.offsetWidth;
   pop.classList.add("show");
   window.setTimeout(() => pop.classList.remove("show"), 450);
+}
+
+function flashTeammateHit(count) {
+  // Distinct cue for a FRIEND chipping the shared HP: the whole screen pulses teal.
+  // Your own hits flash the head, so the two never blur.
+  const screen = $("screen");
+  screen.classList.remove("teammate-hit");
+  void screen.offsetWidth; // restart the flash on rapid teammate hits
+  screen.classList.add("teammate-hit");
+  window.setTimeout(() => screen.classList.remove("teammate-hit"), 520);
+  setStatus(
+    "ok",
+    count > 1 ? `Your team hit the Hydra ${count}x.` : "A teammate hit the Hydra.",
+  );
+}
+
+function updateSharedNote() {
+  const note = $("sharedNoteText");
+  if (!note) return;
+  const text =
+    S.raidPlayerCount > 1
+      ? `${S.raidPlayerCount} fighting this Hydra together`
+      : "Everyone sees the same attacking head";
+  if (note.textContent !== text) note.textContent = text;
 }
 
 function showBite(reason, clickedHead = -1) {
@@ -538,7 +532,9 @@ function showBite(reason, clickedHead = -1) {
   window.setTimeout(() => $("screen").classList.remove("bitten"), 350);
   if (S.lives === 0) {
     $("mode").textContent = "Out";
-    window.setTimeout(() => showResult({ raidWon: false, pending: true }), 300);
+    // "pending" (spectate while the shared raid finishes) only makes sense live —
+    // practice has no chain to finalize, so a practice death is final immediately.
+    window.setTimeout(() => showResult({ raidWon: false, pending: S.live }), 300);
   }
 }
 
@@ -558,7 +554,8 @@ function showCorrectHit(head) {
 function scheduleResolution(raidId, attackId) {
   if (!S.live) return;
   const previous = S.settlementTargets.get(raidId) ?? -1;
-  if (attackId > previous) S.settlementTargets.set(raidId, attackId);
+  if (attackId <= previous) return; // target already covers this attack — no new info
+  S.settlementTargets.set(raidId, attackId);
   const player = client.address;
   if (!player) return;
   const eligibleAt = settlementEligibleAt(
@@ -652,19 +649,13 @@ async function pumpResolutions() {
 }
 
 async function submitHit(head, raidId, attackId, attempt = 0) {
-  const key = `${raidId}:${attackId}`;
   try {
-    const receipt = await client.sendActionTo(
+    await client.sendActionTo(
       HEADS[head],
       "hit",
       [client.u64ToHex(raidId), client.u64ToHex(attackId)],
       HIT_GAS,
     );
-    const pending = S.pendingHits.get(key);
-    if (pending) {
-      pending.txHash = receipt.txHash;
-      pending.status = "submitted";
-    }
   } catch {
     const retryDeadline = attackBounds(attackId, raidId)[1] + 3_000;
     if (attempt < 2 && chainNow() < retryDeadline) {
@@ -673,8 +664,6 @@ async function submitHit(head, raidId, attackId, attempt = 0) {
       }, 500 * (attempt + 1));
       return;
     }
-    const pending = S.pendingHits.get(key);
-    if (pending) pending.status = "failed";
     setStatus(
       "err",
       "That hit could not reach the Hydra. Keep fighting.",
@@ -703,12 +692,7 @@ function handleHeadClick(head) {
 
   if (head === S.activeHead) {
     S.visualHp = Math.max(0, S.visualHp - 1);
-    S.pendingHits.set(responseKey, {
-      raidId,
-      attackId,
-      status: "queued",
-      txHash: "",
-    });
+    S.pendingHits.set(responseKey, { raidId, attackId });
     showCorrectHit(head);
     if (visibleHydraHp() === 0) {
       finishVictory();
@@ -721,7 +705,6 @@ function handleHeadClick(head) {
     void submitHit(head, raidId, attackId);
   }
   else if (head === S.activeHead) {
-    S.score += 1;
     S.raidHits += 1;
     S.hp = S.visualHp;
     render();
@@ -895,10 +878,8 @@ function handleResultAction() {
   S.runToken += 1;
   S.activeRunRaidId = 0;
   S.combatReady = false;
-  S.localResponses.clear();
-  S.pendingHits.clear();
-  S.lastObservedAttack = -1;
   scrollBoardIntoView();
+  // Both starters reset the response slate via resetRunStats.
   if (S.live) void joinLiveRaid();
   else startPractice();
 }
@@ -910,20 +891,12 @@ async function fetchChainSnapshot() {
 
   const snapshotRaw = await client.query("getPlayerRaidSnapshot", [addressHex]);
   const snapshot = decodeMany(snapshotRaw, 16);
-  if (snapshot) {
-    return {
-      raidRaw: snapshotRaw.slice(0, 10),
-      raid: snapshot.slice(0, 10), // [raidId, hp, maxHp, startedAt, deadline, seed, attackId, expectedHead, now, raidPlayers]
-      mine: snapshot.slice(10, 16),
-    };
-  }
-
-  // Backward-compatible only during a coordinated contract rollout.
-  const raidRaw = await client.query("getRaidState");
-  const raid = decodeMany(raidRaw, 9);
-  if (!raid) return null;
-  const mine = decodeMany(await client.query("getPlayerState", [addressHex]), 6);
-  return mine ? { raidRaw, raid, mine } : null;
+  if (!snapshot) return null;
+  return {
+    raidRaw: snapshotRaw.slice(0, 10),
+    raid: snapshot.slice(0, 10), // [raidId, hp, maxHp, startedAt, deadline, seed, attackId, expectedHead, now, raidPlayers]
+    mine: snapshot.slice(10, 16),
+  };
 }
 
 async function refreshChain() {
@@ -945,7 +918,7 @@ async function refreshChain() {
 
     const [raidId, hp, maxHp, startedAt, deadline, , , , , raidPlayerCount] =
       snapshot.raid;
-    const [joined, lives, chainJoinAttack, nextSettlement, score, raidHits] =
+    const [joined, lives, chainJoinAttack, nextSettlement, , raidHits] =
       snapshot.mine;
     const raidChanged = raidId !== S.raidId;
     const raidExpired = startedAt > 0 && chainNow() >= deadline;
@@ -963,21 +936,13 @@ async function refreshChain() {
     S.raidStartedAt = startedAt;
     S.raidDeadline = deadline;
     S.raidPlayerCount = Math.max(1, raidPlayerCount || 0); // live "N fighting" headcount
-    const sharedNote = $("sharedNoteText");
-    if (sharedNote) {
-      sharedNote.textContent =
-        S.raidPlayerCount > 1
-          ? `${S.raidPlayerCount} fighting this Hydra together`
-          : "Everyone sees the same attacking head";
-    }
+    updateSharedNote();
     S.raidSeed = decodeU64BigInt(snapshot.raidRaw[5]);
     S.raidContexts.set(raidId, { seed: S.raidSeed, startedAt });
     S.hp = hp;
     S.maxHp = maxHp || S.maxHp;
     S.chainLives = lives;
-    S.nextSettlement = nextSettlement;
     S.settlementConfirmedThrough.set(raidId, nextSettlement);
-    S.score = score;
     S.raidHits = raidHits;
 
     if (raidChanged) {
@@ -986,9 +951,6 @@ async function refreshChain() {
         S.offerTimer = 0;
       }
       S.offerScheduledRaidId = 0;
-      S.offeredRaidId = 0;
-      S.lastObservedHp = hp;
-      S.lastObservedScore = score;
       if (!S.started) {
         S.visualHp = raidEnded ? S.maxHp : hp;
         S.localResponses.clear();
@@ -1029,6 +991,9 @@ async function refreshChain() {
       S.settlementRequests.delete(raidId);
     }
 
+    // Teammate flash first (visual only may survive), then your own chain-detected
+    // bite/death — it must win the status line and the result panel even when one
+    // snapshot carries both a teammate hit and your lost life.
     if (
       S.activeRunRaidId === raidId &&
       hp < previousChainHp &&
@@ -1036,15 +1001,9 @@ async function refreshChain() {
     ) {
       S.visualHp = monotonicHp(S.visualHp, hp);
       showDamage();
-      // TEAMMATE HIT: the shared HP fell but not from your own strike — flash a
-      // distinct cue so you see a friend chipping the same Hydra in real time.
-      const teammateN = Math.max(1, previousChainHp - hp);
-      $("screen").classList.remove("teammate-hit");
-      void $("screen").offsetWidth; // restart the flash on rapid teammate hits
-      $("screen").classList.add("teammate-hit");
-      window.setTimeout(() => $("screen").classList.remove("teammate-hit"), 520);
-      setStatus("ok", teammateN > 1 ? `Your team hit the Hydra ${teammateN}x.` : "A teammate hit the Hydra.");
-    } else if (
+      flashTeammateHit(Math.max(1, previousChainHp - hp));
+    }
+    if (
       S.activeRunRaidId === raidId &&
       lives < previousChainLives &&
       lives < previousLocalLives
@@ -1059,8 +1018,6 @@ async function refreshChain() {
       setStatus("warn", "That strike missed. Watch the next head.");
     }
 
-    S.lastObservedHp = hp;
-    S.lastObservedScore = score;
 
     if (!S.started && !S.joining) {
       S.joined = false;
@@ -1082,27 +1039,21 @@ async function refreshChain() {
       }
     }
 
-    if (runOwnsRaid({
+    const ownsRaid = runOwnsRaid({
       started: S.started,
       activeRunRaidId: S.activeRunRaidId,
       snapshotRaidId: raidId,
-    }) && hp === 0) {
+    });
+    if (ownsRaid && hp === 0) {
       if (S.resultShown) showResult({ raidWon: true });
       else finishVictory();
-    } else if (
-      runOwnsRaid({
-        started: S.started,
-        activeRunRaidId: S.activeRunRaidId,
-        snapshotRaidId: raidId,
-      }) &&
-      raidExpired
-    ) {
+    } else if (ownsRaid && raidExpired) {
       setInstruction("bite", "THE HYDRA ESCAPED", "Time ran out.");
       $("mode").textContent = "Raid over";
       showResult({ raidWon: false });
     } else {
       if (S.resultShown) {
-        $("resultDamage").textContent = String(Math.max(S.localHits, S.raidHits));
+        $("resultDamage").textContent = String(displayHits());
         $("resultAccuracy").textContent = `${raidAccuracy()}%`;
         $("resultHp").textContent = String(visibleHydraHp());
         if (!S.resultFinal && S.lives === 0) {
@@ -1227,9 +1178,8 @@ async function bootstrap() {
   S.config.raidDuration = raidDuration;
   S.config.maxLives = maxLives;
   S.config.settlementGrace = settlementGrace;
-  // Decoupled model: getConfig slot 4 is now the steady beat between bites
-  // (ATTACK_SPACING_MS), not a ramp count. Window ramps independently.
-  S.config.progressive = true;
+  // Decoupled model: getConfig slot 4 is the steady beat between bites
+  // (ATTACK_SPACING_MS). The reaction window ramps independently.
   S.config.attackSpacing = attackSpacing;
   S.config.startWindow = startWindow;
   S.config.windowStep = windowStep;
@@ -1298,7 +1248,7 @@ function tick() {
       now < (S.live ? combatEndsAt() : S.raidDeadline)
     ) {
       const attackId = attackAtTime(now);
-      if (attackId !== S.lastObservedAttack) {
+      if (attackId !== S.lastObservedAttack && attackAdvanceDue(now)) {
         handleAttackAdvance(attackId, expectedHead(attackId));
       }
     }
@@ -1365,7 +1315,6 @@ function applyReviewState(state) {
     S.responseHead = 1;
     S.hp = 14;
     S.visualHp = 14;
-    S.score = 1;
     S.raidHits = 1;
     S.localHits = 1;
     S.raidAttempts = 1;
@@ -1423,8 +1372,41 @@ function applyReviewState(state) {
   render();
 }
 
-headEls.forEach((head, index) => {
-  head.addEventListener("click", () => handleHeadClick(index));
+// Taps register at finger CONTACT (pointerdown), not on release: mobile "click" fires
+// on finger-up (~60-120ms later, brutal against a 550ms window) and is swallowed
+// entirely when a frantic tap drifts a few pixels — down on one head, up over the gap
+// means no click at all. One arena-level listener also catches taps landing in the
+// gaps between heads and routes them to the nearest head, so the middle head (a gap on
+// each side) stops eating taps. handleHeadClick carries the full eligibility guard.
+function headIndexFromEvent(event) {
+  const direct = event.target instanceof Element && event.target.closest(".head");
+  if (direct) return headEls.indexOf(direct);
+  // Gap taps snap to the nearest head, but only within a thumb's slack of its
+  // edge — a tap far from every head stays a no-op instead of costing a life.
+  const GAP_SLACK_PX = 24;
+  let nearest = -1;
+  let best = GAP_SLACK_PX;
+  headEls.forEach((head, index) => {
+    const rect = head.getBoundingClientRect();
+    const distance = Math.max(rect.left - event.clientX, event.clientX - rect.right);
+    if (distance < best) {
+      best = distance;
+      nearest = index;
+    }
+  });
+  return nearest;
+}
+$("arena").addEventListener("pointerdown", (event) => {
+  if (event.button > 0) return;
+  const index = headIndexFromEvent(event);
+  if (index >= 0) handleHeadClick(index);
+});
+$("arena").addEventListener("click", (event) => {
+  // Keyboard activation only (Enter/Space fire click with detail 0); pointer taps
+  // were already handled at pointerdown.
+  if (event.detail !== 0) return;
+  const index = headIndexFromEvent(event);
+  if (index >= 0) handleHeadClick(index);
 });
 $("start").addEventListener("click", startGame);
 $("resultAction").addEventListener("click", handleResultAction);
@@ -1437,9 +1419,12 @@ $("handle")?.addEventListener("keydown", (e) => {
   if (h) h.value = getHandle() || "";
 }
 renderBoard();
-S.boardTimer = window.setInterval(renderBoard, 2500);
+S.boardTimer = window.setInterval(() => {
+  // Not mid-combat: the innerHTML rebuild + fetch would jank frames exactly when
+  // reaction timing matters. The board catches up after the run.
+  if (!(S.started && S.combatReady)) renderBoard();
+}, 2500);
 window.addEventListener("beforeunload", () => {
-  clearNextTimer();
   if (S.frame) window.cancelAnimationFrame(S.frame);
   if (S.refreshTimer) window.clearInterval(S.refreshTimer);
   if (S.settlementTimer) window.clearInterval(S.settlementTimer);
