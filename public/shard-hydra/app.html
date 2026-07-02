@@ -566,6 +566,9 @@
         opacity: .35;
         transform: translateY(18px) scale(.88);
       }
+      .screen.settling {
+        box-shadow: inset 0 0 65px rgba(35, 247, 221, .16), 0 0 0 1px var(--c);
+      }
 
       @media (prefers-reduced-motion: no-preference) {
         .gate {
@@ -612,6 +615,18 @@
         @keyframes hydra-fall {
           from { opacity: 1; transform: translateY(0) scale(1); }
           to { opacity: .35; transform: translateY(18px) scale(.88); }
+        }
+        /* settlement tail: the Hydra coils/reels while the last cross-shard strikes land */
+        .screen.settling { animation: hydra-reel 1.05s ease-in-out infinite; }
+        .screen.settling .head { animation: hydra-writhe 1.3s ease-in-out infinite; }
+        @keyframes hydra-reel {
+          0%, 100% { transform: translateX(0) rotate(0deg); }
+          30% { transform: translateX(-4px) rotate(-0.5deg); }
+          70% { transform: translateX(4px) rotate(0.5deg); }
+        }
+        @keyframes hydra-writhe {
+          0%, 100% { transform: translateY(0) scale(1); filter: brightness(1) saturate(1); }
+          50% { transform: translateY(-5px) scale(1.05); filter: brightness(1.2) saturate(1.35); }
         }
       }
       @media (max-width: 440px) {
@@ -662,7 +677,7 @@
         <div class="cab-marquee">Hit the red head before it bites</div>
         <div class="screen" id="screen">
           <div class="raid-bar">
-            <span class="raid-label">Shared Hydra</span>
+            <span class="raid-label">Live raid</span>
             <span class="raid-clock"><span id="raidClock">0:30</span><small>Raid left</small></span>
             <span class="mode" id="mode">Getting ready</span>
           </div>

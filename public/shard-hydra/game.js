@@ -383,6 +383,7 @@ function updateStats() {
 
 function renderHeads() {
   $("arena").classList.toggle("threat-chorus", S.phase === "attack");
+  $("screen").classList.toggle("settling", S.phase === "settling");
   headEls.forEach((head, index) => {
     const action = head.querySelector(".head-action");
     const eligible =
@@ -1189,8 +1190,10 @@ async function bootstrap() {
 function tick() {
   if (S.started && !S.frozen) {
     const now = chainNow();
-    const raidMs = Math.max(0, S.raidDeadline - now);
-    $("raidClock").textContent = formatClock(raidMs);
+    // count down the COMBAT window (the 30s of play), not the raid+settlement window,
+    // and hold at 0:30 until combat actually starts — never tick during the countdown.
+    const combatLeft = Math.max(0, combatEndsAt() - Math.max(now, S.readyAt));
+    $("raidClock").textContent = formatClock(combatLeft);
 
     if (!S.combatReady && !S.resultShown) {
       const countdownMs = S.readyAt - now;
