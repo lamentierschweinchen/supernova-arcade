@@ -37,6 +37,9 @@ const SETTLEMENT_RETRY_MS = 3_000;
 const SETTLEMENT_DISPATCH_SAFETY_MS = 250;
 const COMBAT_TAIL_SAFETY_MS = 1_000;
 const VICTORY_REVEAL_MS = 400;
+// A brief serpentine "settle" beat before EVERY result: the Hydra slithers while the
+// last onchain strike settles, then the result panel drops.
+const SETTLE_BEAT_MS = 1_500;
 const REVIEW_ATTACK_ORDER = [1, 0, 2, 1, 2, 0, 0, 2, 1, 0, 1, 2];
 const U64_MASK = (1n << 64n) - 1n;
 
@@ -265,6 +268,8 @@ function resetRunStats() {
   S.bestStreak = 0;
   S.resultShown = false;
   S.resultFinal = false;
+  S.resultBeatArmed = false;
+  S.resultBeatDone = false;
 }
 
 function hideGate() {
@@ -309,9 +314,7 @@ function showResult({ raidWon, pending = false }) {
   S.resultShown = true;
   S.resultFinal = !pending;
   S.combatReady = false;
-  S.phase = "ended";
   clearNextTimer();
-  render();
 
   const eliminated = S.lives === 0;
   let title;
@@ -359,8 +362,32 @@ function showResult({ raidWon, pending = false }) {
 
   $("resultAction").textContent = pending ? "Watch the raid" : "Fight again";
   $("resultAction").dataset.action = pending ? "watch" : "replay";
-  showGatePanel("result");
-  window.setTimeout(() => $("resultAction").focus(), 0);
+
+  // Universal settle beat: the Hydra slithers for a moment (covering the last onchain
+  // strike) before the result panel drops. Runs once per run; a later pending->final
+  // update just refreshes the fields and re-shows the panel.
+  if (S.resultBeatDone) {
+    S.phase = "ended";
+    render();
+    showGatePanel("result");
+    window.setTimeout(() => $("resultAction").focus(), 0);
+  } else if (!S.resultBeatArmed) {
+    S.resultBeatArmed = true;
+    S.phase = "slither";
+    $("screen").classList.add("slither");
+    render();
+    const beatToken = S.runToken;
+    window.setTimeout(() => {
+      $("screen").classList.remove("slither");
+      if (S.runToken !== beatToken) return; // a new run started during the beat
+      S.resultBeatDone = true;
+      S.phase = "ended";
+      render();
+      showGatePanel("result");
+      window.setTimeout(() => $("resultAction").focus(), 0);
+    }, SETTLE_BEAT_MS);
+  }
+  // else: the slither is armed + running; its timer reveals with the latest fields.
 }
 
 function visibleHydraHp() {
