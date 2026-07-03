@@ -237,23 +237,49 @@
       }
 
       const START = { x: 4, y: 13 };
-      const GHOST_STARTS = [
-        { x: 4, y: 7 }, { x: 12, y: 7 }, { x: 20, y: 7 }, { x: 12, y: 13 },
-      ];
       const CORE_CELLS = [
         { x: 1, y: 1 }, { x: 7, y: 19 }, { x: 9, y: 1 }, { x: 15, y: 19 }, { x: 17, y: 1 }, { x: 23, y: 19 },
       ];
       const keyOf = (x, y) => y * COLS + x;
 
-      const STEP_MS = 200;        // player: ms per cell (slow + readable; forgiving)
-      const GHOST_MS = 250;       // ghosts: clearly slower than the player, so you can escape
-      const FRIGHT_MS = 6500;     // Nova Core duration
+      const STEP_MS = 200;        // player: ms per cell (fixed; smooth + forgiving)
       const FLUSH_MS = 1100;      // how often buffered sparks settle onchain
-      const LIVES = 3;
+      const START_LIVES = 3;
+      const MAX_LIVES = 5;
+
+      // Difficulty ramps by LEVEL so most players clear level 1, then it gets meaner.
+      // Level 1: slow ghosts, long scatter (they wander to their corners instead of
+      // charging), long Nova-Core safety, and a gentle staggered release from the pen.
+      function difficulty(L) {
+        return {
+          ghostMs: Math.max(160, 275 - (L - 1) * 15),        // ghost ms/cell (bigger = slower)
+          scatterMs: Math.max(3000, 9000 - (L - 1) * 800),   // time ghosts wander to corners
+          chaseMs: 20000,
+          frightMs: Math.max(1600, 8000 - (L - 1) * 850),    // Nova Core duration
+          release: [0, 5000, 10000, 15000].map((d) => Math.round(d * Math.max(0.2, 1 - (L - 1) * 0.13))),
+        };
+      }
+
+      // The ghost house — a spark-free central chamber in the middle band. Penned
+      // ghosts bob here and release one at a time; eaten ghosts return here as eyes.
+      const PEN_HOME = { x: 12, y: 10 };
+      const PEN_EXIT = { x: 12, y: 7 };
+      const PEN_SLOTS = [{ x: 10, y: 10 }, { x: 11, y: 10 }, { x: 13, y: 10 }, { x: 14, y: 10 }];
+      const inPenZone = (x, y) => x >= 10 && x <= 14 && y >= 9 && y <= 11;
+
+      // Four ghosts, each a personality (chase target) + a scatter corner, like the classic.
+      const GHOSTS_CFG = [
+        { name: "blinky", color: "#ff5d6c", corner: { x: 23, y: 1 } },  // direct chaser
+        { name: "pinky",  color: "#ff9de0", corner: { x: 1, y: 1 } },   // ambushes ahead of you
+        { name: "inky",   color: "#7bdfff", corner: { x: 23, y: 19 } }, // flanks from the side
+        { name: "clyde",  color: "#ffd166", corner: { x: 1, y: 19 } },  // shy: backs off when close
+      ];
+      const FRIGHT_COLOR = "#3d6bff";
+      const GHOST_BONUS = [200, 400, 800, 1600]; // consecutive eats within one Nova Core
 
       const S = {
         live: !!client,
-        phase: "idle", // idle | waking | countdown | playing | dead | won
+        phase: "idle", // idle | waking | ready | playing | dead
         sparkCount: 200, msPerSpark: 80, msPerGhost: 350,
         walls: new Set(), sparks: new Set(), cores: new Set(),
         totalByBand: [0, 0, 0], eatenByBand: [0, 0, 0], bandTotals: [0, 0, 0],
@@ -263,8 +289,11 @@
         startedShards: new Set(),      // which shard instances we've startRun'd this game
         sparksTotal: 0, ghostsEaten: 0, ports: 0,
         lit: new Set(),
+        level: 1, score: 0, diff: difficulty(1),
+        mode: "scatter", modeUntil: 0, playStart: 0, ghostChain: 0,
         frightenedUntil: 0,
-        lives: LIVES,
+        lives: START_LIVES,
+        fruit: null, popups: [], banner: null,
         pending: [0, 0, 0],            // buffered sparks per shard awaiting settlement
         lastFlush: [0, 0, 0],
         lastT: 0, loop: 0, runToken: 0,
@@ -291,6 +320,7 @@
             const k = keyOf(x, y);
             if (S.walls.has(k) || S.cores.has(k)) continue;
             if (x === START.x && y === START.y) continue;
+            if (inPenZone(x, y)) continue; // the ghost house holds no sparks
             S.sparks.add(k);
             S.totalByBand[shardOf(x)]++;
           }
@@ -301,9 +331,16 @@
       function resetActors() {
         S.player = { x: START.x, y: START.y, dir: { x: 0, y: 0 }, next: { x: 0, y: 0 }, prog: 0, moving: false };
         S.currentShard = shardOf(START.x);
-        S.ghosts = GHOST_STARTS.map((g, i) => ({
-          x: g.x, y: g.y, dir: { x: 0, y: -1 }, prog: 0, color: ["#ff5d6c", "#ff9de0", "#7bdfff", "#ffd166"][i % 4], home: g,
+        S.ghosts = GHOSTS_CFG.map((cfg, i) => ({
+          name: cfg.name, color: cfg.color, corner: cfg.corner,
+          x: PEN_SLOTS[i].x, y: PEN_SLOTS[i].y, dir: { x: 0, y: -1 }, prog: 0,
+          state: "penned",     // penned (in the house) | active (out) | eyes (returning)
+          releaseAt: 0,        // when this ghost leaves the pen (set at beginPlay)
+          slot: i,
         }));
+        S.ghostChain = 0;
+        S.frightenedUntil = 0;
+        S.fruit = null;
       }
 
       // --- rendering (shard bands + glowing tunnels are the visual hero) ---
@@ -366,7 +403,12 @@
             ctx.restore();
           }
         }
-        // 5) sparks
+        // 5) ghost house — a soft pen in the middle band
+        ctx.save();
+        ctx.strokeStyle = "rgba(120,150,190,0.4)"; ctx.lineWidth = Math.max(1.4, c * 0.07);
+        rr(9.85 * c, 8.82 * h, 5.3 * c, 2.8 * h, 9); ctx.stroke();
+        ctx.restore();
+        // 6) sparks
         ctx.fillStyle = "#eafffb";
         for (const k of S.sparks) {
           const x = k % COLS, y = Math.floor(k / COLS);
@@ -374,28 +416,57 @@
           ctx.beginPath(); ctx.arc(x * c + c / 2, y * h + h / 2, Math.max(1.4, c * 0.11), 0, 7); ctx.fill();
         }
         ctx.globalAlpha = 1;
-        // 6) Nova Cores
+        // 7) Nova Cores (pulsing)
         for (const k of S.cores) {
           const x = k % COLS, y = Math.floor(k / COLS);
           ctx.save(); ctx.shadowColor = "#eafffb"; ctx.shadowBlur = 12 + 6 * pulse; ctx.fillStyle = "#eafffb";
-          ctx.beginPath(); ctx.arc(x * c + c / 2, y * h + h / 2, c * 0.3, 0, 7); ctx.fill(); ctx.restore();
+          ctx.beginPath(); ctx.arc(x * c + c / 2, y * h + h / 2, c * (0.24 + 0.05 * pulse), 0, 7); ctx.fill(); ctx.restore();
         }
-        // 7) ghosts
+        // 8) bonus gem (fruit)
+        if (S.fruit) {
+          const fx = S.fruit.x * c + c / 2, fy = S.fruit.y * h + h / 2, s = Math.min(c, h) * 0.32;
+          ctx.save(); ctx.translate(fx, fy); ctx.rotate(Math.PI / 4);
+          ctx.shadowColor = S.fruit.color; ctx.shadowBlur = 14; ctx.fillStyle = S.fruit.color;
+          rr(-s / 2, -s / 2, s, s, 3); ctx.fill(); ctx.restore();
+        }
+        // 9) ghosts — cute, eyes track you; frightened flashes; eyes-only when eaten
         const fright = now < S.frightenedUntil;
+        const frightEnding = fright && S.frightenedUntil - now < 2000;
         for (const gh of S.ghosts) {
-          ctx.fillStyle = fright ? "#3d6bff" : gh.color;
-          ctx.save(); ctx.shadowColor = ctx.fillStyle; ctx.shadowBlur = 8;
-          const gx = (gh.x + gh.dir.x * gh.prog) * c + c / 2, gy2 = (gh.y + gh.dir.y * gh.prog) * h + h / 2, r = Math.min(c, h) * 0.36;
-          ctx.beginPath(); ctx.arc(gx, gy2 - r * 0.15, r, Math.PI, 0); ctx.lineTo(gx + r, gy2 + r * 0.8);
-          ctx.lineTo(gx + r * 0.5, gy2 + r * 0.45); ctx.lineTo(gx, gy2 + r * 0.8);
-          ctx.lineTo(gx - r * 0.5, gy2 + r * 0.45); ctx.lineTo(gx - r, gy2 + r * 0.8); ctx.closePath(); ctx.fill();
-          ctx.restore();
-          ctx.fillStyle = "#0b0e14";
-          ctx.beginPath(); ctx.arc(gx - r * 0.35, gy2 - r * 0.1, r * 0.16, 0, 7); ctx.arc(gx + r * 0.35, gy2 - r * 0.1, r * 0.16, 0, 7); ctx.fill();
+          const bob = gh.state === "penned" ? Math.sin((now || 0) / 200 + gh.slot) * h * 0.12 : 0;
+          const gx = (gh.x + gh.dir.x * gh.prog) * c + c / 2;
+          const gy2 = (gh.y + gh.dir.y * gh.prog) * h + h / 2 + bob;
+          const r = Math.min(c, h) * 0.36;
+          const scared = fright && gh.state === "active";
+          const eyesOnly = gh.state === "eyes";
+          let lx = S.player.x - gh.x, ly = S.player.y - gh.y;
+          if (scared) { lx = 0; ly = 0.5; }
+          const ll = Math.hypot(lx, ly) || 1; lx /= ll; ly /= ll;
+          if (!eyesOnly) {
+            const body = scared ? (frightEnding && Math.floor((now || 0) / 200) % 2 ? "#eef2ff" : FRIGHT_COLOR) : gh.color;
+            ctx.fillStyle = body; ctx.save(); ctx.shadowColor = body; ctx.shadowBlur = 8;
+            ctx.beginPath(); ctx.arc(gx, gy2 - r * 0.12, r, Math.PI, 0);
+            ctx.lineTo(gx + r, gy2 + r * 0.8); ctx.lineTo(gx + r * 0.5, gy2 + r * 0.5);
+            ctx.lineTo(gx, gy2 + r * 0.8); ctx.lineTo(gx - r * 0.5, gy2 + r * 0.5);
+            ctx.lineTo(gx - r, gy2 + r * 0.8); ctx.closePath(); ctx.fill(); ctx.restore();
+          }
+          const ex = r * 0.36, ey = -r * 0.08, er = eyesOnly ? r * 0.32 : r * 0.28;
+          ctx.fillStyle = scared ? "#cdd6ff" : "#ffffff";
+          ctx.beginPath(); ctx.arc(gx - ex, gy2 + ey, er, 0, 7); ctx.arc(gx + ex, gy2 + ey, er, 0, 7); ctx.fill();
+          ctx.fillStyle = scared ? "#20306a" : "#0b0e14";
+          ctx.beginPath();
+          ctx.arc(gx - ex + lx * er * 0.42, gy2 + ey + ly * er * 0.42, er * 0.55, 0, 7);
+          ctx.arc(gx + ex + lx * er * 0.42, gy2 + ey + ly * er * 0.42, er * 0.55, 0, 7); ctx.fill();
+          if (scared) {
+            ctx.strokeStyle = "#cdd6ff"; ctx.lineWidth = Math.max(1, r * 0.11);
+            ctx.beginPath(); const my = gy2 + r * 0.45;
+            for (let i = 0; i <= 4; i++) { const mx = gx - r * 0.5 + i * (r * 0.25); i === 0 ? ctx.moveTo(mx, my) : ctx.lineTo(mx, my + (i % 2 ? -r * 0.13 : r * 0.13)); }
+            ctx.stroke();
+          }
         }
-        // 8) Novaman
-        const p = S.player, px = (p.x + p.dir.x * p.prog) * c + c / 2, py = (p.y + p.dir.y * p.prog) * h + h / 2, pr = Math.min(c, h) * 0.4;
-        const mouth = 0.16 + 0.14 * Math.abs(Math.sin((now || 0) / 90));
+        // 10) Novaman
+        const p = S.player, px = (p.x + p.dir.x * p.prog) * c + c / 2, py = (p.y + p.dir.y * p.prog) * h + h / 2, pr = Math.min(c, h) * 0.42;
+        const mouth = 0.16 + 0.16 * Math.abs(Math.sin((now || 0) / 90));
         let a0 = 0.25 * Math.PI + mouth * Math.PI, a1 = 2 * Math.PI - mouth * Math.PI;
         const dir = p.dir.x || p.dir.y ? p.dir : { x: 1, y: 0 };
         const rot = Math.atan2(dir.y, dir.x);
@@ -403,11 +474,54 @@
         ctx.fillStyle = "#ffe66d"; ctx.shadowColor = "#ffe66d"; ctx.shadowBlur = 12;
         ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, pr, a0, a1); ctx.closePath(); ctx.fill();
         ctx.restore();
+        // 11) floating score popups
+        if (S.popups.length) {
+          ctx.textAlign = "center";
+          for (const pop of S.popups) {
+            const age = (now - pop.born) / 900;
+            ctx.globalAlpha = Math.max(0, 1 - age);
+            ctx.fillStyle = pop.color; ctx.font = "700 " + Math.round(c * 0.85) + "px 'JetBrains Mono', monospace";
+            ctx.fillText(pop.text, pop.x * c + c / 2, pop.y * h + h / 2 - age * h * 1.4);
+          }
+          ctx.globalAlpha = 1; ctx.textAlign = "left";
+        }
+        // 12) HUD (lives / score / level) along the bottom, and any hold banner
+        drawHud(c, h);
+        if (S.banner) drawBanner();
       }
       function rr(x, y, w, h, r) {
         ctx.beginPath(); ctx.moveTo(x + r, y);
         ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
         ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+      }
+      function drawHud(c, h) {
+        ctx.save();
+        // lives as little pac icons (bottom-left, over the border row)
+        for (let i = 0; i < Math.min(S.lives, MAX_LIVES); i++) {
+          const lx = c * 0.9 + i * c * 0.85, ly = canvas.height - h * 0.5, lr = Math.min(c, h) * 0.3;
+          ctx.fillStyle = "#ffe66d"; ctx.shadowColor = "#ffe66d"; ctx.shadowBlur = 5;
+          ctx.beginPath(); ctx.moveTo(lx, ly); ctx.arc(lx, ly, lr, 0.28 * Math.PI, 1.72 * Math.PI); ctx.closePath(); ctx.fill();
+        }
+        ctx.shadowBlur = 0;
+        // score (bottom-center) + level (bottom-right)
+        ctx.fillStyle = "#eafffb"; ctx.textAlign = "center";
+        ctx.font = "700 " + Math.round(h * 0.62) + "px 'JetBrains Mono', monospace";
+        ctx.fillText(String(S.score), canvas.width / 2, canvas.height - h * 0.35);
+        ctx.fillStyle = "#9fb0c8"; ctx.textAlign = "right";
+        ctx.fillText("LVL " + S.level, canvas.width - c * 0.6, canvas.height - h * 0.35);
+        ctx.textAlign = "left"; ctx.restore();
+      }
+      function drawBanner() {
+        ctx.save();
+        ctx.fillStyle = "rgba(5,7,11,0.4)"; ctx.fillRect(0, canvas.height * 0.34, canvas.width, canvas.height * 0.26);
+        ctx.textAlign = "center";
+        ctx.fillStyle = "#eafffb"; ctx.shadowColor = "#23F7DD"; ctx.shadowBlur = 18;
+        ctx.font = "800 " + Math.round(canvas.height * 0.085) + "px 'JetBrains Mono', monospace";
+        ctx.fillText(S.banner.title, canvas.width / 2, canvas.height * 0.46);
+        ctx.shadowBlur = 0; ctx.fillStyle = "#9fb0c8";
+        ctx.font = "600 " + Math.round(canvas.height * 0.038) + "px 'JetBrains Mono', monospace";
+        ctx.fillText(S.banner.sub, canvas.width / 2, canvas.height * 0.55);
+        ctx.textAlign = "left"; ctx.restore();
       }
 
       // --- HUD ---
@@ -501,10 +615,21 @@
         if (dt > 100) dt = 100; // after a tab-away, don't let anything warp through walls
         draw(now);
         if (S.phase !== "playing") return;
+        updateMode(now);
+        maybeSpawnFruit(now);
         advancePac(dt, now);
         advanceGhosts(dt, now);
+        agePopups(now);
         if (S.live) flushSparks(now);
         collideGhosts(now);
+      }
+
+      // scatter <-> chase alternation gives you breathing room; ghosts reverse on a flip
+      function updateMode(now) {
+        if (now < S.modeUntil) return;
+        S.mode = S.mode === "scatter" ? "chase" : "scatter";
+        S.modeUntil = now + (S.mode === "scatter" ? S.diff.scatterMs : S.diff.chaseMs);
+        for (const gh of S.ghosts) if (gh.state === "active") gh.dir = { x: -gh.dir.x, y: -gh.dir.y };
       }
 
       // take the buffered turn at a cell center if the way is open
@@ -534,62 +659,107 @@
         const k = keyOf(p.x, p.y);
         if (S.sparks.has(k)) {
           S.sparks.delete(k);
-          S.sparksTotal++; S.eatenByBand[nowShard]++; S.pending[nowShard]++;
+          S.sparksTotal++; S.eatenByBand[nowShard]++; S.pending[nowShard]++; S.score += 10;
           updateStats();
           if (S.eatenByBand[nowShard] >= S.bandTotals[nowShard] && !S.lit.has(nowShard)) lightShard(nowShard);
-          // munch audio comes from the shell's per-tx sound on each settled batch.
         }
         if (S.cores.has(k)) {
           S.cores.delete(k);
-          S.frightenedUntil = now + FRIGHT_MS;
+          S.frightenedUntil = now + S.diff.frightMs;
+          S.ghostChain = 0;                    // reset the eat-multiplier for this Nova Core
+          for (const gh of S.ghosts) if (gh.state === "active") gh.dir = { x: -gh.dir.x, y: -gh.dir.y };
           try { if (window.parent !== window) window.parent.postMessage({ type: "arcade:sfx", sound: "core" }, location.origin); } catch (_e) {}
         }
+        if (S.fruit && S.fruit.x === p.x && S.fruit.y === p.y) {
+          S.score += S.fruit.pts;
+          addPopup(p.x, p.y, "+" + S.fruit.pts, S.fruit.color, now);
+          S.fruit = null;
+          try { if (window.parent !== window) window.parent.postMessage({ type: "arcade:sfx", sound: "core" }, location.origin); } catch (_e) {}
+        }
+      }
+
+      // a bonus gem appears at ~45% and ~80% of the level cleared, parked below the pen
+      function maybeSpawnFruit(now) {
+        const total = S.bandTotals.reduce((a, b) => a + b, 0) || 1;
+        const frac = S.eatenByBand.reduce((a, b) => a + b, 0) / total;
+        const stage = frac >= 0.8 ? 2 : frac >= 0.45 ? 1 : 0;
+        if (stage > S.fruitStage && !S.fruit) {
+          S.fruitStage = stage;
+          const gem = [{ c: "#A78BFA", p: 500 }, { c: "#FFB454", p: 800 }][stage - 1];
+          S.fruit = { x: PEN_HOME.x, y: PEN_HOME.y + 3, pts: gem.p, color: gem.c, until: now + 9000 };
+        }
+        if (S.fruit && now > S.fruit.until) S.fruit = null;
       }
 
       function advanceGhosts(dt, now) {
         const fright = now < S.frightenedUntil;
         for (const gh of S.ghosts) {
-          if (gh.prog === 0) ghostChooseDir(gh, fright);
+          if (gh.state === "penned") {
+            if (now >= gh.releaseAt) { gh.state = "active"; gh.x = PEN_EXIT.x; gh.y = PEN_EXIT.y; gh.dir = { x: 0, y: -1 }; gh.prog = 0; }
+            continue; // penned ghosts just bob in place (rendered), no grid movement
+          }
+          // eyes hurry home; frightened ghosts crawl; otherwise normal speed
+          const speed = gh.state === "eyes" ? S.diff.ghostMs * 0.5 : (fright ? S.diff.ghostMs * 1.6 : S.diff.ghostMs);
+          if (gh.prog === 0) ghostChooseDir(gh, now, fright);
           if (!canGo(gh.x + gh.dir.x, gh.y + gh.dir.y)) {
-            ghostChooseDir(gh, fright);
+            ghostChooseDir(gh, now, fright);
             if (!canGo(gh.x + gh.dir.x, gh.y + gh.dir.y)) continue;
           }
-          gh.prog += dt / GHOST_MS;
+          gh.prog += dt / speed;
           let guard = 0;
           while (gh.prog >= 1 && guard++ < 4) {
             gh.prog -= 1;
             gh.x += gh.dir.x; gh.y += gh.dir.y;
-            ghostChooseDir(gh, fright);
+            if (gh.state === "eyes" && gh.x === PEN_HOME.x && gh.y === PEN_HOME.y) {
+              gh.state = "penned"; gh.releaseAt = now + 2000; // back in the house, released soon
+              gh.x = PEN_SLOTS[gh.slot].x; gh.y = PEN_SLOTS[gh.slot].y; gh.prog = 0; break;
+            }
+            ghostChooseDir(gh, now, fright);
             if (!canGo(gh.x + gh.dir.x, gh.y + gh.dir.y)) { gh.prog = 0; break; }
           }
         }
       }
-      // at a cell center, head toward (chase) or away (frightened) from the player,
-      // among the open non-reversing options.
-      function ghostChooseDir(gh, fright) {
+      // pick a direction at a cell center toward the ghost's TARGET (greedy, no reversal);
+      // frightened active ghosts wander at random (classic).
+      function ghostChooseDir(gh, now, fright) {
         const opts = DIRS
           .filter((d) => !(d.x === -gh.dir.x && d.y === -gh.dir.y))
           .filter((d) => canGo(gh.x + d.x, gh.y + d.y));
         if (!opts.length) { gh.dir = { x: -gh.dir.x, y: -gh.dir.y }; return; }
-        const tx = S.player.x, ty = S.player.y;
-        let best = opts[0], bestScore = fright ? -1e9 : 1e9;
+        if (fright && gh.state === "active") { gh.dir = opts[(Math.random() * opts.length) | 0]; return; }
+        const t = gh.state === "eyes" ? PEN_HOME : ghostTarget(gh);
+        let best = opts[0], bestD = 1e9;
         for (const d of opts) {
-          const dist = Math.abs(gh.x + d.x - tx) + Math.abs(gh.y + d.y - ty);
-          if ((!fright && dist < bestScore) || (fright && dist > bestScore)) { bestScore = dist; best = d; }
+          const dd = Math.abs(gh.x + d.x - t.x) + Math.abs(gh.y + d.y - t.y);
+          if (dd < bestD) { bestD = dd; best = d; }
         }
         gh.dir = best;
+      }
+      // where each ghost wants to be: scatter -> its corner; chase -> its personality.
+      function ghostTarget(gh) {
+        if (S.mode === "scatter") return gh.corner;
+        const p = S.player, pd = (p.dir.x || p.dir.y) ? p.dir : { x: 1, y: 0 };
+        if (gh.name === "blinky") return { x: p.x, y: p.y };                       // direct
+        if (gh.name === "pinky") return { x: p.x + pd.x * 4, y: p.y + pd.y * 4 };  // ambush ahead
+        if (gh.name === "inky") return { x: p.x + pd.y * 4, y: p.y - pd.x * 4 };   // flank the side
+        const dist = Math.abs(gh.x - p.x) + Math.abs(gh.y - p.y);                  // clyde: shy
+        return dist > 8 ? { x: p.x, y: p.y } : gh.corner;
       }
 
       function collideGhosts(now) {
         const fright = now < S.frightenedUntil;
         const p = S.player, pfx = p.x + p.dir.x * p.prog, pfy = p.y + p.dir.y * p.prog;
         for (const gh of S.ghosts) {
+          if (gh.state !== "active") continue; // penned + eyes can't catch or be caught
           const gfx = gh.x + gh.dir.x * gh.prog, gfy = gh.y + gh.dir.y * gh.prog;
           if (Math.abs(pfx - gfx) + Math.abs(pfy - gfy) > 0.6) continue; // overlapping
           if (fright) {
-            S.ghostsEaten++; updateStats();
+            const bonus = GHOST_BONUS[Math.min(S.ghostChain, 3)];
+            S.ghostChain++; S.ghostsEaten++; S.score += bonus;
+            addPopup(gh.x, gh.y, "+" + bonus, "#eafffb", now);
+            updateStats();
             if (S.live) sendTo(S.currentShard, "eatGhost", []);
-            gh.x = gh.home.x; gh.y = gh.home.y; gh.dir = { x: 0, y: -1 }; gh.prog = 0;
+            gh.state = "eyes"; gh.dir = { x: 0, y: -1 }; gh.prog = 0; // eyes scurry home
             try { if (window.parent !== window) window.parent.postMessage({ type: "arcade:sfx", sound: "ghost" }, location.origin); } catch (_e) {}
           } else {
             bitten();
@@ -597,6 +767,8 @@
           }
         }
       }
+      function addPopup(x, y, text, color, now) { S.popups.push({ x, y, text, color, born: now }); }
+      function agePopups(now) { if (S.popups.length) S.popups = S.popups.filter((p) => now - p.born < 900); }
 
       // --- shard / onchain flow ---
       function onPort(toShard) {
@@ -614,8 +786,19 @@
       }
       function lightShard(shard) {
         S.lit.add(shard); renderShardBar();
-        setStatus("ok", "Shard " + shard + " lit. " + (S.lit.size === 3 ? "" : (3 - S.lit.size) + " to go — port through a tunnel."));
-        if (S.lit.size === 3) win();
+        if (S.lit.size === 3) { levelClear(); return; }
+        setStatus("ok", "Shard " + shard + " lit. " + (3 - S.lit.size) + " to go — port through a tunnel.");
+      }
+      // clearing all three bands = a Supernova, and the next level (harder) begins
+      function levelClear() {
+        const token = ++S.runToken;
+        S.phase = "ready";
+        if (S.lives < MAX_LIVES) S.lives++;
+        S.banner = { title: "SUPERNOVA ✦", sub: "Level " + S.level + " cleared · +1 life" };
+        renderShardBar();
+        try { if (window.parent !== window) window.parent.postMessage({ type: "arcade:sfx", sound: "port" }, location.origin); } catch (_e) {}
+        setStatus("ok", "Level " + S.level + " cleared — igniting the next.");
+        setTimeout(() => { if (token === S.runToken) startLevel(S.level + 1); }, 2300);
       }
       function flushSparks(now) {
         for (let s = 0; s < 3; s++) {
@@ -648,16 +831,13 @@
         S.lives--;
         try { if (window.parent !== window) window.parent.postMessage({ type: "arcade:sfx", sound: "crash" }, location.origin); } catch (_e) {}
         if (S.lives <= 0) { gameOver(); return; }
-        // respawn: player home, ghosts home, brief pause
-        S.phase = "countdown";
-        resetActors(); renderShardBar();
-        setStatus("", "Bitten on shard " + S.currentShard + ". " + S.lives + " " + (S.lives === 1 ? "life" : "lives") + " left.");
-        let n = 2;
-        const iv = setInterval(() => {
-          if (S.phase !== "countdown") { clearInterval(iv); return; }
-          if (n <= 0) { clearInterval(iv); S.phase = "playing"; S.lastT = 0; }
-          n--;
-        }, 650);
+        // keep the board (progress persists); just reset positions and hold "Ready!"
+        const token = ++S.runToken;
+        S.phase = "ready";
+        resetActors(); S.currentShard = shardOf(START.x); renderShardBar();
+        S.banner = { title: "OUCH", sub: S.lives + " " + (S.lives === 1 ? "life" : "lives") + " left" };
+        setStatus("", "Bitten on shard " + S.currentShard + ".");
+        readyHold(token, 1800);
       }
 
       function endAllRuns() {
@@ -670,29 +850,21 @@
         maybeShowNameRow();
         showVeil(
           "Game over · " + S.sparksTotal + " sparks",
-          "Across " + S.startedShards.size + " shard" + (S.startedShards.size === 1 ? "" : "s") + ", " + S.ghostsEaten + " ghosts, " + S.ports + " ports. All banked onchain. Go again.",
+          "Reached level " + S.level + " · " + S.ghostsEaten + " ghosts, " + S.ports + " ports, across " + S.startedShards.size + " shard" + (S.startedShards.size === 1 ? "" : "s") + ". All banked onchain.",
           true, "Play again",
         );
         setStatus("", S.sparksTotal + " sparks are on the chain across " + S.startedShards.size + " shards.");
       }
-      function win() {
-        S.phase = "won"; S.runToken++;
-        endAllRuns();
-        maybeShowNameRow();
-        showVeil("Supernova ✦", "All three shards lit — you cleared the network. " + S.sparksTotal + " sparks, " + S.ghostsEaten + " ghosts, " + S.ports + " ports, banked across three contracts.", true, "Play again");
-        setStatus("ok", "You lit all three shards. That is the whole network, onchain.");
-      }
 
-      // --- start ---
+      // --- start / level flow ---
       async function startGame() {
-        if (S.phase === "waking" || S.phase === "countdown") return;
+        if (S.phase === "waking" || S.phase === "ready") return;
         const token = ++S.runToken;
-        buildMaze(); resetActors();
-        S.sparksTotal = 0; S.ghostsEaten = 0; S.ports = 0; S.lives = LIVES;
-        S.eatenByBand = [0, 0, 0]; S.lit = new Set(); S.startedShards = new Set();
-        S.pending = [0, 0, 0]; S.lastFlush = [0, 0, 0]; S.frightenedUntil = 0;
-        updateStats(); renderShardBar();
-        if (!S.live) { countdownThenPlay(token); return; }
+        S.sparksTotal = 0; S.ghostsEaten = 0; S.ports = 0; S.score = 0;
+        S.lives = START_LIVES; S.level = 1;
+        S.startedShards = new Set(); S.pending = [0, 0, 0]; S.lastFlush = [0, 0, 0];
+        updateStats();
+        if (!S.live) { startLevel(1); return; }
         S.phase = "waking";
         showVeil("Entering shard 0", "Starting your run on the shard-0 contract. One second.", false);
         $("start").disabled = true;
@@ -706,22 +878,37 @@
           S.live = false;
           $("chainCopy").innerHTML = "<b>Practice mode.</b> The relayer is unreachable right now, so this run won't score.";
         }
-        $("start").disabled = false;
-        countdownThenPlay(token);
-      }
-      async function countdownThenPlay(token) {
-        S.phase = "countdown";
-        $("start").style.display = "none";
-        for (let n = 3; n >= 1; n--) {
-          if (token !== S.runToken) return;
-          $("veilTitle").textContent = "Get ready";
-          $("veilSub").innerHTML = "Arrows, WASD, or swipe. The <b>glowing gates</b> are tunnels between shards.";
-          $("veilCount").textContent = n; $("veilCount").style.display = "";
-          await new Promise((r) => setTimeout(r, 650));
-        }
         if (token !== S.runToken) return;
+        $("start").disabled = false;
+        startLevel(1);
+      }
+      // (re)build a level's board and hold "READY!" with the maze visible, then release
+      function startLevel(L) {
+        const token = ++S.runToken;
         hideVeil();
-        S.phase = "playing"; S.lastT = 0;
+        S.level = L; S.diff = difficulty(L);
+        buildMaze(); resetActors();
+        S.eatenByBand = [0, 0, 0]; S.lit = new Set(); S.fruitStage = 0; S.fruit = null; S.popups = [];
+        S.currentShard = shardOf(START.x);
+        renderShardBar(); updateStats();
+        // reset each shard's onchain run on a NEW board so its sparks can be collected
+        // again (the contract caps sparks per run); re-entering 1/2 re-starts them.
+        if (L > 1 && S.live) { S.startedShards = new Set([0]); sendTo(0, "startRun", []); }
+        S.phase = "ready";
+        S.banner = { title: "LEVEL " + L, sub: "Ready!" };
+        $("start").style.display = "none";
+        readyHold(token, 2500);
+      }
+      function readyHold(token, ms) {
+        setTimeout(() => { if (token === S.runToken) beginPlay(); }, ms);
+      }
+      function beginPlay() {
+        const now = performance.now();
+        S.banner = null; S.phase = "playing"; S.lastT = 0; S.playStart = now;
+        S.mode = "scatter"; S.modeUntil = now + S.diff.scatterMs; // ghosts wander first
+        for (let i = 0; i < S.ghosts.length; i++) {
+          if (S.ghosts[i].state === "penned") S.ghosts[i].releaseAt = now + (S.diff.release[i] || 0);
+        }
         setStatus("", "Munch the sparks. Every action settles on the shard you're standing on.");
       }
 
