@@ -239,13 +239,19 @@
     <script type="module">
       import { createArcadeClient, GAMES, UNDEPLOYED_PLACEHOLDER } from "/arcade-core.js";
       import { mountGalaxy } from "/arcade-galaxy.js";
-      import { fetchGameBoard, topPlusSelf, BOARD_GAP } from "/arcade-board.js";
+      import { fetchGameBoard } from "/arcade-board.js";
+      import { $, fmt, makeCabinetKit } from "/arcade-cabinet.js";
       import { getHandle } from "/passport.js";
 
       const client = createArcadeClient("triptych");
       const galaxy = mountGalaxy({ intensity: 0.5 });
-      const $ = (id) => document.getElementById(id);
-      const fmt = (n) => (n == null ? "···" : Number(n).toLocaleString("en-US"));
+      // Triptych shares the standard status toast, board, and send-error toast with the
+      // kit; it keeps its OWN renderFeed (per-shard rows) and pollTx (per-board pixel
+      // revert), which are genuinely different from the single-surface cabinets.
+      const { setStatus, renderLeaderboard, handleSendError } = makeCabinetKit(client, {
+        noun: "pixels",
+        emptyText: "No pixels yet. Place the first.",
+      });
 
       const COOLDOWN_MS = 500; // mirrors the contract
       const SCALE = 16;        // internal px per cell (crisp pixelation)
@@ -441,18 +447,11 @@
       async function pollTx(b, entry, index) {
         for (let i = 0; i < 26; i++) {
           await new Promise((r) => setTimeout(r, 600));
+          if (!S.feed.includes(entry)) return; // pushed off the capped feed — stop polling
           const st = await client.txStatus(entry.hash);
           if (st === "success") { entry.state = "final"; renderFeed(); return; }
           if (st === "fail" || st === "invalid") { entry.state = "failed"; b.pending.delete(index); renderFeed(); return; }
         }
-      }
-
-      function handleSendError(err) {
-        const code = err && err.code;
-        if (code === "rate_limited") setStatus("warn", "Going fast. You hit the relayer's per-minute limit. Your pixels still show here; onchain resumes in a moment.");
-        else if (code === "relayer_unavailable" || code === "not_deployed") setStatus("warn", "The onchain layer is <b>warming up</b>. Your pixels show here for now and go onchain shortly.");
-        else if (code === "network") setStatus("err", "Network hiccup reaching the relayer. Your pixels still show here.");
-        else setStatus("warn", "Onchain submission is unavailable this moment. Your pixels still show here.");
       }
 
       // Broadcast a painted pixel, RETRYING transient failures (rate-limit / network /
@@ -478,7 +477,6 @@
       }
 
       // ---------- render ----------
-      function setStatus(kind, html) { $("status").className = "status " + (kind || ""); $("statusText").innerHTML = html; }
       function yourTotal() { return BOARDS.reduce((s, b) => s + b.yourPixels, 0); }
       function placedTotal() { return BOARDS.reduce((s, b) => s + (b.live ? b.global : countPlaced(b)), 0); }
       function countPlaced(b) { let n = 0; for (let i = 0; i < b.n; i++) if (b.board[i] !== 0) n++; return n; }
@@ -498,19 +496,6 @@
           "</li>").join("");
       }
 
-      function renderLeaderboard(entries) {
-        const ul = $("leaderboard");
-        if (!entries || !entries.length) { ul.innerHTML = '<li><span class="empty">No pixels yet. Place the first.</span></li>'; return; }
-        const me = String(client.address || "").toLowerCase();
-        const row = (e) => {
-          const you = String(e.address).toLowerCase() === me;
-          const name = e.handle && e.handle.length ? e.handle : e.address.slice(0, 6) + "…" + e.address.slice(-4);
-          return '<li><span class="rank">' + e.rank + '</span><span class="who ' + (you ? "you" : "") + '">' + escapeHtml(name) + (you ? " (you)" : "") + '</span><span class="sc">' + fmt(e.score) + "</span></li>";
-        };
-        const { visible, self } = topPlusSelf(entries, client.address, 10);
-        ul.innerHTML = visible.map(row).join("") + (self ? BOARD_GAP + row(self) : "");
-      }
-      function escapeHtml(s) { return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
 
       // ---------- poll onchain (each board independently → parallel shards) ----------
       async function pollBoard(b) {
