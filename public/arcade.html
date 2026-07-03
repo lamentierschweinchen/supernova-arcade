@@ -474,6 +474,13 @@ const CABINETS = [
     counter: { address: GAMES.shardhydra.contract, view: "getGlobalActions" },
   },
   {
+    id: "shardsnake", name: "Shard Snake", status: "live", href: "/shard-snake", art: "snake",
+    color: "#23F7DD", shard: "shard 0",
+    line: "Classic snake on a board that wraps across the shard colors. Every pellet is a real gasless transaction, and the contract fixes the layout up front, so your best length is honest. No bot can out-eat a real run.",
+    metaSuffix: "pellets onchain",
+    counter: { address: GAMES.shardsnake.contract, view: "getGlobalActions" },
+  },
+  {
     id: "triptych", name: "Three-Shard Canvas", status: "live", href: "/canvas", art: "triptych",
     color: "#23F7DD", shard: "3 shards",
     line: "One mural across three shards. A wide center board flanked by two wings, each on its own shard, painting in parallel. Every pixel is a real cross-shard transaction.",
@@ -562,6 +569,14 @@ function artHTML(kind) {
         + '<span class="fall" style="left:46%;color:var(--lavender);background:rgba(167,139,250,.16);animation-delay:1.8s">+9</span></span>';
     case "reaction":
       return '<span class="gx"><span class="rxring"></span><span class="rxcore"></span></span>';
+    case "snake": {
+      let seg = "";
+      [26, 35, 44, 53, 62].forEach((x, i) => {
+        seg += '<span style="position:absolute;left:' + x + "%;top:" + (54 - i * 3) + "%;width:9px;height:9px;border-radius:3px;background:var(--mint);opacity:" + (1 - i * 0.14).toFixed(2) + '"></span>';
+      });
+      seg += '<span style="position:absolute;left:74%;top:36%;width:8px;height:8px;border-radius:50%;background:var(--lavender);box-shadow:0 0 9px var(--lavender)"></span>';
+      return '<span class="gx">' + seg + "</span>";
+    }
     case "triptych": {
       const panel = (cls, tc, cols, rows) => {
         let cells = "";

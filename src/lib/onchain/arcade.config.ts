@@ -146,6 +146,17 @@ export const SHARD_HYDRA_HEAD_CONTRACTS = [
   SHARD_HYDRA_HEAD_2_CONTRACT,
 ];
 
+/**
+ * SHARD SNAKE — uncheatable onchain snake. The run's whole pellet layout is fixed
+ * by a seed the contract picks at startRun; eat(i) must submit the next pellet in
+ * order, spaced by at least the snake's real travel time between the (deterministic)
+ * pellet positions, so a bot cannot out-eat honest play. Score = best life length
+ * (bestScore); volume = playerEats. See marketing/games/onchain/shard-snake-contract.
+ */
+export const SHARD_SNAKE_CONTRACT =
+  process.env.NEXT_PUBLIC_SHARD_SNAKE_CONTRACT ||
+  "erd1qqqqqqqqqqqqqpgq0lqyvkyt6eldks4ehvu38wd2g7e75tkmppuqhd5c5x"; // testnet, shard 0
+
 /** Relayed endpoints for the cabinets. */
 export const PULL_FUNCTION = "pull";
 export const PLACE_PIXEL_FUNCTION = "placePixel";

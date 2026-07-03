@@ -28,6 +28,7 @@ const GAMES = {
   triptych: { route: "/canvas", copy: "I've placed {score} pixels on the Three-Shard Canvas." },
   wenmoon: { route: "/wen-moon", copy: "I cashed out {score} in Wen Moon." },
   shardhydra: { route: "/shard-hydra", copy: "I dealt {score} damage to the Shard Hydra." },
+  shardsnake: { route: "/shard-snake", copy: "I grew my snake to {score} on Shard Snake." },
   me: { route: "/me", copy: "{score} points, ranked #{rank} on the Supernova Arcade." },
 };
 

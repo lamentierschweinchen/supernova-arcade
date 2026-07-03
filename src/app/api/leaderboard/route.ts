@@ -24,6 +24,7 @@ import {
   WENMOON_CONTRACT,
   SHARD_HYDRA_HUB_CONTRACT,
   SHARD_HYDRA_HEAD_CONTRACTS,
+  SHARD_SNAKE_CONTRACT,
   isPlaceholder,
 } from "@/lib/onchain/arcade.config";
 import { TAP_COUNTER_CONTRACT } from "@/lib/onchain/tap-counter.config";
@@ -51,6 +52,7 @@ function gameContracts(): string[] {
     WENMOON_CONTRACT,
     ...SHARD_HYDRA_HEAD_CONTRACTS,
     TAP_COUNTER_CONTRACT,
+    SHARD_SNAKE_CONTRACT,
   ].filter((a) => a && !isPlaceholder(a));
 }
 
@@ -119,6 +121,9 @@ const GAME_BOARDS: Record<string, GameCfg> = {
   // would fetch the whole growing keyspace each time, so read the player-scaling
   // getLeaderboard view instead — same pattern as the other score games.
   shardhydra: { contract: SHARD_HYDRA_HUB_CONTRACT, view: "getLeaderboard" },
+  // Best life length. bestScore is player-scaling (one key per player) + a handle
+  // mapper, so storage-parse, same as the tap-counter / arcade-core games.
+  shardsnake: { contract: SHARD_SNAKE_CONTRACT, scoreMapper: "bestScore" },
 };
 
 type GameRow = { address: string; handle: string; score: number };
@@ -311,6 +316,7 @@ const VOLUME_SOURCES: Record<string, GameCfg[]> = {
   button: [{ contract: BUTTON_CONTRACT, view: "getTopActions" }],
   wenmoon: [{ contract: WENMOON_CONTRACT, view: "getTopActions" }],
   clawback: [{ contract: CLAWBACK_CONTRACT, view: "getTopActions" }],
+  shardsnake: [{ contract: SHARD_SNAKE_CONTRACT, scoreMapper: "playerEats" }],
 };
 
 type VolumeRow = { address: string; handle: string; actions: number; games: number };

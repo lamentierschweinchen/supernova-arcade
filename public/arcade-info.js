@@ -68,6 +68,11 @@
       objective: "A shared boss spread across three shards. All three heads flare, but only the red, open-mouthed head is about to bite. Everyone's hits stack on the same Hydra.",
       controls: ["Watch all three heads wake", "Tap the one that turns red and opens its jaws", "A wrong head or too slow costs a life", "Every correct hit is one real cross-shard transaction"],
     },
+    shardsnake: {
+      title: "Shard Snake",
+      objective: "Classic snake on a board that wraps across the three shard colors. Every pellet you eat is a real gasless transaction, and the contract fixes the pellet layout up front, so your best length is honest. No bot can out-eat a real run.",
+      controls: ["Steer with arrows, WASD, or swipe", "Eat the glowing pellet to grow", "Wrap off any edge to the far side", "Do not hit your own tail"],
+    },
   };
 
   // Map a pathname to a game key. Handles /canvas, /canvas.html, /clawback/,
@@ -76,6 +81,7 @@
     var p = (location.pathname || "").toLowerCase();
     if (/three[-_]?shard[-_]?canvas|triptych/.test(p)) return "triptych";
     if (/wen[-_]?moon/.test(p)) return "wenmoon";
+    if (/shard[-_]?snake|shardsnake/.test(p)) return "shardsnake";
     if (/shard[-_]?hydra|shardhydra/.test(p)) return "shardhydra";
     if (/degen[-_]?dash/.test(p)) return "degendash";
     if (/clawback/.test(p)) return "clawback";

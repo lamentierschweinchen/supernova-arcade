@@ -98,6 +98,7 @@ import {
   HIT_GAS_LIMIT,
   RESOLVE_MISS_GAS_LIMIT,
   SETTLE_PLAYER_GAS_LIMIT,
+  SHARD_SNAKE_CONTRACT,
   isPlaceholder,
 } from "@/lib/onchain/arcade.config";
 
@@ -115,6 +116,7 @@ const ARCADE_RECEIVERS = [
   DEGENDASH_CONTRACT,
   WENMOON_CONTRACT,
   SHARD_HYDRA_HUB_CONTRACT,
+  SHARD_SNAKE_CONTRACT,
 ].filter((addr) => !isPlaceholder(addr));
 
 // The plain-object shape accepted by Transaction.newFromPlainObject, derived
@@ -274,9 +276,10 @@ const RELAY_OPS: Record<string, RelayOp> = {
   // (high-frequency, tap-sized budget); cashOut banks. claim (above) + setHandle
   // (ARCADE_RECEIVERS) already include this contract.
   [STARTRUN_FUNCTION]: {
-    receivers: isPlaceholder(WENMOON_CONTRACT) ? [] : [WENMOON_CONTRACT],
+    // shared by Wen Moon and Shard Snake (both expose startRun on their own contract)
+    receivers: [WENMOON_CONTRACT, SHARD_SNAKE_CONTRACT].filter((a) => !isPlaceholder(a)),
     maxGasLimit: STARTRUN_GAS_LIMIT + 100_000,
-    rateMax: 60,
+    rateMax: 120,
   },
   [CALL_FUNCTION]: {
     receivers: isPlaceholder(WENMOON_CONTRACT) ? [] : [WENMOON_CONTRACT],
@@ -310,6 +313,21 @@ const RELAY_OPS: Record<string, RelayOp> = {
     receivers: isPlaceholder(SHARD_HYDRA_HUB_CONTRACT) ? [] : [SHARD_HYDRA_HUB_CONTRACT],
     maxGasLimit: SETTLE_PLAYER_GAS_LIMIT + 100_000,
     rateMax: 1200,
+  },
+  // --- Shard Snake (uncheatable onchain snake; its own contract) ---
+  // startRun (shared allowlist above) seeds the run; `eat` is the per-pellet
+  // scoring tx (tap-sized budget); `endRun` closes a life. setHandle is covered by
+  // ARCADE_RECEIVERS. The contract enforces order + travel-time pacing, so a high
+  // eat budget cannot inflate a score.
+  eat: {
+    receivers: isPlaceholder(SHARD_SNAKE_CONTRACT) ? [] : [SHARD_SNAKE_CONTRACT],
+    maxGasLimit: 10_000_000,
+    rateMax: 1200,
+  },
+  endRun: {
+    receivers: isPlaceholder(SHARD_SNAKE_CONTRACT) ? [] : [SHARD_SNAKE_CONTRACT],
+    maxGasLimit: 10_000_000,
+    rateMax: 120,
   },
 };
 

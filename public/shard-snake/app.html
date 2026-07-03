@@ -1,0 +1,559 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Shard Snake · Supernova Arcade</title>
+    <meta name="description" content="Uncheatable onchain snake. Every pellet you eat is a real gasless transaction; the contract fixes the layout up front, so your best length is honest." />
+    <meta property="og:title" content="Shard Snake · Supernova Arcade" />
+    <meta property="og:description" content="Classic snake, onchain. Every pellet is a real gasless transaction and your best length is provably honest." />
+    <meta property="og:url" content="https://supernova-arcade.xyz/shard-snake" />
+    <meta property="og:image" content="https://supernova-arcade.xyz/supernova-arcade-og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content="https://supernova-arcade.xyz/supernova-arcade-og.png" />
+    <link rel="icon" href="/favicon.svg" />
+    <link rel="stylesheet" href="/arcade-shell.css" />
+    <style>
+      .screen .play { width: 100%; display: flex; flex-direction: column; gap: 12px; align-items: stretch; }
+      .board-wrap {
+        position: relative;
+        width: 100%;
+        max-width: 460px;
+        margin: 0 auto;
+        aspect-ratio: 1 / 1;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        overflow: hidden;
+        background: #06080c;
+        touch-action: none; /* swipe steers, never scrolls */
+        -webkit-tap-highlight-color: transparent;
+      }
+      #board { display: block; width: 100%; height: 100%; }
+      .board-veil {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        text-align: center;
+        padding: 20px;
+        background: rgba(6, 8, 12, 0.82);
+        -webkit-backdrop-filter: blur(3px);
+        backdrop-filter: blur(3px);
+      }
+      .board-veil.hidden { display: none; }
+      .veil-title { font-family: var(--mono); font-size: 13px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--c); }
+      .veil-sub { font-size: 12.5px; color: var(--muted, #9ba3b4); max-width: 260px; line-height: 1.5; }
+      .veil-count { font-family: var(--mono); font-size: 46px; font-weight: 800; color: #eafffb; text-shadow: 0 0 18px var(--c); }
+      .len-pop {
+        position: absolute;
+        top: 14px;
+        left: 50%;
+        transform: translate(-50%, 6px);
+        font-family: var(--mono);
+        font-size: 22px;
+        font-weight: 800;
+        color: var(--c);
+        text-shadow: 0 0 14px var(--c);
+        opacity: 0;
+        pointer-events: none;
+        z-index: 4;
+      }
+      .len-pop.show { opacity: 1; transform: translate(-50%, -6px); transition: transform 0.3s cubic-bezier(0, 0, 0.2, 1), opacity 0.15s; }
+      .dpad { display: none; }
+      @media (max-width: 560px) {
+        .dpad {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          grid-template-rows: repeat(2, 1fr);
+          gap: 7px;
+          max-width: 210px;
+          margin: 12px auto 0;
+        }
+        .dpad button {
+          min-height: 46px;
+          border: 1px solid var(--line);
+          border-radius: 11px;
+          background: var(--panel-2, #121721);
+          color: var(--text, #e8ecf3);
+          font-size: 18px;
+          touch-action: manipulation;
+          -webkit-tap-highlight-color: transparent;
+        }
+        .dpad .up { grid-column: 2; grid-row: 1; }
+        .dpad .left { grid-column: 1; grid-row: 2; }
+        .dpad .down { grid-column: 2; grid-row: 2; }
+        .dpad .right { grid-column: 3; grid-row: 2; }
+      }
+    </style>
+  </head>
+  <body style="--c:#23F7DD" data-shard="shard 0">
+    <div class="scan"></div><div class="vignette"></div><div class="floor"></div>
+    <div class="brk tl"></div><div class="brk tr"></div><div class="brk bl"></div><div class="brk br"></div>
+    <div class="wrap">
+      <header class="abar">
+        <a class="back" href="/arcade"><span aria-hidden="true">&larr;</span> Arcade</a>
+        <span class="lockup"><img src="/mvx-wordmark.svg" alt="MultiversX" /><span class="shard">shard 0</span></span>
+      </header>
+
+      <h1>Shard Snake</h1>
+      <p class="sub">Eat the pellet, grow, do not bite your tail. Every pellet is a real onchain transaction, and the board is fixed up front, so your best length is honest. No bot can out-eat a real run.</p>
+      <div class="onetap">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M13 2 3 14h7l-1 8 10-12h-7z" stroke="#23F7DD" stroke-width="1.6" stroke-linejoin="round"/></svg></span>
+        <span class="t" id="chainCopy"><b>No wallet, just play.</b> A key is created in your browser and we cover the gas.</span>
+      </div>
+
+      <div class="cabinet">
+        <div class="cab-marquee">Shard Snake · every pellet is a transaction</div>
+        <div class="screen">
+          <div class="play">
+            <div class="board-wrap" id="boardWrap">
+              <canvas id="board" width="460" height="460"></canvas>
+              <span class="len-pop" id="lenPop">+1</span>
+              <div class="board-veil" id="veil">
+                <span class="veil-title" id="veilTitle">Ready</span>
+                <span class="veil-sub" id="veilSub">Steer with the arrows, WASD, or a swipe. Wrap off any edge to the far side.</span>
+                <span class="veil-count" id="veilCount" style="display:none">3</span>
+                <button class="btn" id="start" type="button">Fight</button>
+              </div>
+            </div>
+            <div class="dpad" aria-hidden="true">
+              <button class="up" data-dir="up" type="button">&#9650;</button>
+              <button class="left" data-dir="left" type="button">&#9664;</button>
+              <button class="down" data-dir="down" type="button">&#9660;</button>
+              <button class="right" data-dir="right" type="button">&#9654;</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <a class="why" href="/why#parallel">
+        <span class="why-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.5c.6.6 1 1.5 1 2.5h6c0-1 .4-1.9 1-2.5A6 6 0 0 0 12 3Z"/></svg></span>
+        <span class="why-tx"><span class="why-k">Why it works</span>The board is fixed by the contract before you move, so nobody can rearrange the pellets or fake a length.</span>
+        <span class="why-go" aria-hidden="true">&rarr;</span>
+      </a>
+
+      <div class="stats">
+        <div class="stat"><div class="num" id="score">0</div><div class="lbl">Your length</div></div>
+        <div class="stat"><div class="num" id="best">0</div><div class="lbl">Your best</div></div>
+        <div class="stat"><div class="num on" id="players">···</div><div class="lbl">Players</div></div>
+      </div>
+
+      <div class="status" id="status" style="margin-top: 14px">
+        <span class="dot"></span><span id="statusText">One tap, no wallet. Each pellet is a real transaction, gasless.</span>
+      </div>
+
+      <div class="card" style="margin-top: 14px">
+        <p class="card-title"><span class="gd"></span>Top snakes · longest life</p>
+        <ul class="lb" id="leaderboard">
+          <li><span class="empty">No snakes yet. Be the first to grow one.</span></li>
+        </ul>
+        <div class="row hidden" id="nameRow" style="margin-top: 12px">
+          <input class="name-input" id="handle" maxlength="32" placeholder="Add a name for the board" autocomplete="off" />
+          <button class="btn ghost" id="saveName" style="width:auto; padding:12px 16px">Save</button>
+        </div>
+        <button class="btn ghost share-btn" data-game="shardsnake" data-score="score" style="width:100%;margin-top:12px;display:inline-flex;align-items:center;justify-content:center;gap:8px">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7"/><path d="M16 6l-4-4-4 4M12 2v13"/></svg>
+          Share my run
+        </button>
+      </div>
+
+      <div class="card hidden" id="feedCard">
+        <p class="card-title"><span class="gd"></span>Recent transactions</p>
+        <ul class="feed" id="feed"></ul>
+      </div>
+
+      <footer class="afoot"><span class="sn">Supernova · live on testnet</span> · gasless, no wallet · score = your longest life, read straight from the chain</footer>
+    </div>
+
+    <script type="module">
+      import { createArcadeClient } from "/arcade-core.js";
+      import { fetchGameBoard } from "/arcade-board.js";
+      import { $, fmt, makeCabinetKit } from "/arcade-cabinet.js";
+      import { getHandle, setHandle as savePassportHandle } from "/passport.js";
+      import { mountGalaxy } from "/arcade-galaxy.js";
+
+      mountGalaxy({ intensity: 0.5, focusShard: 0 });
+      const client = createArcadeClient("shardsnake");
+
+      const { setStatus, renderFeed, renderLeaderboard, pollTx, handleSendError } = makeCabinetKit(client, {
+        noun: "pellets",
+        emptyText: "No snakes yet. Be the first to grow one.",
+        getFeed: () => S.feed,
+      });
+
+      // --- deterministic pellet layout: MUST match the contract's pellet_pos ---
+      const U64 = (1n << 64n) - 1n;
+      function mix64(z0) {
+        let z = (BigInt(z0) + 0x9e3779b97f4a7c15n) & U64;
+        z = ((z ^ (z >> 30n)) * 0xbf58476d1ce4e5b9n) & U64;
+        z = ((z ^ (z >> 27n)) * 0x94d049bb133111ebn) & U64;
+        return (z ^ (z >> 31n)) & U64;
+      }
+      function pelletAt(index) {
+        const h = mix64((S.seed ^ BigInt(index)) & U64);
+        const x = Number(h % BigInt(S.cols));
+        const y = Number((h / BigInt(S.cols)) % BigInt(S.rows));
+        return { x, y };
+      }
+      function decodeU64BigInt(part) {
+        const bytes = client.b64ToBytes(part || "");
+        let v = 0n;
+        for (const b of bytes) v = (v << 8n) | BigInt(b);
+        return v;
+      }
+
+      const STEP_MS = 125; // snake speed (ms/cell). Always > the contract's msPerCell*2,
+      // so its travel-time pacing can never reject an honest eat.
+      const S = {
+        live: !!client,
+        phase: "idle", // idle | waking | countdown | playing | dead
+        cols: 24,
+        rows: 24,
+        msPerCell: 55,
+        seed: 0n,
+        snake: [],
+        dir: { x: 1, y: 0 },
+        nextDir: { x: 1, y: 0 },
+        length: 0,
+        best: 0,
+        pellet: null,
+        lastStep: 0,
+        loop: 0,
+        runToken: 0,
+        feed: [],
+      };
+
+      const canvas = $("board");
+      const ctx = canvas.getContext("2d");
+      const SHARD_COLORS = ["#23F7DD", "#5B8DEF", "#A78BFA"];
+
+      const cell = () => canvas.width / S.cols;
+      const shardOf = (x) => Math.min(2, Math.floor((x / S.cols) * 3));
+
+      function roundRect(x, y, w, h, r) {
+        ctx.beginPath();
+        ctx.moveTo(x + r, y);
+        ctx.arcTo(x + w, y, x + w, y + h, r);
+        ctx.arcTo(x + w, y + h, x, y + h, r);
+        ctx.arcTo(x, y + h, x, y, r);
+        ctx.arcTo(x, y, x + w, y, r);
+        ctx.closePath();
+      }
+      function draw() {
+        const c = cell();
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        for (let z = 0; z < 3; z++) {
+          ctx.fillStyle = SHARD_COLORS[z];
+          ctx.globalAlpha = 0.05;
+          ctx.fillRect(((z * S.cols) / 3) * c, 0, (S.cols / 3) * c, canvas.height);
+        }
+        ctx.globalAlpha = 1;
+        if (S.pellet) {
+          const col = SHARD_COLORS[shardOf(S.pellet.x)];
+          ctx.save();
+          ctx.shadowColor = col;
+          ctx.shadowBlur = 16;
+          ctx.fillStyle = col;
+          const pad = c * 0.18;
+          roundRect(S.pellet.x * c + pad, S.pellet.y * c + pad, c - pad * 2, c - pad * 2, 4);
+          ctx.fill();
+          ctx.restore();
+        }
+        for (let i = S.snake.length - 1; i >= 0; i--) {
+          const seg = S.snake[i];
+          const head = i === 0;
+          ctx.fillStyle = head ? "#eafffb" : "#23F7DD";
+          ctx.globalAlpha = head ? 1 : Math.max(0.35, 1 - i * 0.03);
+          const pad = head ? c * 0.06 : c * 0.12;
+          roundRect(seg.x * c + pad, seg.y * c + pad, c - pad * 2, c - pad * 2, head ? 5 : 3);
+          ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+      }
+
+      function updateStats() {
+        $("score").textContent = fmt(S.length);
+        $("best").textContent = fmt(S.best);
+      }
+      function showVeil(title, sub, showBtn) {
+        $("veilTitle").textContent = title;
+        $("veilSub").textContent = sub;
+        $("veilCount").style.display = "none";
+        $("start").style.display = showBtn ? "" : "none";
+        $("veil").classList.remove("hidden");
+      }
+      const hideVeil = () => $("veil").classList.add("hidden");
+      function lenPop(n) {
+        const el = $("lenPop");
+        el.textContent = "+" + n;
+        el.classList.remove("show");
+        void el.offsetWidth;
+        el.classList.add("show");
+        window.setTimeout(() => el.classList.remove("show"), 420);
+      }
+
+      // --- input ---
+      function steer(dx, dy) {
+        if (S.snake.length > 1 && dx === -S.dir.x && dy === -S.dir.y) return; // no reversal
+        S.nextDir = { x: dx, y: dy };
+      }
+      const KEYS = {
+        ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0],
+        w: [0, -1], s: [0, 1], a: [-1, 0], d: [1, 0], W: [0, -1], S: [0, 1], A: [-1, 0], D: [1, 0],
+      };
+      window.addEventListener("keydown", (e) => {
+        const k = KEYS[e.key];
+        if (!k) return;
+        if (S.phase === "playing") e.preventDefault();
+        steer(k[0], k[1]);
+      });
+      document.querySelectorAll(".dpad button").forEach((b) => {
+        b.addEventListener("click", () => {
+          const d = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] }[b.dataset.dir];
+          if (d) steer(d[0], d[1]);
+        });
+      });
+      let touchStart = null;
+      const bw = $("boardWrap");
+      bw.addEventListener("pointerdown", (e) => (touchStart = { x: e.clientX, y: e.clientY }));
+      bw.addEventListener("pointerup", (e) => {
+        if (!touchStart) return;
+        const dx = e.clientX - touchStart.x;
+        const dy = e.clientY - touchStart.y;
+        touchStart = null;
+        if (Math.abs(dx) < 18 && Math.abs(dy) < 18) return;
+        if (Math.abs(dx) > Math.abs(dy)) steer(dx > 0 ? 1 : -1, 0);
+        else steer(0, dy > 0 ? 1 : -1);
+      });
+
+      // --- game loop ---
+      function resetSnake() {
+        const cx = Math.floor(S.cols / 2);
+        const cy = Math.floor(S.rows / 2);
+        S.snake = [{ x: cx, y: cy }];
+        S.dir = { x: 1, y: 0 };
+        S.nextDir = { x: 1, y: 0 };
+        S.length = 0;
+        S.pellet = pelletAt(0);
+      }
+      function tick(now) {
+        S.loop = window.requestAnimationFrame(tick);
+        if (S.phase !== "playing") return;
+        if (now - S.lastStep < STEP_MS) return;
+        S.lastStep = now;
+        S.dir = S.nextDir;
+        const head = S.snake[0];
+        const nx = (head.x + S.dir.x + S.cols) % S.cols;
+        const ny = (head.y + S.dir.y + S.rows) % S.rows;
+        const willEat = S.pellet && nx === S.pellet.x && ny === S.pellet.y;
+        const body = willEat ? S.snake : S.snake.slice(0, -1);
+        if (body.some((s) => s.x === nx && s.y === ny)) {
+          crash();
+          return;
+        }
+        S.snake.unshift({ x: nx, y: ny });
+        if (willEat) {
+          const eatenIndex = S.length;
+          S.length += 1;
+          if (S.length > S.best) S.best = S.length;
+          lenPop(1);
+          updateStats();
+          S.pellet = pelletAt(S.length);
+          if (S.live) void submitEat(eatenIndex);
+        } else {
+          S.snake.pop();
+        }
+        draw();
+      }
+      function crash() {
+        S.phase = "dead";
+        S.runToken += 1;
+        draw();
+        if (S.live) void client.sendAction("endRun", []).catch(() => {});
+        maybeShowNameRow();
+        showVeil(
+          S.length > 0 ? "Snake down · length " + S.length : "Snake down",
+          S.length >= S.best && S.length > 0 ? "A new personal best. Go again for more." : "Steer clear of your own tail. Go again.",
+          true,
+        );
+        $("start").textContent = "Play again";
+        setStatus("", S.length > 0 ? "Length " + S.length + " is on the chain. Play again to beat it." : "Try again.");
+      }
+
+      // --- onchain flow ---
+      async function startGame() {
+        if (S.phase === "waking" || S.phase === "countdown") return;
+        const token = ++S.runToken;
+        if (!S.live) {
+          S.seed = BigInt(Math.floor(Date.now())) & U64;
+          beginLife();
+          return;
+        }
+        S.phase = "waking";
+        showVeil("Waking the board", "Fixing this run's pellets onchain. One second.", false);
+        $("start").disabled = true;
+        try {
+          await client.sendAction("startRun", []);
+        } catch (err) {
+          if (token !== S.runToken) return;
+          handleSendError(err);
+          S.phase = "idle";
+          $("start").disabled = false;
+          showVeil("Ready", "Could not wake the board. Try again.", true);
+          return;
+        }
+        for (let i = 0; i < 20; i++) {
+          await new Promise((r) => setTimeout(r, 500));
+          if (token !== S.runToken) return;
+          const run = await readRun();
+          if (run && run.active && run.seed !== 0n) {
+            S.seed = run.seed;
+            S.best = Math.max(S.best, await readBest());
+            $("start").disabled = false;
+            void countdownThenPlay(token);
+            return;
+          }
+        }
+        if (token !== S.runToken) return;
+        S.phase = "idle";
+        $("start").disabled = false;
+        showVeil("Ready", "The board took too long to wake. Try again.", true);
+      }
+      async function countdownThenPlay(token) {
+        S.phase = "countdown";
+        resetSnake();
+        draw();
+        $("start").style.display = "none";
+        for (let n = 3; n >= 1; n--) {
+          if (token !== S.runToken) return;
+          $("veilTitle").textContent = "Get ready";
+          $("veilSub").textContent = "Steer with arrows, WASD, or swipe.";
+          $("veilCount").textContent = n;
+          $("veilCount").style.display = "";
+          await new Promise((r) => setTimeout(r, 700));
+        }
+        if (token !== S.runToken) return;
+        beginLife();
+      }
+      function beginLife() {
+        resetSnake();
+        hideVeil();
+        S.phase = "playing";
+        S.lastStep = 0;
+        updateStats();
+        setStatus("", "Every pellet you eat is a real onchain transaction.");
+        draw();
+      }
+      async function submitEat(index) {
+        try {
+          const { txHash } = await client.sendAction("eat", [client.u64ToHex(index)]);
+          const entry = { hash: txHash, state: "pending" };
+          S.feed.unshift(entry);
+          if (S.feed.length > 8) S.feed.length = 8;
+          renderFeed();
+          pollTx(entry);
+        } catch (err) {
+          handleSendError(err);
+        }
+      }
+
+      // --- reads ---
+      async function readRun() {
+        const addr = client.addressHex();
+        if (!addr) return null;
+        const rd = await client.query("getRun", [addr]);
+        if (!rd || rd.length < 4) return null;
+        return {
+          active: client.b64ToBytes(rd[0] || "").some((b) => b !== 0),
+          seed: decodeU64BigInt(rd[2]),
+        };
+      }
+      async function readBest() {
+        const addr = client.addressHex();
+        if (!addr) return 0;
+        const rd = await client.query("getPlayerEntry", [addr]);
+        return rd && rd.length ? Number(decodeU64BigInt(rd[0])) : 0;
+      }
+      async function readConfig() {
+        const rd = await client.query("getConfig", []);
+        if (rd && rd.length >= 3) {
+          S.cols = Number(decodeU64BigInt(rd[0])) || 24;
+          S.rows = Number(decodeU64BigInt(rd[1])) || 24;
+          S.msPerCell = Number(decodeU64BigInt(rd[2])) || 55;
+        }
+      }
+      async function readPlayers() {
+        try {
+          const rd = await client.query("getPlayerCount", []);
+          if (rd && rd.length) $("players").textContent = fmt(Number(decodeU64BigInt(rd[0])));
+        } catch (_e) {}
+      }
+      async function refreshBoard() {
+        try {
+          renderLeaderboard(await fetchGameBoard("shardsnake"));
+        } catch (_e) {}
+      }
+
+      // --- name ---
+      function maybeShowNameRow() {
+        if (S.best > 0 && !getHandle()) $("nameRow").classList.remove("hidden");
+      }
+      async function saveName() {
+        const handle = ($("handle").value || "").trim();
+        if (!handle) return;
+        try {
+          await client.sendAction("setHandle", [client.strToHex(handle)]);
+          savePassportHandle(handle);
+          $("nameRow").classList.add("hidden");
+          setStatus("ok", "Name saved. It will show on the board shortly.");
+          setTimeout(refreshBoard, 2500);
+        } catch (err) {
+          handleSendError(err);
+        }
+      }
+
+      // --- boot ---
+      function boot() {
+        // Draw the board immediately (never block the first render on the network),
+        // then refine with the onchain config + best score in the background.
+        resetSnake();
+        draw();
+        refreshBoard();
+        readPlayers();
+        window.setInterval(refreshBoard, 8000);
+        window.setInterval(readPlayers, 8000);
+        (async () => {
+          try {
+            await client.ensureKey();
+            await readConfig();
+            resetSnake();
+            draw();
+            S.best = await readBest();
+            updateStats();
+            maybeShowNameRow();
+          } catch (_e) {
+            S.live = false;
+            $("chainCopy").innerHTML = "<b>Practice mode.</b> The live chain is warming up; this run will not score.";
+          }
+        })();
+      }
+
+      $("start").addEventListener("click", startGame);
+      $("saveName").addEventListener("click", saveName);
+      $("handle").addEventListener("keydown", (e) => { if (e.key === "Enter") saveName(); });
+      $("handle").value = getHandle() || "";
+
+      S.loop = window.requestAnimationFrame(tick);
+      boot();
+    </script>
+    <script type="module" src="/arcade-bridge.js"></script>
+    <script type="module" src="/arcade-info.js"></script>
+    <script type="module" src="/arcade-lock.js"></script>
+    <script type="module" src="/arcade-share.js"></script>
+  </body>
+</html>

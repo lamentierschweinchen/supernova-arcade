@@ -118,6 +118,13 @@ export const GAMES = {
     contract: "erd1qqqqqqqqqqqqqpgqa3dyjwv8r74md5wq0n3cfuvh98w24zmdppuqjufe9x", // testnet hub, shard 0
     gasLimit: 14000000,
   },
+  shardsnake: {
+    // Uncheatable onchain snake. Each pellet eaten is a real tx; the contract
+    // enforces eat-in-order + travel-time pacing, so the best score is honest.
+    label: "Shard Snake",
+    contract: "erd1qqqqqqqqqqqqqpgq0lqyvkyt6eldks4ehvu38wd2g7e75tkmppuqhd5c5x", // testnet, shard 0
+    gasLimit: 10000000,
+  },
 };
 
 /* ---------- tiny encoders (SC call argument hex) ---------- */
