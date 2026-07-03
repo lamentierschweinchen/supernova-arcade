@@ -39,7 +39,9 @@ import { createArcadeScore } from "/arcade-score.js";
     if (/snakanova|shard[-_]?snake|shardsnake/.test(p)) return "shardsnake";
     if (/shard[-_]?hydra|shardhydra/.test(p)) return "shardhydra";
     if (/button/.test(p)) return "button";
-    if (/canvas/.test(p)) return "canvas";
+    // /canvas is the three-shard triptych now; classic board at /canvas-classic.
+    if (/canvas[-_]classic/.test(p)) return "canvas";
+    if (/three[-_]?shard[-_]?canvas|triptych|canvas/.test(p)) return "triptych";
     if (/tug[-_]?of[-_]?war|tugofwar/.test(p)) return "tugofwar";
     if (/wen[-_]?moon|wenmoon/.test(p)) return "wenmoon";
     if (/sprint|onchain/.test(p)) return "sprint";

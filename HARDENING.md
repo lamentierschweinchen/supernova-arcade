@@ -85,13 +85,20 @@ value, so the next session (or the next game) starts from a known state.
 
 These are high-value but behavior-sensitive; each wants its own branch + verify pass.
 
-- **Registry consolidation → `public/arcade-games.js`.** The game list is copied ~14
-  times client-side (shell `GAME_FILE`/`GAME_PRETTY`/`COUNTERS`, arcade-core `GAMES`,
-  hub `CABINETS`, three `gameFromPath`s, share, info, score voices, studio, +
-  server-side `vercel.json`/`CARD_GAMES`/`GAME_BOARDS`). One leaf module (no imports,
-  so everything including arcade-core can import it) + a `scripts/check-registry.mjs`
-  that fails the build on drift between it and the un-importable mirrors (vercel.json,
-  src/). Land consumer-by-consumer behind unchanged export shapes.
+- **Registry drift guard — DONE (`scripts/check-registry.mjs`, `npm run check:registry`).**
+  The game list is copied ~14 times (shell maps, arcade-core `GAMES`, hub `CABINETS`,
+  three `gameFromPath`s, share, info, score voices, vercel, `CARD_GAMES`, server config).
+  A full "everyone imports one module" rewire is partly BLOCKED: arcade-info.js and
+  arcade-bridge.js are included as classic `<script>` in ~10 cabinets (IIFEs, can't
+  cleanly `import`), and moving arcade-core `GAMES` risks the critical path for modest
+  gain (contracts stay dual client/server regardless). So the high-value/low-risk move
+  shipped instead: a script that parses every mirror and fails the build on drift
+  (missing route/counter/card/share/info, unknown contract, or a `gameFromPath` that
+  mis-resolves a pretty path). It immediately caught + fixed real drift (info/sound
+  resolved `/canvas` to the classic board, not the triptych; bridge had been fixed but
+  they hadn't). REMAINING (optional, deferred): the actual import-consolidation for the
+  module-safe consumers (arcade-core re-export + shell deriving its maps) — lower value
+  now that drift is a red build.
 - **`createCabinetKit()` — DONE for 4 of 5 cabinets** (`public/arcade-cabinet.js`;
   tug/canvas/button/reaction ported + verified on prod; the pollTx runaway-guard + feed
   escaping baked in; send-error copy standardized). REMAINING: port **triptych** (the

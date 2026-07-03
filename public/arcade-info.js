@@ -79,7 +79,10 @@
   // /degen-dash, /onchain, /sprint, /supernova-sprint, etc.
   function gameFromPath() {
     var p = (location.pathname || "").toLowerCase();
-    if (/three[-_]?shard[-_]?canvas|triptych/.test(p)) return "triptych";
+    // /canvas is the three-shard triptych now; the classic board is at /canvas-classic
+    // (test classic FIRST so it isn't swallowed by the /canvas match below).
+    if (/canvas[-_]classic/.test(p)) return "canvas";
+    if (/three[-_]?shard[-_]?canvas|triptych|canvas/.test(p)) return "triptych";
     if (/wen[-_]?moon/.test(p)) return "wenmoon";
     if (/snakanova|shard[-_]?snake|shardsnake/.test(p)) return "shardsnake";
     if (/shard[-_]?hydra|shardhydra/.test(p)) return "shardhydra";
@@ -87,7 +90,6 @@
     if (/clawback/.test(p)) return "clawback";
     if (/reaction/.test(p)) return "reaction";
     if (/button/.test(p)) return "button";
-    if (/canvas/.test(p)) return "canvas";
     if (/tug[-_]?of[-_]?war|tugofwar/.test(p)) return "tugofwar";
     if (/sprint|onchain/.test(p)) return "sprint";
     return null;
