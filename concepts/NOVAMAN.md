@@ -116,22 +116,25 @@ so we design v1 without painting it out.
 - **Size:** high, the biggest lift on the slate. But the two hardest pieces, cross-shard and
   provable fairness, are already live and proven in shipped games.
 
-## The one open call
+## Settlement model — DECIDED: A (independent tallies, reconcile at the finale)
 
-Your three steers are locked: **one maze in three shard-parts**, all accessible to player and
-ghosts; **actions settle on the current shard**; **multiple stats**; **solo first.** The only
-architectural fork left is how your run-state travels when you port:
+All design calls are now locked:
 
-- **A — Independent tallies, reconcile at the finale (my lean).** Each shard contract records
-  what happened on its turf; your global score is the aggregate, computed at the Supernova
-  finale (the Triptych pattern, already proven, no per-port latency). The port is a local
-  context switch, and the cross-shard finality flex shows up in the finale aggregation plus a
-  light checkpoint tx on each port if we want it visible.
-- **B — State hands off cross-shard on every port.** Porting fires a real cross-shard message
-  that moves your active run from one shard contract to the next, so your run-state literally
-  lives on your current shard. Maximally honest for cross-shard, but it puts a finality round
-  trip on every tunnel, which fights Pac-Man's twitch unless Supernova finality is fast enough
-  to hide it entirely.
+- **One maze in three shard-parts**, all accessible to player and ghosts.
+- **Actions settle on the current shard** (the run is smeared across three shard contracts by
+  geography).
+- **Multiple stats**, rankable overall and per shard.
+- **Solo first**, co-op backburner.
+- **Settlement: model A.** Each shard contract independently records what happened on its
+  turf; the global run is the **aggregate, reconciled at the Supernova finale** (the Triptych
+  pattern, already proven, no per-port latency). A port is a **local context switch** that
+  just changes which shard your next actions route to. The cross-shard finality flex lives in
+  the finale reconciliation, plus an optional light checkpoint tx on each port if we want the
+  clock visible in-run.
 
-I lean **A** (ships cleaner, no latency in the twitch loop, still genuinely tri-shard). B is
-the purist option if we decide the port itself should be the hero cross-shard moment.
+Rejected: **model B** (hand run-state off cross-shard on every port). Maximally purist for
+cross-shard, but a finality round trip on every tunnel fights Pac-Man's twitch. A keeps the
+game genuinely tri-shard without paying latency in the twitch loop.
+
+**This concept is build-ready.** Remaining before a build starts is scoping and Lukas's
+greenlight, not design.
