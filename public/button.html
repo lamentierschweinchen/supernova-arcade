@@ -181,14 +181,13 @@
 
     <script type="module">
       import { createArcadeClient } from "/arcade-core.js";
-      import { fetchGameBoard, topPlusSelf, BOARD_GAP } from "/arcade-board.js";
+      import { fetchGameBoard } from "/arcade-board.js";
+      import { $, fmt, makeCabinetKit } from "/arcade-cabinet.js";
       import { getHandle } from "/passport.js";
       import { mountGalaxy } from "/arcade-galaxy.js";
 
       const client = createArcadeClient("button");
       const galaxy = mountGalaxy({ intensity: 0.5, focusShard: 2 });
-      const $ = (id) => document.getElementById(id);
-      const fmt = (n) => (n == null ? "···" : Number(n).toLocaleString("en-US"));
       const DURATION = 60000;
       // Frontend display margin: show the timer reaching 0 this much BEFORE the
       // real deadline, so a press made while time is on screen has headroom to
@@ -283,10 +282,18 @@
         }
       }
 
-      function setStatus(kind, html) {
-        $("status").className = "status " + (kind || "");
-        $("statusText").innerHTML = html;
-      }
+      // Shared cabinet UI (status toast, onchain feed, top-10 + self-row board, tx
+      // poller with the runaway guard, send-error toast) — see /arcade-cabinet.js.
+      // scoreText keeps the trailing "s" (seconds held); onResolve clears the
+      // "saving…" in-flight counter on every terminal outcome, as the old pollTx did.
+      const { setStatus, renderFeed, renderLeaderboard, pollTx, handleSendError } =
+        makeCabinetKit(client, {
+          noun: "presses",
+          emptyText: "No presses yet. Hold your nerve.",
+          getFeed: () => S.feed,
+          scoreText: (e) => fmt(e.score) + "s",
+          onResolve: () => { S.inFlight = Math.max(0, S.inFlight - 1); },
+        });
 
       // ---------- press ----------
       function recordWait() {
@@ -376,46 +383,6 @@
         }
       }
 
-      async function pollTx(entry) {
-        for (let i = 0; i < 26; i++) {
-          await new Promise((r) => setTimeout(r, 600));
-          const st = await client.txStatus(entry.hash);
-          if (st === "success") { entry.state = "final"; S.inFlight = Math.max(0, S.inFlight - 1); renderFeed(); return; }
-          if (st === "fail" || st === "invalid") { entry.state = "failed"; S.inFlight = Math.max(0, S.inFlight - 1); renderFeed(); return; }
-        }
-        S.inFlight = Math.max(0, S.inFlight - 1); // timed out — stop showing "saving…"
-      }
-
-      function handleSendError(err) {
-        const code = err && err.code;
-        if (code === "rate_limited") setStatus("warn", "Going fast. You hit the relayer's per-minute limit. Your press still shows here; onchain resumes in a moment.");
-        else if (code === "relayer_unavailable" || code === "not_deployed") setStatus("warn", "The onchain layer is <b>warming up</b>. Your presses show here for now and go onchain shortly.");
-        else if (code === "network") setStatus("err", "Network hiccup reaching the relayer. Your press still shows here.");
-        else setStatus("warn", "Onchain submission is unavailable this moment. Your press still shows here.");
-      }
-
-      function renderFeed() {
-        if (!S.feed.length) return;
-        $("feedCard").classList.remove("hidden");
-        $("feed").innerHTML = S.feed
-          .map((e) => `<li><span class="tag ${e.state}">${e.state}</span>` +
-            (e.hash ? `<a href="${client.explorer}/transactions/${e.hash}" target="_blank" rel="noopener">${e.hash.slice(0, 10)}…</a>` : `<span>${e.note || ""}</span>`) + `</li>`)
-          .join("");
-      }
-
-      function renderLeaderboard(entries) {
-        const ul = $("leaderboard");
-        if (!entries || !entries.length) { ul.innerHTML = `<li><span class="empty">No presses yet. Hold your nerve.</span></li>`; return; }
-        const me = String(client.address || "").toLowerCase();
-        const row = (e) => {
-          const you = String(e.address).toLowerCase() === me;
-          const name = e.handle && e.handle.length ? e.handle : e.address.slice(0, 6) + "…" + e.address.slice(-4);
-          return `<li><span class="rank">${e.rank}</span><span class="who ${you ? "you" : ""}">${escapeHtml(name)}${you ? " (you)" : ""}</span><span class="sc">${fmt(e.score)}s</span></li>`;
-        };
-        const { visible, self } = topPlusSelf(entries, client.address, 10); // top 10 + your own row if below
-        ul.innerHTML = visible.map(row).join("") + (self ? BOARD_GAP + row(self) : "");
-      }
-      function escapeHtml(s) { return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
 
       // ---------- poll onchain ----------
       async function poll() {

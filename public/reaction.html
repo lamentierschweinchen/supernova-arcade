@@ -160,14 +160,13 @@
 
     <script type="module">
       import { createArcadeClient } from "/arcade-core.js";
-      import { fetchGameBoard, topPlusSelf, BOARD_GAP } from "/arcade-board.js";
+      import { fetchGameBoard } from "/arcade-board.js";
+      import { $, fmt, makeCabinetKit } from "/arcade-cabinet.js";
       import { getHandle } from "/passport.js";
       import { mountGalaxy } from "/arcade-galaxy.js";
 
       const client = createArcadeClient("reaction");
       const galaxy = mountGalaxy({ intensity: 0.5, focusShard: 0 });
-      const $ = (id) => document.getElementById(id);
-      const fmt = (n) => (n == null ? "···" : Number(n).toLocaleString("en-US"));
 
       const WAIT_MIN = 900; // ms before the flash (randomized)
       const WAIT_MAX = 2600;
@@ -201,10 +200,15 @@
         $("padMain").textContent = main;
         $("padSub").textContent = sub || "";
       }
-      function setStatus(kind, html) {
-        $("status").className = "status " + (kind || "");
-        $("statusText").innerHTML = html;
-      }
+      // Shared cabinet UI (status toast, onchain feed, top-10 + self-row board, tx
+      // poller with the runaway guard, send-error toast) — see /arcade-cabinet.js.
+      const { setStatus, renderFeed, renderLeaderboard, pollTx, handleSendError } =
+        makeCabinetKit(client, {
+          noun: "reactions",
+          emptyText: "No reactions yet. Be the first.",
+          getFeed: () => S.feed,
+        });
+
       function clearTimers() {
         clearTimeout(S.waitTimer);
         clearTimeout(S.slowTimer);
@@ -283,22 +287,6 @@
           handleSendError(err);
         }
       }
-      async function pollTx(entry) {
-        for (let i = 0; i < 26; i++) {
-          await new Promise((r) => setTimeout(r, 600));
-          const st = await client.txStatus(entry.hash);
-          if (st === "success") { entry.state = "final"; renderFeed(); return; }
-          if (st === "fail" || st === "invalid") { entry.state = "failed"; renderFeed(); return; }
-        }
-      }
-      function handleSendError(err) {
-        const code = err && err.code;
-        if (code === "rate_limited") setStatus("warn", "Going fast. You hit the relayer's per-minute limit. Your reaction still counts here; onchain resumes in a moment.");
-        else if (code === "relayer_unavailable" || code === "not_deployed") setStatus("warn", "The onchain layer is <b>warming up</b>. Your reactions show here for now and go onchain shortly.");
-        else if (code === "network") setStatus("err", "Network hiccup reaching the relayer. Your reaction still shows here.");
-        else setStatus("warn", "Onchain submission is unavailable this moment. Your reaction still shows here.");
-      }
-
       // ---------- render ----------
       function render() {
         $("lastMs").textContent = S.lastMs == null ? "···" : S.lastMs + " ms";
@@ -308,31 +296,6 @@
         $("globalActions").textContent = fmt(client.deployed ? S.global : S.localGlobal);
       }
 
-      function renderFeed() {
-        if (!S.feed.length) return;
-        $("feedCard").classList.remove("hidden");
-        $("feed").innerHTML = S.feed
-          .map((e) => `<li><span class="tag ${e.state}">${e.state}</span>` +
-            (e.hash ? `<a href="${client.explorer}/transactions/${e.hash}" target="_blank" rel="noopener">${e.hash.slice(0, 10)}…</a>` : `<span>${e.note || ""}</span>`) + `</li>`)
-          .join("");
-      }
-
-      function renderLeaderboard(entries) {
-        const ul = $("leaderboard");
-        if (!entries || !entries.length) {
-          ul.innerHTML = `<li><span class="empty">No reactions yet. Be the first.</span></li>`;
-          return;
-        }
-        const me = String(client.address || "").toLowerCase();
-        const row = (e) => {
-          const you = String(e.address).toLowerCase() === me;
-          const name = e.handle && e.handle.length ? e.handle : e.address.slice(0, 6) + "…" + e.address.slice(-4);
-          return `<li><span class="rank">${e.rank}</span><span class="who ${you ? "you" : ""}">${escapeHtml(name)}${you ? " (you)" : ""}</span><span class="sc">${fmt(e.score)}</span></li>`;
-        };
-        const { visible, self } = topPlusSelf(entries, client.address, 10); // top 10 + your own row if below
-        ul.innerHTML = visible.map(row).join("") + (self ? BOARD_GAP + row(self) : "");
-      }
-      function escapeHtml(s) { return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
 
       // ---------- poll onchain (~2s) ----------
       async function poll() {
