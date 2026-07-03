@@ -236,8 +236,8 @@
       ];
       const keyOf = (x, y) => y * COLS + x;
 
-      const STEP_MS = 120;        // player: ms per cell
-      const GHOST_MS = 165;       // ghosts: a touch slower than the player
+      const STEP_MS = 200;        // player: ms per cell (slow + readable; forgiving)
+      const GHOST_MS = 250;       // ghosts: clearly slower than the player, so you can escape
       const FRIGHT_MS = 6500;     // Nova Core duration
       const FLUSH_MS = 1100;      // how often buffered sparks settle onchain
       const LIVES = 3;
@@ -443,9 +443,14 @@
       }
 
       // --- input ---
+      // A pressed direction is REMEMBERED (p.next) and retried every step until the
+      // way opens, so pressing a touch early still turns you at the junction instead
+      // of stopping. If the turn is already possible, snap to it now so it feels instant.
       function steer(dx, dy) {
-        S.player.next = { x: dx, y: dy };
-        S.player.moving = true;
+        const p = S.player;
+        p.next = { x: dx, y: dy };
+        p.moving = true;
+        if (canGo(p.x + dx, p.y + dy)) p.dir = { x: dx, y: dy };
       }
       const KEYS = {
         ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0],
