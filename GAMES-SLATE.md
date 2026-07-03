@@ -39,18 +39,18 @@ piece order is reproducible. Lines cleared = the uncheatable tally.
 - **Build:** medium-high (real-time Tetris client), but the contract side is light.
 
 ### 3. Novaman (Pac-Man across shards) — cross-shard as a mechanic *(you asked for this)*
-**Full concept: [`concepts/NOVAMAN.md`](concepts/NOVAMAN.md).** Three mazes, one per
-execution shard, each its own contract — not one board in three colors (that was
-Snakanova's cosmetic-shard trap; we do not repeat it). The **bridges** between mazes (the
-classic Pac-Man tunnels) are **real cross-shard txs**: take one and you surface in the
-next shard when it lands, finality clock ticking — on Supernova the hop is near-instant,
-so every warp is a throughput flex you can feel. Ghosts are VRF-deterministic from a
-per-run seed (provably fair, like Snakanova's obstacles). Light all three shards to ignite
-the **Supernova** finale (campaign tie-in). Optional co-op: three players, one per shard,
-network goes supernova only when all three are lit.
-- **MvX feature:** 3 real shards + cross-shard finality as a chase/escape mechanic + VRF-fair board.
-- **Uncheatable:** ghosts eaten, shards lit, bridges crossed are the onchain tally (pace-gated,
-  same anti-cheat as Degen Dash's grabs); sparks stay local for feel.
+**Full concept: [`concepts/NOVAMAN.md`](concepts/NOVAMAN.md).** One maze split into three
+shard-parts (not one board in three colors — that was Snakanova's cosmetic-shard trap).
+Player and ghosts roam the whole board; the tunnels are the shard boundaries, and **every
+action settles on whichever shard you are standing on** (grab an item on shard 0, get bitten
+on shard 2, each lands on that shard's contract). One run is genuinely smeared across three
+shard contracts by geography — you, sharded. Ghosts VRF-deterministic per-run seed (provably
+fair, like Snakanova). Light all three shards to ignite the **Supernova** finale (campaign
+tie-in). Solo-first; co-op ("light the network together") is backburner.
+- **MvX feature:** 3 real shards + your onchain footprint distributed across them by where you play + VRF-fair board.
+- **Uncheatable, multiple stats:** sparks cleared, ghosts eaten, ports, fastest port, shards
+  lit, per-shard fingerprint — each an onchain tally, pace-gated (Degen Dash anti-cheat);
+  sparks stay local for feel.
 - **Why it "makes sense on MvX":** most chains have no shards to cross. This is a game only
   MvX can host honestly.
 - **Build:** high (maze + ghost AI + cross-shard flow), but reuses Hydra's cross-shard rig + the VRF-seed pattern.

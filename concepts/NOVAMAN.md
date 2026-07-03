@@ -1,117 +1,137 @@
 # Novaman — concept
 
-*Pac-Man, but the maze is the MultiversX network. Three shards, three connected
-mazes, and the tunnels between them are real cross-shard transactions. Light all
-three and you ignite the Supernova.*
+*Pac-Man across the MultiversX network. One maze, split into three shards. Every dot you
+eat, every powerup you grab, every bite you take settles on whichever shard you are
+standing on. Light all three and you ignite the Supernova.*
+
+> Status: **solo-first**, co-op is backburner. Held as a concept, not in build.
 
 ---
 
 ## The honest-shards test (read this first)
 
-Snakanova taught us the rule: do not paint shards on for flavor. We renamed it and
-tore out the fake shard coloring because the shards were cosmetic and everyone could
-tell. Novaman only earns the name if the shards are **real**.
+Snakanova taught us the rule: do not paint shards on for flavor. We renamed that game and
+tore out the fake shard coloring because the shards were cosmetic and everyone could tell.
+Novaman only earns the name if the shards are **real**. They are, and in the strongest way:
+your actual onchain activity gets distributed across three shards as you play. Most chains
+have no shards to spread across. This is a game only MvX can host honestly.
 
-They are. Each of the three mazes is its own shard contract, and crossing between them
-is a genuine cross-shard message, not a colored line on one board. This is the whole
-reason the game exists on MvX and nowhere else: most chains have no shards to cross.
-If we cannot make the crossing real, we do not call them shards and we do not build it.
+## How the shards actually work (the heart of it)
+
+- **One maze, three regions: shard 0, shard 1, shard 2.** Both you and the ghosts roam the
+  whole board.
+- **Tunnels are the shard boundaries.** Port through one and you are now on a different
+  shard. So are the ghosts that chase you through it.
+- **Every onchain action settles on the shard you are on when it happens.** Grab an item in
+  shard 0, it settles on shard 0's contract. Take a bite in shard 2, that bite lands on
+  shard 2. Eat a ghost just after a port, it settles wherever you came out.
+- So a single run is **genuinely smeared across three shard contracts by geography.** Pull
+  up the explorer afterward and your account has real activity on all three shards from one
+  game. That is not a diagram of sharding. It is you, sharded.
+- (This is the Triptych move done as a game: three shard boards, one aggregate, except here
+  the board is a maze and the aggregate is your run.)
+
+## The cross-shard flex
+
+- Porting is instant to play, but it is a real shard change underneath. On Supernova's
+  sub-second finality, settling on the shard you just ported into is near-instant, the game
+  clocks it, and your **fastest port** becomes a number you can chase and show off.
+- Reuses Shard Hydra's cross-shard settlement rig, so this plumbing already exists.
 
 ## Core loop
 
-- You are Novaman, loose in shard 0's maze. Eat the sparks, dodge the ghosts.
-- Clear a shard's sparks to **light** it. Lit shards fill the Supernova meter.
-- **Bridges** (the classic Pac-Man side-tunnels) connect the three shard-mazes. Take
-  one and you hop shards for real.
-- Grab a **Nova Core** (the power pellet) to turn the ghosts edible for a few seconds.
-- Light all three shards to trigger the **Supernova** finale.
+- You are Novaman, dropped into the maze. Eat sparks, grab items and Nova Cores, dodge four
+  ghosts.
+- Everything meaningful you do settles on your **current** shard. Clear a region's sparks to
+  **light** that shard.
+- Tunnels port you (and the ghosts) between the three shards. A port is your escape hatch,
+  but you cannot camp one safe region, because you have to light all three.
+- Light all three shards to ignite the **Supernova** finale.
 
-## The shard mechanic — the star of the show
+## Why the shards matter to play (not just lore)
 
-- **Three mazes, one per execution shard, each its own contract.** Not one maze in
-  three colors. Three boards on three shards.
-- **The bridges are real cross-shard txs.** Take a bridge and a relayed cross-shard
-  message fires; you surface in the next shard's maze when it lands. On the transit,
-  Novaman streaks along a bridge of light while the finality clock ticks, then drops
-  into the next board. The pause is not a fake spinner. It is the network actually
-  moving you.
-- **The hop is a live throughput flex.** On Supernova's sub-second finality that
-  crossing is near-instant, and the game clocks it: *"crossed shards in 420ms."* Every
-  warp is a benchmark you can feel, not a number on a slide. (Same cross-shard rig
-  Shard Hydra already runs, so the plumbing exists.)
-- **Within a shard, play is smooth and client-side.** Pac-Man twitch stays twitchy.
-  The chain shows up at the crossings and in the score, and nowhere it would hurt the
-  fun. Chain invisible by default.
+- A tunnel is an **escape hatch**: hop shards to shake a ghost and buy a beat. But the ghosts
+  port too, so it only buys a beat.
+- You **must spread across all three** shards to win, so you cannot hide in one. There is a
+  real read on which shard to push and when.
+- Each shard can carry its own **temperament** (ghost speed, a hazard, spawn rate) so the
+  three regions feel distinct, not reskinned.
 
-## Why the shards matter to play (not just to lore)
+## Uncheatable, and a fistful of stats *(you wanted multiple stats — good, they are sexier)*
 
-- A bridge is your **escape hatch**: flee a ghost by hopping shards and the hop buys
-  you a beat. But you have to come back, because you must light all three to win, so
-  you cannot just camp one safe maze.
-- Each shard can carry its **own hazard or ghost temperament**, so the three boards
-  feel distinct instead of reskinned.
-- The Supernova meter rewards keeping all three in play. Clearing one too early strands
-  you. There is a rhythm to which shard you push and when.
+Score is not one number. Several ranked stats, each an onchain tally, each pace-gated (same
+anti-cheat as Degen Dash's grabs, so no spamming):
 
-## Uncheatable scoring
+- **Sparks cleared** — the grind.
+- **Ghosts eaten** — the aggression.
+- **Shards lit** and **full clears** (all three) — the completion.
+- **Ports** — how many times you crossed shards. The stat only a sharded chain has.
+- **Fastest port** — your best cross-shard finality time. The throughput flex, made personal.
+- **Shard fingerprint** — the split of your run across shard 0 / 1 / 2. Unique per player,
+  screenshot bait on the score card.
 
-- Score is an **onchain tally of the events that matter**: ghosts eaten, shards lit,
-  bridges crossed. Not a client-claimed number.
-- Each is **pace-gated by the contract**, the same anti-cheat as Degen Dash's grabs and
-  Snakanova's travel-time eats. You cannot be on shard 2 without the bridge tx that put
-  you there, and you cannot clear a maze faster than it is physically walkable.
-- Eating individual sparks stays **local** (far too fast to relay). The sparks are the
-  feel; the tallied events are the truth. This is the arcade's standard split: the game
-  is smooth, the score is chain-true.
+Because every meaningful action settles on the shard you are on, the leaderboards can rank
+you **overall and per shard.** Ambient sparks stay local for feel; the settled events drive
+the stats and the truth. (The board API already supports multiple metrics, so these are
+leaderboards we can already scale.)
 
 ## Provably fair board — the Snakanova through-line
 
-- Every run's three mazes and the ghost patrol paths are derived from a **VRF seed**,
-  deterministically. Unlearnable, un-riggable, reproducible. Same fairness story as
-  Snakanova's obstacles, now across three boards.
+- Every run's maze and the ghost patrol paths are derived from a **VRF seed**,
+  deterministically. Unlearnable, un-riggable, reproducible.
 - Nobody, us included, knows the layout before the seed drops. The seed is onchain, so
-  anyone can replay the exact run and confirm the ghosts and walls were never moved.
+  anyone can replay the exact run and confirm the walls and ghosts were never moved.
 
 ## The Supernova finale
 
-- Light all three shards and the network **goes supernova**: the three cleared mazes
-  converge into one burst, the run seals onchain, and you get a Supernova score card to
-  share (the existing `/api/og` card pipeline).
-- This is the campaign tie-in. Clearing the network *is* igniting the Supernova, and the
-  finish lands on the Sep 10 story without a word of marketing copy inside the game.
+- Light all three shards and the network **goes supernova**: the three shard tallies
+  reconcile into one Supernova run, it seals onchain, and you get a score card carrying your
+  fistful of stats and your shard fingerprint (the existing `/api/og` card pipeline).
+- Clearing the network **is** igniting the Supernova. Lands the Sep 10 story with zero
+  marketing copy inside the game.
 
 ## Ghosts and power mode
 
 - Four ghosts, a straight Pac-Man homage, but **VRF-deterministic** (no rubber-band RNG).
-  They patrol shard territory and pursue across bridges when provoked.
-- A **Nova Core** flips them edible for a few seconds. Eating a fleeing ghost is a
-  tallied onchain event, and chasing one across a bridge is the high-stakes play: commit
-  to the hop, or let it go.
+  They roam every region and port between shards to chase you. A ghost is on whatever shard
+  it is standing on, same as you.
+- A **Nova Core** flips them edible for a few seconds. Eating a fleeing ghost settles on your
+  current shard, and chasing one through a tunnel is the high-stakes play: commit to the
+  port, or let it go.
 
-## Multiplayer (backburner — matches your slither note)
+## Multiplayer — backburner (solo ships first)
 
-- **Co-op:** three players, one per shard, race to light your own board. The network goes
-  supernova only when all three are lit. A literal "we cleared the network together"
-  finish.
-- Or **shared-maze competitive**: multiple Novamen in one maze, ghosts hunt everyone, like
-  Hydra's shared rounds.
+Solo is v1. Later, the obvious co-op: three players, and the network only goes supernova when
+all three shards are lit. A literal "we cleared the network together." Out of v1 scope, noted
+so we design v1 without painting it out.
 
 ## Build notes
 
-- **Reuses:** Shard Hydra's cross-shard settlement rig, the cabinet kit, arcade-core
-  `sendAction` (signed Relayed-v3), the passport identity, the share-card pipeline, the
-  VRF-seed pattern from Snakanova/Wen Moon.
-- **New work:** maze generation from the seed, deterministic ghost AI, the three-shard
-  contract layout, the bridge/warp flow, the Supernova finale sequence.
-- **Size:** high — the biggest lift on the slate (real-time maze + ghost AI + genuine
-  cross-shard flow). But the two hardest pieces, cross-shard and provable fairness, are
-  already built and proven in live games.
+- **Reuses:** Shard Hydra's cross-shard rig, the cabinet kit, arcade-core `sendAction`
+  (signed Relayed-v3), the passport, the multi-metric board API, the VRF-seed pattern from
+  Snakanova / Wen Moon, the OG score-card pipeline.
+- **New work:** maze generation from the seed, deterministic ghost AI, three shard contracts
+  plus routing each action to the current shard, the port / context-switch flow, the
+  multi-stat tally, the finale reconciliation.
+- **Size:** high, the biggest lift on the slate. But the two hardest pieces, cross-shard and
+  provable fairness, are already live and proven in shipped games.
 
-## Where I want your steer
+## The one open call
 
-1. **Bridges are cross-shard for real. Should within-shard play stay purely local until a
-   bridge (my lean: yes, cleanest and most playable), or do you want more of the maze to
-   touch chain state?**
-2. **Headline score: ghosts, shards lit, or bridges crossed as the number that ranks you,
-   or a single blended nova-score?**
-3. **Solo-first, or design the co-op "light the network together" mode in from day one?**
+Your three steers are locked: **one maze in three shard-parts**, all accessible to player and
+ghosts; **actions settle on the current shard**; **multiple stats**; **solo first.** The only
+architectural fork left is how your run-state travels when you port:
+
+- **A — Independent tallies, reconcile at the finale (my lean).** Each shard contract records
+  what happened on its turf; your global score is the aggregate, computed at the Supernova
+  finale (the Triptych pattern, already proven, no per-port latency). The port is a local
+  context switch, and the cross-shard finality flex shows up in the finale aggregation plus a
+  light checkpoint tx on each port if we want it visible.
+- **B — State hands off cross-shard on every port.** Porting fires a real cross-shard message
+  that moves your active run from one shard contract to the next, so your run-state literally
+  lives on your current shard. Maximally honest for cross-shard, but it puts a finality round
+  trip on every tunnel, which fights Pac-Man's twitch unless Supernova finality is fast enough
+  to hide it entirely.
+
+I lean **A** (ships cleaner, no latency in the twitch loop, still genuinely tri-shard). B is
+the purist option if we decide the port itself should be the hero cross-shard moment.
