@@ -198,13 +198,34 @@
         return (z ^ (z >> 31n)) & U64;
       }
       const areaBig = () => BigInt(S.cols * S.rows);
-      // The run's obstacle cells (y*cols + x); an obstacle on the center start is
-      // dropped, so the snake never spawns on a wall. Built once per run from the seed.
+      // (dx, dy) cell offsets per structure shape — MUST match the contract's
+      // piece_offsets: bars, a corner, and a 2x2 block. Coherent walls, not dots.
+      const PIECE_OFFSETS = [
+        [[0, 0], [1, 0], [2, 0]],
+        [[0, 0], [0, 1], [0, 2]],
+        [[0, 0], [1, 0], [0, 1]],
+        [[0, 0], [1, 0], [0, 1], [1, 1]],
+        [[0, 0], [1, 0], [2, 0], [3, 0]],
+        [[0, 0], [0, 1], [0, 2], [0, 3]],
+      ];
+      // The run's obstacle cells (y*cols + x). Each of numObstacles structures is
+      // anchored at a derived cell and expanded by its shape (clamped to the board);
+      // a cell on the center start is dropped so the snake never spawns on a wall.
       function deriveObstacles() {
         S.obstacles = new Set();
+        const cols = S.cols, rows = S.rows, area = areaBig();
         for (let k = 0; k < S.numObstacles; k++) {
-          const c = Number(mix64((S.seed ^ OBSTACLE_SALT ^ BigInt(k)) & U64) % areaBig());
-          if (c !== S.centerCell) S.obstacles.add(c);
+          const anchor = Number(mix64((S.seed ^ OBSTACLE_SALT ^ BigInt(k * 2)) & U64) % area);
+          const ax = anchor % cols;
+          const ay = Math.floor(anchor / cols);
+          const shape = Number(mix64((S.seed ^ OBSTACLE_SALT ^ BigInt(k * 2 + 1)) & U64) % 6n);
+          for (const [dx, dy] of PIECE_OFFSETS[shape]) {
+            const x = ax + dx, y = ay + dy;
+            if (x < cols && y < rows) {
+              const c = y * cols + x;
+              if (c !== S.centerCell) S.obstacles.add(c);
+            }
+          }
         }
       }
       function pelletAt(index) {
