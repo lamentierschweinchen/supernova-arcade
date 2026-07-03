@@ -25,6 +25,9 @@ const GAMES = {
   clawback: { route: "/clawback", copy: "I kept {score} in Clawback." },
   degendash: { route: "/degen-dash", copy: "I scored {score} in Degen Dash." },
   reaction: { route: "/reaction", copy: "I landed {score} reactions in Reaction Arcade." },
+  triptych: { route: "/canvas", copy: "I've placed {score} pixels on the Three-Shard Canvas." },
+  wenmoon: { route: "/wen-moon", copy: "I cashed out {score} in Wen Moon." },
+  shardhydra: { route: "/shard-hydra", copy: "I dealt {score} damage to the Shard Hydra." },
   me: { route: "/me", copy: "{score} points, ranked #{rank} on the Supernova Arcade." },
 };
 
@@ -73,5 +76,3 @@ if (typeof window !== "undefined") {
 }
 if (document.readyState !== "loading") wire();
 else document.addEventListener("DOMContentLoaded", wire);
-// re-wire for buttons injected later (e.g. /me renders its card after a fetch)
-export const wireShare = wire;

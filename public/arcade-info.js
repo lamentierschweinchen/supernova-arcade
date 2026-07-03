@@ -65,8 +65,8 @@
     },
     shardhydra: {
       title: "Shard Hydra",
-      objective: "A shared boss spread across three shards. One head rears up to bite, hit that head before it does. Everyone's hits stack on the same Hydra.",
-      controls: ["Watch for the head that lights up to attack", "Tap it before it bites", "A wrong head or too slow costs a life", "Every correct hit is one real cross-shard transaction"],
+      objective: "A shared boss spread across three shards. All three heads flare, but only the red, open-mouthed head is about to bite. Everyone's hits stack on the same Hydra.",
+      controls: ["Watch all three heads wake", "Tap the one that turns red and opens its jaws", "A wrong head or too slow costs a life", "Every correct hit is one real cross-shard transaction"],
     },
   };
 
@@ -130,6 +130,7 @@
       ".ah-list li:last-child{border-bottom:none;}" +
       ".ah-list li .ah-dot{flex:0 0 auto;width:6px;height:6px;margin-top:7px;border-radius:50%;" +
       "background:var(--c,#23F7DD);box-shadow:0 0 7px color-mix(in srgb,var(--c,#23F7DD) 60%,transparent);}" +
+      "@media(max-width:440px){.abar{gap:6px}.abar .ah-btn{width:40px;height:40px;margin-left:0!important}}" +
       "@media (prefers-reduced-motion:reduce){.ah-overlay,.ah-card{transition:none;}}";
     var s = document.createElement("style");
     s.id = "ah-style";

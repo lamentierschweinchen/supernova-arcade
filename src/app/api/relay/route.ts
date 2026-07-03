@@ -150,6 +150,11 @@ type RelayOp = {
 
 const RATE_WINDOW_MS = 60_000;
 
+// The MultiversX network minimum gas price, and what every arcade client sends.
+// The relayer pins gasPrice to this so a within-cap gasLimit cannot be paired
+// with an inflated gasPrice to drain the relayer.
+const MIN_GAS_PRICE = 1_000_000_000;
+
 const RELAY_OPS: Record<string, RelayOp> = {
   // The leaderboard path — the main game's board (shard 1) AND the onchain
   // sprint's board (shard 0). Same function + gas profile; budget unchanged.
@@ -426,7 +431,10 @@ export async function POST(request: Request) {
   const data = Buffer.from(tx.data ?? new Uint8Array()).toString("utf8");
   const atIndex = data.indexOf("@");
   const fnName = atIndex === -1 ? data : data.slice(0, atIndex);
-  const op = fnName ? RELAY_OPS[fnName] : undefined;
+  // Own-property lookup only: `data="__proto__"` (or constructor/toString) would
+  // otherwise resolve to an Object.prototype member, slip past this guard, and
+  // throw deeper in — a 500 instead of a clean 400.
+  const op = fnName && Object.hasOwn(RELAY_OPS, fnName) ? RELAY_OPS[fnName] : undefined;
   if (!op) {
     return NextResponse.json(
       {
@@ -484,6 +492,17 @@ export async function POST(request: Request) {
   if (tx.gasLimit > BigInt(op.maxGasLimit)) {
     return NextResponse.json(
       { error: "gas_too_high", message: "gas limit exceeds relayer cap" },
+      { status: 400 },
+    );
+  }
+
+  // gasPrice cap: the relayer pays gasLimit x gasPrice, and gasPrice has no
+  // protocol ceiling — without this a client could sign a within-cap gasLimit at
+  // an enormous gasPrice and drain the relayer in one tx. Every legit arcade
+  // client sends exactly the network minimum (1e9), so pin to it.
+  if (tx.gasPrice !== BigInt(MIN_GAS_PRICE)) {
+    return NextResponse.json(
+      { error: "bad_gas_price", message: "gas price must be the network minimum" },
       { status: 400 },
     );
   }

@@ -143,7 +143,7 @@ await waitForTransaction(joinHash);
 
 const joined = await snapshot(player);
 const [raidId, hpBefore, , startedAt, , , currentAttack] = joined;
-if (joined[9] !== 1 || joined[10] !== 3) throw new Error("player did not join");
+if (joined[9] !== 1 || joined[10] !== 2) throw new Error("player did not join");
 
 const attackId = Date.now() < startedAt ? 0 : currentAttack + 1;
 const [head, opensAt, closesAt] = await attack(raidId, attackId);

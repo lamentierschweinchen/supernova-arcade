@@ -105,10 +105,12 @@ const GAME_BOARDS: Record<string, GameCfg> = {
   // (Was playerPoints/cumulative, which the client mislabeled with an "s" suffix.)
   button: { contract: BUTTON_CONTRACT, scoreMapper: "bestWait" },
   reaction: { contract: REACTION_CONTRACT, scoreMapper: "reactions" },
-  // Sprint's own board contract (NOT the tap-counter). Its getTopPoints returns
-  // points=0 and getLeaderboard OOMs; the real scores live in bestScore storage,
-  // which is player-scaling — so storage-parse, same as the arcade-core games.
-  sprint: { contract: ONCHAIN_LEADERBOARD_CONTRACT, scoreMapper: "bestScore" },
+  // Sprint = the "every tap onchain" game: its uncheatable score is bestScore on
+  // the TAP-COUNTER, accrued from real recordTap txs (1,151 players, top ~1.7k).
+  // The legacy ONCHAIN_LEADERBOARD_CONTRACT holds the old client-claimed submitScore
+  // rows (spoofable — its top is a 1.23-billion placeholder), so it is NOT the board.
+  // storage-parse bestScore, player-scaling, same as the arcade-core games.
+  sprint: { contract: TAP_COUNTER_CONTRACT, scoreMapper: "bestScore" },
   degendash: { contract: DEGENDASH_CONTRACT, view: "getLeaderboard", pointsView: "getTopPoints" },
   wenmoon: { contract: WENMOON_CONTRACT, view: "getLeaderboard", pointsView: "getTopPoints" },
   clawback: { contract: CLAWBACK_CONTRACT, view: "getLeaderboard", pointsView: "getTopPoints" },

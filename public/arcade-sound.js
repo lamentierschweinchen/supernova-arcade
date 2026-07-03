@@ -41,7 +41,6 @@ import { createArcadeScore } from "/arcade-score.js";
     if (/canvas/.test(p)) return "canvas";
     if (/tug[-_]?of[-_]?war|tugofwar/.test(p)) return "tugofwar";
     if (/wen[-_]?moon|wenmoon/.test(p)) return "wenmoon";
-    if (/shard[-_]?hydra|shardhydra/.test(p)) return "shardhydra";
     if (/sprint|onchain/.test(p)) return "sprint";
     return null;
   }
@@ -102,6 +101,7 @@ import { createArcadeScore } from "/arcade-score.js";
       "@keyframes as-eqb{0%,100%{transform:scaleY(.32);}50%{transform:scaleY(1);}}" +
       // tidy spacing when it sits in the header next to the lockup
       ".sound-toggle.as-toggle{margin-left:8px;}" +
+      "@media(max-width:440px){.abar{gap:6px}.sound-toggle.as-toggle{width:40px;height:40px;flex:0 0 40px;justify-content:center;padding:0;margin-left:0}.sound-toggle.as-toggle .st-label{display:none}}" +
       "@media (prefers-reduced-motion:reduce){.sound-toggle .eq i{animation:none;}}";
     var s = document.createElement("style");
     s.id = "as-style";

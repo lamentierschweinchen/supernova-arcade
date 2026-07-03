@@ -130,7 +130,7 @@ body{
 .wrap{position:relative;z-index:1;max-width:560px;margin:0 auto;padding:26px 20px 56px;display:flex;flex-direction:column;gap:18px;min-height:100vh;}
 
 /* header */
-/* canon Arcade back-link + wordmark lockup (matches /arcade.css; .wrap gap handles spacing) */
+/* canon Arcade back-link + wordmark lockup (.wrap gap handles spacing) */
 .topbar{display:flex;align-items:center;justify-content:space-between;gap:12px;}
 .back{display:inline-flex;align-items:center;gap:6px;color:var(--text-dim);text-decoration:none;font-size:13px;font-weight:500;letter-spacing:.01em;border:1px solid var(--border);border-radius:11px;padding:7px 12px;white-space:nowrap;background:rgba(14,17,23,.7);transition:color .15s,border-color .15s;}
 .back:hover{color:var(--mint);border-color:rgba(35,247,221,.4);}
@@ -2014,7 +2014,11 @@ function onMvxModeToggle(mode){
    ephemeral key (shard 0) is generated per submit. Fail-soft on every path.
    ============================================================================ */
 var LB = {
-  contract: CFG.sprintLeaderboard,   // Sprint's own board contract — the same one the display reads (submit + board agree)
+  // The tap-counter: it holds this player's onchain bestScore AND exposes setHandle
+  // (allowlisted by the relay). Naming attaches to the uncheatable score that earned
+  // it. The legacy sprintLeaderboard has no setHandle + isn't relay-allowlisted, so
+  // pointing here is what makes submit work AND aligns it with the board the API reads.
+  contract: CFG.contract,
   submitted: false,
   lastScore: 0,
   reset: function(){

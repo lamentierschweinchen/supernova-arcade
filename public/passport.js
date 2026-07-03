@@ -63,5 +63,3 @@ export function savePassport(skHex, address) {
 export function hasPassport() {
   return !!getSk();
 }
-
-export const PASSPORT_SLOTS = SLOT;
