@@ -36,6 +36,7 @@ import { createArcadeScore } from "/arcade-score.js";
     if (/degen[-_]?dash/.test(p)) return "degendash";
     if (/clawback/.test(p)) return "clawback";
     if (/reaction/.test(p)) return "reaction";
+    if (/novaman/.test(p)) return "novaman";
     if (/snakanova|shard[-_]?snake|shardsnake/.test(p)) return "shardsnake";
     if (/shard[-_]?hydra|shardhydra/.test(p)) return "shardhydra";
     if (/button/.test(p)) return "button";

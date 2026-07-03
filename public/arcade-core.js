@@ -125,6 +125,21 @@ export const GAMES = {
     contract: "erd1qqqqqqqqqqqqqpgq0lqyvkyt6eldks4ehvu38wd2g7e75tkmppuqhd5c5x", // testnet, shard 0
     gasLimit: 10000000,
   },
+  novaman: {
+    // Pac-Man across three shards (settlement model A). Self-contained client at
+    // public/novaman/. ONE contract deployed three times; a region's actions relay
+    // to that band's instance, so a run is genuinely tri-shard. `contract` (shard 0)
+    // is the default + deployed check + hub odometer source; `shards` lists all three
+    // (index = shard). EDIT AFTER DEPLOY: mirror NEXT_PUBLIC_NOVAMAN_SHARD{0,1,2}.
+    label: "Novaman",
+    contract: "erd1qqqqqqqqqqqqqpgq8shkqnta5x6aj7gt5lapsmk7aw5kjrzrppuqvfm605", // shard 0
+    gasLimit: 8000000,
+    shards: [
+      "erd1qqqqqqqqqqqqqpgq8shkqnta5x6aj7gt5lapsmk7aw5kjrzrppuqvfm605", // shard 0
+      "erd1qqqqqqqqqqqqqpgqk6gs82sw7urmxky08cxsvpfz9vkrs7nqx63s34pjrl", // shard 1
+      "erd1qqqqqqqqqqqqqpgqdp7qwkajzvg0pn3annpgkmhjhw89tlwf5cdqs7jc4q", // shard 2
+    ],
+  },
 };
 
 /* ---------- tiny encoders (SC call argument hex) ---------- */

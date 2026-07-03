@@ -481,6 +481,14 @@ const CABINETS = [
     counter: { address: GAMES.shardsnake.contract, view: "getGlobalActions" },
   },
   {
+    id: "novaman", name: "Novaman", status: "live", href: "/novaman", art: "novaman",
+    color: "#23F7DD", shard: "3 shards",
+    line: "Pac-Man across three shards. The maze splits into three shard-bands, and every spark, ghost, and bite settles on whichever shard you're standing on. Cross a glowing tunnel and you have hopped shards. One run, three real contracts.",
+    metaSuffix: "sparks onchain",
+    // sum getGlobalActions across the three shard instances (model A)
+    counter: { address: GAMES.novaman.contract, addresses: GAMES.novaman.shards, view: "getGlobalActions" },
+  },
+  {
     id: "triptych", name: "Three-Shard Canvas", status: "live", href: "/canvas", art: "triptych",
     color: "#23F7DD", shard: "3 shards",
     line: "One mural across three shards. A wide center board flanked by two wings, each on its own shard, painting in parallel. Every pixel is a real cross-shard transaction.",
@@ -595,6 +603,18 @@ function artHTML(kind) {
         + '<span class="hyh atk" style="left:50%"></span>'
         + '<span class="hyh" style="left:82%"></span>'
         + '<span class="hyfloor"></span></span></span>';
+    case "novaman": {
+      // three shard-bands + a Pac wedge chomping toward glowing sparks
+      const bands = '<span style="position:absolute;inset:0;display:flex">'
+        + '<span style="flex:1;background:linear-gradient(rgba(35,247,221,.16),transparent)"></span>'
+        + '<span style="flex:1;background:linear-gradient(rgba(167,139,250,.16),transparent)"></span>'
+        + '<span style="flex:1;background:linear-gradient(rgba(255,180,84,.16),transparent)"></span>'
+        + '</span>';
+      let dots = "";
+      [40, 56, 72].forEach((x) => { dots += '<span style="position:absolute;left:' + x + '%;top:47%;width:5px;height:5px;border-radius:50%;background:#eafffb;opacity:.85"></span>'; });
+      const pac = '<span style="position:absolute;left:16%;top:40%;width:13px;height:13px;border-radius:50%;background:#ffe66d;box-shadow:0 0 10px #ffe66d;clip-path:polygon(100% 22%,45% 50%,100% 78%,50% 100%,0 50%,50% 0)"></span>';
+      return '<span class="gx">' + bands + dots + pac + '</span>';
+    }
     default:
       return '<span class="gx"><span class="ring"></span></span>';
   }

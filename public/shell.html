@@ -136,6 +136,7 @@
         reaction: "/reaction.html",
         shardhydra: "/shard-hydra/app.html",
         shardsnake: "/shard-snake/app.html",
+        novaman: "/novaman/app.html",
         clawback: "/clawback/app.html",
         degendash: "/degen-dash/app.html",
         wenmoon: "/wen-moon/app.html",
@@ -154,6 +155,7 @@
         reaction: "/reaction",
         shardhydra: "/shard-hydra",
         shardsnake: "/snakanova",
+        novaman: "/novaman",
         clawback: "/clawback",
         degendash: "/degen-dash",
         wenmoon: "/wen-moon",
@@ -228,6 +230,7 @@
           { id: "wenmoon",    address: GAMES.wenmoon.contract,    view: "getGlobalActions" },
           { id: "shardhydra", address: GAMES.shardhydra.contract, view: "getGlobalActions" },
           { id: "shardsnake", address: GAMES.shardsnake.contract, view: "getGlobalActions" },
+          { id: "novaman",    address: GAMES.novaman.contract,    view: "getGlobalActions" },
         ];
         var rclient;
         try { rclient = createArcadeClient("tugofwar"); } // read-only use; no key is ground for query()

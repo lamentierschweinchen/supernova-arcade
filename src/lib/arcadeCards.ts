@@ -118,6 +118,15 @@ export const CARD_GAMES: Record<string, CardGame> = {
     unit: "snake length",
     copy: "I grew my snake to {score} on Snakanova.",
   },
+  novaman: {
+    name: "Novaman",
+    accent: "#23F7DD",
+    shard: 0,
+    art: "pix",
+    route: "/novaman",
+    unit: "sparks across 3 shards",
+    copy: "I lit {score} sparks across three shards in Novaman.",
+  },
   me: {
     name: "Supernova Arcade",
     accent: "#23F7DD",

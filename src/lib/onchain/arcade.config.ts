@@ -157,6 +157,31 @@ export const SHARD_SNAKE_CONTRACT =
   process.env.NEXT_PUBLIC_SHARD_SNAKE_CONTRACT ||
   "erd1qqqqqqqqqqqqqpgq0lqyvkyt6eldks4ehvu38wd2g7e75tkmppuqhd5c5x"; // testnet, shard 0
 
+/**
+ * NOVAMAN — Pac-Man across three shards (settlement model A). ONE contract deployed
+ * three times, one per execution shard; a region's actions relay to that band's
+ * instance, so a single run is genuinely tri-shard. Every instance is identical and
+ * independent; the leaderboard sums a player's sparks across all three, and the
+ * per-shard split is the shard fingerprint. Score = cumulative sparks (uncheatable:
+ * collectSparks(n) is throttled by honest munch time and capped at the region size,
+ * eatGhost is throttled). See marketing/games/onchain/novaman-contract.
+ */
+export const NOVAMAN_SHARD0_CONTRACT =
+  process.env.NEXT_PUBLIC_NOVAMAN_SHARD0_CONTRACT ||
+  "erd1qqqqqqqqqqqqqpgq8shkqnta5x6aj7gt5lapsmk7aw5kjrzrppuqvfm605"; // testnet, shard 0
+export const NOVAMAN_SHARD1_CONTRACT =
+  process.env.NEXT_PUBLIC_NOVAMAN_SHARD1_CONTRACT ||
+  "erd1qqqqqqqqqqqqqpgqk6gs82sw7urmxky08cxsvpfz9vkrs7nqx63s34pjrl"; // testnet, shard 1
+export const NOVAMAN_SHARD2_CONTRACT =
+  process.env.NEXT_PUBLIC_NOVAMAN_SHARD2_CONTRACT ||
+  "erd1qqqqqqqqqqqqqpgqdp7qwkajzvg0pn3annpgkmhjhw89tlwf5cdqs7jc4q"; // testnet, shard 2
+/** All three Novaman shard instances, index = shard. */
+export const NOVAMAN_CONTRACTS = [
+  NOVAMAN_SHARD0_CONTRACT,
+  NOVAMAN_SHARD1_CONTRACT,
+  NOVAMAN_SHARD2_CONTRACT,
+];
+
 /** Relayed endpoints for the cabinets. */
 export const PULL_FUNCTION = "pull";
 export const PLACE_PIXEL_FUNCTION = "placePixel";
@@ -181,6 +206,14 @@ export const JOIN_RAID_FUNCTION = "joinRaid";
 export const HIT_FUNCTION = "hit";
 export const RESOLVE_MISS_FUNCTION = "resolveMiss";
 export const SETTLE_PLAYER_FUNCTION = "settlePlayer";
+// Novaman: startRun / endRun / setHandle are SHARED names (merged into those ops).
+// These four are its own: enter (re-entry port), collectSparks (batched sparks, the
+// high-frequency path), eatGhost, bite. Each authorized against all three shard
+// instances (NOVAMAN_CONTRACTS).
+export const ENTER_FUNCTION = "enter";
+export const COLLECT_SPARKS_FUNCTION = "collectSparks";
+export const EAT_GHOST_FUNCTION = "eatGhost";
+export const BITE_FUNCTION = "bite";
 
 /**
  * Gas ceilings. `pull` does a handful of small storage writes (plus, on a round
@@ -216,6 +249,10 @@ export const JOIN_RAID_GAS_LIMIT = 10_000_000;
 export const HIT_GAS_LIMIT = 14_000_000;
 export const RESOLVE_MISS_GAS_LIMIT = 30_000_000;
 export const SETTLE_PLAYER_GAS_LIMIT = 30_000_000;
+// Novaman: every action is a handful of small storage writes (collectSparks bumps a
+// couple of counters). One generous cap for all of its ops; the relayer only pays
+// gas actually consumed.
+export const NOVAMAN_GAS_LIMIT = 8_000_000;
 
 /**
  * True when an address is still the undeployed placeholder. The relayer uses

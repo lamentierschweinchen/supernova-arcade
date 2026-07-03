@@ -99,6 +99,12 @@ import {
   RESOLVE_MISS_GAS_LIMIT,
   SETTLE_PLAYER_GAS_LIMIT,
   SHARD_SNAKE_CONTRACT,
+  NOVAMAN_CONTRACTS,
+  ENTER_FUNCTION,
+  COLLECT_SPARKS_FUNCTION,
+  EAT_GHOST_FUNCTION,
+  BITE_FUNCTION,
+  NOVAMAN_GAS_LIMIT,
   isPlaceholder,
 } from "@/lib/onchain/arcade.config";
 
@@ -117,6 +123,7 @@ const ARCADE_RECEIVERS = [
   WENMOON_CONTRACT,
   SHARD_HYDRA_HUB_CONTRACT,
   SHARD_SNAKE_CONTRACT,
+  ...NOVAMAN_CONTRACTS, // three shard instances; covers Novaman's setHandle too
 ].filter((addr) => !isPlaceholder(addr));
 
 // The plain-object shape accepted by Transaction.newFromPlainObject, derived
@@ -276,10 +283,13 @@ const RELAY_OPS: Record<string, RelayOp> = {
   // (high-frequency, tap-sized budget); cashOut banks. claim (above) + setHandle
   // (ARCADE_RECEIVERS) already include this contract.
   [STARTRUN_FUNCTION]: {
-    // shared by Wen Moon and Snakanova (both expose startRun on their own contract)
-    receivers: [WENMOON_CONTRACT, SHARD_SNAKE_CONTRACT].filter((a) => !isPlaceholder(a)),
+    // shared by Wen Moon, Snakanova, and Novaman's three shard instances (all expose
+    // startRun on their own contract); Novaman starts a run on each shard it enters.
+    receivers: [WENMOON_CONTRACT, SHARD_SNAKE_CONTRACT, ...NOVAMAN_CONTRACTS].filter(
+      (a) => !isPlaceholder(a),
+    ),
     maxGasLimit: STARTRUN_GAS_LIMIT + 100_000,
-    rateMax: 120,
+    rateMax: 300,
   },
   [CALL_FUNCTION]: {
     receivers: isPlaceholder(WENMOON_CONTRACT) ? [] : [WENMOON_CONTRACT],
@@ -325,8 +335,35 @@ const RELAY_OPS: Record<string, RelayOp> = {
     rateMax: 1200,
   },
   endRun: {
-    receivers: isPlaceholder(SHARD_SNAKE_CONTRACT) ? [] : [SHARD_SNAKE_CONTRACT],
+    // shared by Snakanova and Novaman (which closes a run on each shard it touched)
+    receivers: [SHARD_SNAKE_CONTRACT, ...NOVAMAN_CONTRACTS].filter((a) => !isPlaceholder(a)),
     maxGasLimit: 10_000_000,
+    rateMax: 300,
+  },
+  // --- Novaman (Pac-Man across three shards; one contract, three instances) ---
+  // A region's actions relay to that band's instance, so every op lists all three
+  // NOVAMAN_CONTRACTS. `collectSparks` is the high-frequency batched path (the client
+  // flushes munched sparks ~1/s per shard, and the CONTRACT throttles by honest munch
+  // time and caps at the region size, so a high budget cannot inflate a score).
+  // `enter` is a re-entry port, `eatGhost`/`bite` are the discrete events.
+  [COLLECT_SPARKS_FUNCTION]: {
+    receivers: NOVAMAN_CONTRACTS.filter((a) => !isPlaceholder(a)),
+    maxGasLimit: NOVAMAN_GAS_LIMIT + 100_000,
+    rateMax: 1500, // batched flushes across three shards
+  },
+  [EAT_GHOST_FUNCTION]: {
+    receivers: NOVAMAN_CONTRACTS.filter((a) => !isPlaceholder(a)),
+    maxGasLimit: NOVAMAN_GAS_LIMIT + 100_000,
+    rateMax: 600,
+  },
+  [ENTER_FUNCTION]: {
+    receivers: NOVAMAN_CONTRACTS.filter((a) => !isPlaceholder(a)),
+    maxGasLimit: NOVAMAN_GAS_LIMIT + 100_000,
+    rateMax: 600, // ports can be frequent when you dart between bands
+  },
+  [BITE_FUNCTION]: {
+    receivers: NOVAMAN_CONTRACTS.filter((a) => !isPlaceholder(a)),
+    maxGasLimit: NOVAMAN_GAS_LIMIT + 100_000,
     rateMax: 120,
   },
 };

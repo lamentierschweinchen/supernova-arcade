@@ -1,0 +1,756 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Novaman · Supernova Arcade</title>
+    <meta name="description" content="Pac-Man across three shards. One maze, three shard-bands — every spark you eat settles on whichever shard you're standing on. Cross a glowing tunnel and you've ported. Your run is smeared across three real contracts." />
+    <meta property="og:title" content="Novaman · Supernova Arcade" />
+    <meta property="og:description" content="Pac-Man across three shards. Munch sparks, dodge ghosts, port through the tunnels — every action settles on the shard you're on. You, sharded." />
+    <meta property="og:url" content="https://supernova-arcade.xyz/novaman" />
+    <meta property="og:image" content="https://supernova-arcade.xyz/supernova-arcade-og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content="https://supernova-arcade.xyz/supernova-arcade-og.png" />
+    <link rel="icon" href="/favicon.svg" />
+    <link rel="stylesheet" href="/arcade-shell.css" />
+    <style>
+      .screen .play { width: 100%; display: flex; flex-direction: column; gap: 12px; align-items: stretch; }
+      .board-wrap {
+        position: relative;
+        width: 100%;
+        max-width: 480px;
+        margin: 0 auto;
+        aspect-ratio: 25 / 21;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        overflow: hidden;
+        background: #05070b;
+        touch-action: none;
+        -webkit-tap-highlight-color: transparent;
+      }
+      #board { display: block; width: 100%; height: 100%; }
+      /* current-shard pill + fingerprint, floating over the board */
+      .shard-bar {
+        position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+        display: flex; gap: 6px; align-items: center; z-index: 3; pointer-events: none;
+      }
+      .shard-pip {
+        font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.08em;
+        padding: 3px 8px; border-radius: 999px; border: 1px solid currentColor;
+        opacity: 0.4; transition: opacity 0.2s, box-shadow 0.2s; white-space: nowrap;
+      }
+      .shard-pip.here { opacity: 1; box-shadow: 0 0 14px currentColor; background: rgba(0,0,0,0.35); }
+      .shard-pip.lit::after { content: " ✦"; }
+      .port-flash {
+        position: absolute; inset: 0; z-index: 2; pointer-events: none; opacity: 0;
+        background: radial-gradient(circle at center, currentColor 0%, transparent 60%);
+      }
+      .port-flash.go { animation: portpulse 0.5s ease-out; }
+      @keyframes portpulse { 0% { opacity: 0.55; } 100% { opacity: 0; } }
+      .port-banner {
+        position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%) scale(0.8);
+        font-family: var(--mono); font-size: 15px; font-weight: 800; letter-spacing: 0.1em;
+        text-transform: uppercase; color: #fff; text-shadow: 0 0 16px currentColor;
+        z-index: 4; opacity: 0; pointer-events: none;
+      }
+      .port-banner.go { animation: portban 0.9s ease-out; }
+      @keyframes portban { 0% { opacity: 0; transform: translate(-50%,-50%) scale(0.7); } 25% { opacity: 1; transform: translate(-50%,-50%) scale(1); } 100% { opacity: 0; transform: translate(-50%,-50%) scale(1.1); } }
+      .board-veil {
+        position: absolute; inset: 0; display: flex; flex-direction: column;
+        align-items: center; justify-content: center; gap: 12px; text-align: center;
+        padding: 20px; background: rgba(5, 7, 11, 0.86);
+        -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); z-index: 5;
+      }
+      .board-veil.hidden { display: none; }
+      .veil-title { font-family: var(--mono); font-size: 13px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--c); }
+      .veil-sub { font-size: 12.5px; color: var(--muted, #9ba3b4); max-width: 280px; line-height: 1.5; }
+      .veil-count { font-family: var(--mono); font-size: 46px; font-weight: 800; color: #eafffb; text-shadow: 0 0 18px var(--c); }
+      .lives { display: inline-flex; gap: 5px; align-items: center; }
+      .lives .pip { width: 10px; height: 10px; border-radius: 50%; background: var(--c); box-shadow: 0 0 8px var(--c); }
+      .lives .pip.gone { background: #2a3140; box-shadow: none; }
+      .fingerprint { display: flex; gap: 8px; justify-content: center; margin-top: 2px; }
+      .fp { flex: 1; max-width: 90px; }
+      .fp .bar { height: 6px; border-radius: 3px; background: #141a24; overflow: hidden; }
+      .fp .bar span { display: block; height: 100%; width: 0; transition: width 0.4s; }
+      .fp .cap { font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.06em; color: var(--muted,#9ba3b4); margin-top: 3px; text-align: center; }
+      .dpad { display: none; }
+      @media (max-width: 560px) {
+        .dpad {
+          display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(2, 1fr);
+          gap: 7px; max-width: 210px; margin: 12px auto 0;
+        }
+        .dpad button {
+          min-height: 46px; border: 1px solid var(--line); border-radius: 11px;
+          background: var(--panel-2, #121721); color: var(--text, #e8ecf3); font-size: 18px;
+          touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+        }
+        .dpad .up { grid-column: 2; grid-row: 1; }
+        .dpad .left { grid-column: 1; grid-row: 2; }
+        .dpad .down { grid-column: 2; grid-row: 2; }
+        .dpad .right { grid-column: 3; grid-row: 2; }
+      }
+    </style>
+  </head>
+  <body style="--c:#23F7DD" data-shard="3 shards">
+    <div class="scan"></div><div class="vignette"></div><div class="floor"></div>
+    <div class="brk tl"></div><div class="brk tr"></div><div class="brk bl"></div><div class="brk br"></div>
+    <div class="wrap">
+      <header class="abar">
+        <a class="back" href="/arcade"><span aria-hidden="true">&larr;</span> Arcade</a>
+        <span class="lockup"><img src="/mvx-wordmark.svg" alt="MultiversX" /><span class="shard">3 shards</span></span>
+      </header>
+
+      <h1>Novaman</h1>
+      <p class="sub">Pac-Man across three shards. The maze is split into three shard-bands, and every spark you eat, every ghost you catch, every bite you take settles on <b>whichever shard you're standing on</b>. Cross a glowing tunnel and you've ported — your run smears across three real contracts. You, sharded.</p>
+      <div class="onetap">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M13 2 3 14h7l-1 8 10-12h-7z" stroke="#23F7DD" stroke-width="1.6" stroke-linejoin="round"/></svg></span>
+        <span class="t" id="chainCopy"><b>No wallet, just play.</b> A key is created in your browser and we cover the gas.</span>
+      </div>
+
+      <div class="cabinet">
+        <div class="cab-marquee">Novaman · every action lands on the shard you're on</div>
+        <div class="screen">
+          <div class="play">
+            <div class="board-wrap" id="boardWrap">
+              <canvas id="board" width="500" height="420"></canvas>
+              <div class="shard-bar" id="shardBar"></div>
+              <span class="port-flash" id="portFlash"></span>
+              <span class="port-banner" id="portBanner"></span>
+              <div class="board-veil" id="veil">
+                <span class="veil-title" id="veilTitle">Ready</span>
+                <span class="veil-sub" id="veilSub">Munch the sparks, dodge the ghosts. The glowing gates in the walls are tunnels — cross one and you've hopped to the next shard.</span>
+                <span class="veil-count" id="veilCount" style="display:none">3</span>
+                <button class="btn" id="start" type="button">Insert coin</button>
+              </div>
+            </div>
+            <div class="dpad" aria-hidden="true">
+              <button class="up" data-dir="up" type="button">&#9650;</button>
+              <button class="left" data-dir="left" type="button">&#9664;</button>
+              <button class="down" data-dir="down" type="button">&#9660;</button>
+              <button class="right" data-dir="right" type="button">&#9654;</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <a class="why" href="/why#shards">
+        <span class="why-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.5c.6.6 1 1.5 1 2.5h6c0-1 .4-1.9 1-2.5A6 6 0 0 0 12 3Z"/></svg></span>
+        <span class="why-tx"><span class="why-k">Why it works</span>Each shard is a separate contract. Your sparks settle where you eat them, so one run really is spread across three shards — not a label, a fact you can check on the explorer.</span>
+        <span class="why-go" aria-hidden="true">&rarr;</span>
+      </a>
+
+      <div class="stats">
+        <div class="stat"><div class="num" id="sparks">0</div><div class="lbl">Sparks</div></div>
+        <div class="stat"><div class="num" id="ghosts">0</div><div class="lbl">Ghosts eaten</div></div>
+        <div class="stat"><div class="num" id="ports">0</div><div class="lbl">Ports</div></div>
+      </div>
+
+      <div class="fingerprint" id="fingerprint">
+        <div class="fp"><div class="bar"><span id="fp0" style="background:#23F7DD"></span></div><div class="cap">Shard 0</div></div>
+        <div class="fp"><div class="bar"><span id="fp1" style="background:#A78BFA"></span></div><div class="cap">Shard 1</div></div>
+        <div class="fp"><div class="bar"><span id="fp2" style="background:#FFB454"></span></div><div class="cap">Shard 2</div></div>
+      </div>
+
+      <div class="status" id="status" style="margin-top: 14px">
+        <span class="dot"></span><span id="statusText">One tap, no wallet. Every action is a real transaction, gasless, on the shard you're standing on.</span>
+      </div>
+
+      <div class="card" style="margin-top: 14px">
+        <p class="card-title"><span class="gd"></span>Top runs · sparks across all shards</p>
+        <ul class="lb" id="leaderboard">
+          <li><span class="empty">No runs yet. Be the first to light the network.</span></li>
+        </ul>
+        <div class="row hidden" id="nameRow" style="margin-top: 12px">
+          <input class="name-input" id="handle" maxlength="32" placeholder="Add a name for the board" autocomplete="off" />
+          <button class="btn ghost" id="saveName" style="width:auto; padding:12px 16px">Save</button>
+        </div>
+        <button class="btn ghost share-btn" data-game="novaman" data-score="sparks" style="width:100%;margin-top:12px;display:inline-flex;align-items:center;justify-content:center;gap:8px">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7"/><path d="M16 6l-4-4-4 4M12 2v13"/></svg>
+          Share my run
+        </button>
+      </div>
+
+      <div class="card hidden" id="feedCard">
+        <p class="card-title"><span class="gd"></span>Recent transactions · across shards</p>
+        <ul class="feed" id="feed"></ul>
+      </div>
+
+      <footer class="afoot"><span class="sn">Supernova · live on testnet</span> · gasless, no wallet · three shards, three contracts, one run</footer>
+    </div>
+
+    <script type="module">
+      import { createArcadeClient } from "/arcade-core.js";
+      import { fetchGameBoard } from "/arcade-board.js";
+      import { $, fmt, makeCabinetKit } from "/arcade-cabinet.js";
+      import { getHandle, setHandle as savePassportHandle } from "/passport.js";
+      import { mountGalaxy } from "/arcade-galaxy.js";
+
+      mountGalaxy({ intensity: 0.5 });
+      const client = createArcadeClient("novaman");
+
+      const { setStatus, renderFeed, renderLeaderboard, pollTx, handleSendError } = makeCabinetKit(client, {
+        noun: "sparks",
+        emptyText: "No runs yet. Be the first to light the network.",
+        getFeed: () => S.feed,
+      });
+
+      // The three shard instances (one contract per execution shard). A region's
+      // actions relay to that band's instance — this is what makes a run genuinely
+      // tri-shard. Shard 0 is the relayer's shard (intra-shard, fast); 1 and 2 are
+      // real cross-shard. Mirror of arcade.config.ts NEXT_PUBLIC_NOVAMAN_SHARD*.
+      const SHARDS = [
+        "erd1qqqqqqqqqqqqqpgq8shkqnta5x6aj7gt5lapsmk7aw5kjrzrppuqvfm605",
+        "erd1qqqqqqqqqqqqqpgqk6gs82sw7urmxky08cxsvpfz9vkrs7nqx63s34pjrl",
+        "erd1qqqqqqqqqqqqqpgqdp7qwkajzvg0pn3annpgkmhjhw89tlwf5cdqs7jc4q",
+      ];
+      const SHARD_COLOR = ["#23F7DD", "#A78BFA", "#FFB454"];
+
+      // --- maze geometry ---
+      // One board, three vertical shard-bands separated by DIVIDER walls at cols 8 and
+      // 16. The dividers are solid EXCEPT the tunnel gaps — the only way across, drawn
+      // as glowing gates. Everything else is a corridor lattice (posts at odd/odd), so
+      // the whole board is one connected maze you can roam.
+      const COLS = 25, ROWS = 21;
+      const DIVIDERS = [8, 16];
+      const GAP_ROWS = [4, 10, 16];          // even rows so they meet the corridors
+      const gapSet = new Set(GAP_ROWS);
+      const dividerSet = new Set(DIVIDERS);
+      const shardOf = (x) => (x < 8 ? 0 : x < 16 ? 1 : 2);
+      const isTunnel = (x, y) => dividerSet.has(x) && gapSet.has(y);
+
+      function isWall(x, y) {
+        if (x <= 0 || x >= COLS - 1 || y <= 0 || y >= ROWS - 1) return true; // border
+        if (dividerSet.has(x)) return !gapSet.has(y);                        // divider: wall except gaps
+        if (x % 2 === 1 && y % 2 === 1) return true;                         // lattice posts
+        return false;
+      }
+
+      const START = { x: 2, y: 10 };
+      const GHOST_STARTS = [
+        { x: 6, y: 10 }, { x: 12, y: 6 }, { x: 12, y: 14 }, { x: 20, y: 10 },
+      ];
+      const CORE_CELLS = [
+        { x: 2, y: 2 }, { x: 2, y: 18 }, { x: 12, y: 2 }, { x: 12, y: 18 }, { x: 22, y: 2 }, { x: 22, y: 18 },
+      ];
+      const keyOf = (x, y) => y * COLS + x;
+
+      const STEP_MS = 120;        // player: ms per cell
+      const GHOST_MS = 165;       // ghosts: a touch slower than the player
+      const FRIGHT_MS = 6500;     // Nova Core duration
+      const FLUSH_MS = 1100;      // how often buffered sparks settle onchain
+      const LIVES = 3;
+
+      const S = {
+        live: !!client,
+        phase: "idle", // idle | waking | countdown | playing | dead | won
+        sparkCount: 200, msPerSpark: 80, msPerGhost: 350,
+        walls: new Set(), sparks: new Set(), cores: new Set(),
+        totalByBand: [0, 0, 0], eatenByBand: [0, 0, 0], bandTotals: [0, 0, 0],
+        player: { x: START.x, y: START.y, dir: { x: 0, y: 0 }, next: { x: 0, y: 0 }, moving: false },
+        ghosts: [],
+        currentShard: 0,
+        startedShards: new Set(),      // which shard instances we've startRun'd this game
+        sparksTotal: 0, ghostsEaten: 0, ports: 0,
+        lit: new Set(),
+        frightenedUntil: 0,
+        lives: LIVES,
+        pending: [0, 0, 0],            // buffered sparks per shard awaiting settlement
+        lastFlush: [0, 0, 0],
+        lastStep: 0, lastGhost: 0, loop: 0, runToken: 0,
+        feed: [],
+      };
+
+      const canvas = $("board");
+      const ctx = canvas.getContext("2d");
+      const cw = () => canvas.width / COLS;
+      const chh = () => canvas.height / ROWS;
+
+      // --- build maze ---
+      function buildMaze() {
+        S.walls = new Set(); S.sparks = new Set(); S.cores = new Set();
+        S.totalByBand = [0, 0, 0];
+        for (let y = 0; y < ROWS; y++) {
+          for (let x = 0; x < COLS; x++) {
+            if (isWall(x, y)) { S.walls.add(keyOf(x, y)); }
+          }
+        }
+        for (const c of CORE_CELLS) if (!S.walls.has(keyOf(c.x, c.y))) S.cores.add(keyOf(c.x, c.y));
+        for (let y = 1; y < ROWS - 1; y++) {
+          for (let x = 1; x < COLS - 1; x++) {
+            const k = keyOf(x, y);
+            if (S.walls.has(k) || S.cores.has(k)) continue;
+            if (x === START.x && y === START.y) continue;
+            S.sparks.add(k);
+            S.totalByBand[shardOf(x)]++;
+          }
+        }
+        S.bandTotals = S.totalByBand.slice();
+      }
+
+      function resetActors() {
+        S.player = { x: START.x, y: START.y, dir: { x: 0, y: 0 }, next: { x: 0, y: 0 }, moving: false };
+        S.currentShard = shardOf(START.x);
+        S.ghosts = GHOST_STARTS.map((g, i) => ({
+          x: g.x, y: g.y, dir: { x: 0, y: -1 }, color: ["#ff5d6c", "#ff9de0", "#7bdfff", "#ffd166"][i % 4], home: g,
+        }));
+      }
+
+      // --- rendering (shard bands + glowing tunnels are the visual hero) ---
+      function bandTint(shard, alpha) {
+        const c = SHARD_COLOR[shard];
+        return `${c}${Math.round(alpha * 255).toString(16).padStart(2, "0")}`;
+      }
+      function draw(now) {
+        const c = cw(), h = chh();
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        // 1) band grounds — each shard its own tint so you always know where you are;
+        // the band you're standing in glows brighter with a lit top/bottom edge.
+        for (let s = 0; s < 3; s++) {
+          const x0 = (s === 0 ? 0 : DIVIDERS[s - 1]) * c;
+          const x1 = (s === 2 ? COLS : DIVIDERS[s]) * c;
+          const here = s === S.currentShard;
+          ctx.fillStyle = bandTint(s, here ? 0.22 : 0.1);
+          ctx.fillRect(x0, 0, x1 - x0, canvas.height);
+          if (here) {
+            ctx.fillStyle = bandTint(s, 0.5);
+            ctx.fillRect(x0, 0, x1 - x0, 3);
+            ctx.fillRect(x0, canvas.height - 3, x1 - x0, 3);
+          }
+        }
+        // 2) walls
+        for (const k of S.walls) {
+          const x = k % COLS, y = Math.floor(k / COLS);
+          if (dividerSet.has(x)) continue; // dividers drawn separately as seams
+          ctx.fillStyle = "#232c3a";
+          rr(x * c + c * 0.12, y * h + h * 0.12, c * 0.76, h * 0.76, 3); ctx.fill();
+        }
+        // 3) divider seams (the shard boundaries) — solid, clearly a border
+        for (const dx of DIVIDERS) {
+          ctx.fillStyle = "#39445a";
+          for (let y = 1; y < ROWS - 1; y++) {
+            if (gapSet.has(y)) continue;
+            rr(dx * c + c * 0.2, y * h, c * 0.6, h, 2); ctx.fill();
+          }
+        }
+        // 4) TUNNEL GATES — glowing portals in the destination shard's color, pulsing
+        const pulse = 0.5 + 0.5 * Math.sin((now || 0) / 260);
+        for (const dx of DIVIDERS) {
+          for (const gy of GAP_ROWS) {
+            const toRight = SHARD_COLOR[shardOf(dx + 1)];
+            const toLeft = SHARD_COLOR[shardOf(dx - 1)];
+            ctx.save();
+            ctx.globalAlpha = 0.55 + 0.35 * pulse;
+            const g = ctx.createLinearGradient(dx * c, 0, (dx + 1) * c, 0);
+            g.addColorStop(0, toLeft); g.addColorStop(1, toRight);
+            ctx.fillStyle = g;
+            ctx.shadowColor = toRight; ctx.shadowBlur = 12 + 8 * pulse;
+            rr(dx * c + c * 0.12, gy * h + h * 0.18, c * 0.76, h * 0.64, 5); ctx.fill();
+            // chevrons pointing across, so the eye reads "cross here"
+            ctx.globalAlpha = 0.9; ctx.strokeStyle = "#0b0e14"; ctx.lineWidth = Math.max(1.4, c * 0.09);
+            ctx.beginPath();
+            ctx.moveTo(dx * c + c * 0.42, gy * h + h * 0.36);
+            ctx.lineTo(dx * c + c * 0.62, gy * h + h * 0.5);
+            ctx.lineTo(dx * c + c * 0.42, gy * h + h * 0.64);
+            ctx.stroke();
+            ctx.restore();
+          }
+        }
+        // 5) sparks
+        ctx.fillStyle = "#eafffb";
+        for (const k of S.sparks) {
+          const x = k % COLS, y = Math.floor(k / COLS);
+          ctx.globalAlpha = 0.85;
+          ctx.beginPath(); ctx.arc(x * c + c / 2, y * h + h / 2, Math.max(1.4, c * 0.11), 0, 7); ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+        // 6) Nova Cores
+        for (const k of S.cores) {
+          const x = k % COLS, y = Math.floor(k / COLS);
+          ctx.save(); ctx.shadowColor = "#eafffb"; ctx.shadowBlur = 12 + 6 * pulse; ctx.fillStyle = "#eafffb";
+          ctx.beginPath(); ctx.arc(x * c + c / 2, y * h + h / 2, c * 0.3, 0, 7); ctx.fill(); ctx.restore();
+        }
+        // 7) ghosts
+        const fright = now < S.frightenedUntil;
+        for (const gh of S.ghosts) {
+          ctx.fillStyle = fright ? "#3d6bff" : gh.color;
+          ctx.save(); ctx.shadowColor = ctx.fillStyle; ctx.shadowBlur = 8;
+          const gx = gh.x * c + c / 2, gy2 = gh.y * h + h / 2, r = Math.min(c, h) * 0.36;
+          ctx.beginPath(); ctx.arc(gx, gy2 - r * 0.15, r, Math.PI, 0); ctx.lineTo(gx + r, gy2 + r * 0.8);
+          ctx.lineTo(gx + r * 0.5, gy2 + r * 0.45); ctx.lineTo(gx, gy2 + r * 0.8);
+          ctx.lineTo(gx - r * 0.5, gy2 + r * 0.45); ctx.lineTo(gx - r, gy2 + r * 0.8); ctx.closePath(); ctx.fill();
+          ctx.restore();
+          ctx.fillStyle = "#0b0e14";
+          ctx.beginPath(); ctx.arc(gx - r * 0.35, gy2 - r * 0.1, r * 0.16, 0, 7); ctx.arc(gx + r * 0.35, gy2 - r * 0.1, r * 0.16, 0, 7); ctx.fill();
+        }
+        // 8) Novaman
+        const p = S.player, px = p.x * c + c / 2, py = p.y * h + h / 2, pr = Math.min(c, h) * 0.4;
+        const mouth = 0.16 + 0.14 * Math.abs(Math.sin((now || 0) / 90));
+        let a0 = 0.25 * Math.PI + mouth * Math.PI, a1 = 2 * Math.PI - mouth * Math.PI;
+        const dir = p.dir.x || p.dir.y ? p.dir : { x: 1, y: 0 };
+        const rot = Math.atan2(dir.y, dir.x);
+        ctx.save(); ctx.translate(px, py); ctx.rotate(rot);
+        ctx.fillStyle = "#ffe66d"; ctx.shadowColor = "#ffe66d"; ctx.shadowBlur = 12;
+        ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, pr, a0, a1); ctx.closePath(); ctx.fill();
+        ctx.restore();
+      }
+      function rr(x, y, w, h, r) {
+        ctx.beginPath(); ctx.moveTo(x + r, y);
+        ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+        ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+      }
+
+      // --- HUD ---
+      function renderShardBar() {
+        const bar = $("shardBar");
+        bar.innerHTML = "";
+        for (let s = 0; s < 3; s++) {
+          const pip = document.createElement("span");
+          pip.className = "shard-pip" + (s === S.currentShard ? " here" : "") + (S.lit.has(s) ? " lit" : "");
+          pip.style.color = SHARD_COLOR[s];
+          pip.textContent = "SHARD " + s;
+          bar.appendChild(pip);
+        }
+      }
+      function updateStats() {
+        $("sparks").textContent = fmt(S.sparksTotal);
+        $("ghosts").textContent = fmt(S.ghostsEaten);
+        $("ports").textContent = fmt(S.ports);
+        for (let s = 0; s < 3; s++) {
+          const pct = S.bandTotals[s] ? Math.min(100, (S.eatenByBand[s] / S.bandTotals[s]) * 100) : 0;
+          $("fp" + s).style.width = pct + "%";
+        }
+      }
+      function showVeil(title, sub, btn, btnText) {
+        $("veilTitle").textContent = title;
+        $("veilSub").innerHTML = sub;
+        $("veilCount").style.display = "none";
+        $("start").style.display = btn ? "" : "none";
+        if (btnText) $("start").textContent = btnText;
+        $("veil").classList.remove("hidden");
+      }
+      const hideVeil = () => $("veil").classList.add("hidden");
+
+      function portFx(toShard) {
+        const flash = $("portFlash"), ban = $("portBanner");
+        flash.style.color = SHARD_COLOR[toShard]; ban.style.color = SHARD_COLOR[toShard];
+        ban.textContent = "Shard " + toShard;
+        flash.classList.remove("go"); ban.classList.remove("go");
+        void flash.offsetWidth; void ban.offsetWidth;
+        flash.classList.add("go"); ban.classList.add("go");
+        try { if (window.parent !== window) window.parent.postMessage({ type: "arcade:sfx", sound: "port" }, location.origin); } catch (_e) {}
+      }
+
+      // --- input ---
+      function steer(dx, dy) {
+        S.player.next = { x: dx, y: dy };
+        S.player.moving = true;
+      }
+      const KEYS = {
+        ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0],
+        w: [0, -1], s: [0, 1], a: [-1, 0], d: [1, 0], W: [0, -1], S: [0, 1], A: [-1, 0], D: [1, 0],
+      };
+      window.addEventListener("keydown", (e) => {
+        const k = KEYS[e.key]; if (!k) return;
+        if (S.phase === "playing") e.preventDefault();
+        steer(k[0], k[1]);
+      });
+      document.querySelectorAll(".dpad button").forEach((b) => {
+        b.addEventListener("click", () => {
+          const d = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] }[b.dataset.dir];
+          if (d) steer(d[0], d[1]);
+        });
+      });
+      let touchStart = null;
+      const bw = $("boardWrap");
+      bw.addEventListener("pointerdown", (e) => (touchStart = { x: e.clientX, y: e.clientY }));
+      bw.addEventListener("pointerup", (e) => {
+        if (!touchStart) return;
+        const dx = e.clientX - touchStart.x, dy = e.clientY - touchStart.y; touchStart = null;
+        if (Math.abs(dx) < 16 && Math.abs(dy) < 16) return;
+        if (Math.abs(dx) > Math.abs(dy)) steer(dx > 0 ? 1 : -1, 0);
+        else steer(0, dy > 0 ? 1 : -1);
+      });
+
+      const canGo = (x, y) => !S.walls.has(keyOf(x, y));
+
+      // --- main loop ---
+      function tick(now) {
+        S.loop = window.requestAnimationFrame(tick);
+        draw(now);
+        if (S.phase !== "playing") return;
+        // player step
+        if (S.player.moving && now - S.lastStep >= STEP_MS) {
+          S.lastStep = now;
+          stepPlayer(now);
+        }
+        // ghost step
+        if (now - S.lastGhost >= GHOST_MS) {
+          S.lastGhost = now;
+          stepGhosts(now);
+        }
+        // settle buffered sparks per shard
+        if (S.live) flushSparks(now);
+        collideGhosts(now);
+      }
+
+      function stepPlayer(now) {
+        const p = S.player;
+        // apply buffered turn if the target cell is open
+        if ((p.next.x || p.next.y) && canGo(p.x + p.next.x, p.y + p.next.y)) p.dir = { ...p.next };
+        const nx = p.x + p.dir.x, ny = p.y + p.dir.y;
+        if (!(p.dir.x || p.dir.y) || !canGo(nx, ny)) return; // blocked, wait for a turn
+        const prevShard = shardOf(p.x);
+        p.x = nx; p.y = ny;
+        const nowShard = shardOf(p.x);
+        if (nowShard !== prevShard) onPort(nowShard);
+        const k = keyOf(p.x, p.y);
+        if (S.sparks.has(k)) {
+          S.sparks.delete(k);
+          S.sparksTotal++; S.eatenByBand[nowShard]++;
+          S.pending[nowShard]++;
+          updateStats();
+          if (S.eatenByBand[nowShard] >= S.bandTotals[nowShard] && !S.lit.has(nowShard)) lightShard(nowShard);
+          // munch audio comes from the shell's per-tx sound on each settled batch
+          // (arcade:tx); per-spark would flood the shell postMessage bus.
+        }
+        if (S.cores.has(k)) {
+          S.cores.delete(k);
+          S.frightenedUntil = now + FRIGHT_MS;
+          try { if (window.parent !== window) window.parent.postMessage({ type: "arcade:sfx", sound: "core" }, location.origin); } catch (_e) {}
+        }
+      }
+
+      function stepGhosts(now) {
+        const fright = now < S.frightenedUntil;
+        for (const gh of S.ghosts) {
+          const opts = [{ x: 1, y: 0 }, { x: -1, y: 0 }, { x: 0, y: 1 }, { x: 0, y: -1 }]
+            .filter((d) => !(d.x === -gh.dir.x && d.y === -gh.dir.y)) // no reversal
+            .filter((d) => canGo(gh.x + d.x, gh.y + d.y));
+          if (!opts.length) { gh.dir = { x: -gh.dir.x, y: -gh.dir.y }; continue; }
+          // greedy toward (chase) or away (frightened) from the player
+          const tx = S.player.x, ty = S.player.y;
+          let best = opts[0], bestScore = fright ? -1e9 : 1e9;
+          for (const d of opts) {
+            const dist = Math.abs(gh.x + d.x - tx) + Math.abs(gh.y + d.y - ty);
+            if ((!fright && dist < bestScore) || (fright && dist > bestScore)) { bestScore = dist; best = d; }
+          }
+          gh.dir = best; gh.x += best.x; gh.y += best.y;
+        }
+      }
+
+      function collideGhosts(now) {
+        const fright = now < S.frightenedUntil;
+        for (const gh of S.ghosts) {
+          if (gh.x !== S.player.x || gh.y !== S.player.y) continue;
+          if (fright) {
+            S.ghostsEaten++; updateStats();
+            if (S.live) sendTo(S.currentShard, "eatGhost", []);
+            gh.x = gh.home.x; gh.y = gh.home.y; gh.dir = { x: 0, y: -1 };
+            try { if (window.parent !== window) window.parent.postMessage({ type: "arcade:sfx", sound: "ghost" }, location.origin); } catch (_e) {}
+          } else {
+            bitten();
+            return;
+          }
+        }
+      }
+
+      // --- shard / onchain flow ---
+      function onPort(toShard) {
+        S.currentShard = toShard;
+        S.ports++;
+        renderShardBar(); updateStats();
+        portFx(toShard);
+        if (!S.live) return;
+        if (!S.startedShards.has(toShard)) {
+          S.startedShards.add(toShard);
+          sendTo(toShard, "startRun", []);
+        } else {
+          sendTo(toShard, "enter", []);
+        }
+      }
+      function lightShard(shard) {
+        S.lit.add(shard); renderShardBar();
+        setStatus("ok", "Shard " + shard + " lit. " + (S.lit.size === 3 ? "" : (3 - S.lit.size) + " to go — port through a tunnel."));
+        if (S.lit.size === 3) win();
+      }
+      function flushSparks(now) {
+        for (let s = 0; s < 3; s++) {
+          if (S.pending[s] <= 0) continue;
+          if (now - S.lastFlush[s] < FLUSH_MS) continue;
+          const n = Math.min(S.pending[s], 64);
+          S.pending[s] -= n; S.lastFlush[s] = now;
+          settleSparks(s, n);
+        }
+      }
+      async function settleSparks(shard, n) {
+        try {
+          const { txHash } = await client.sendActionTo(SHARDS[shard], "collectSparks", [client.u64ToHex(n)]);
+          const entry = { hash: txHash, state: "pending", label: "shard " + shard };
+          S.feed.unshift(entry); if (S.feed.length > 8) S.feed.length = 8;
+          renderFeed(); pollTx(entry);
+        } catch (err) { handleSendError(err); }
+      }
+      async function sendTo(shard, fn, args) {
+        try {
+          const { txHash } = await client.sendActionTo(SHARDS[shard], fn, args);
+          const entry = { hash: txHash, state: "pending", label: "shard " + shard };
+          S.feed.unshift(entry); if (S.feed.length > 8) S.feed.length = 8;
+          renderFeed(); pollTx(entry);
+        } catch (err) { handleSendError(err); }
+      }
+
+      function bitten() {
+        if (S.live) sendTo(S.currentShard, "bite", []);
+        S.lives--;
+        try { if (window.parent !== window) window.parent.postMessage({ type: "arcade:sfx", sound: "crash" }, location.origin); } catch (_e) {}
+        if (S.lives <= 0) { gameOver(); return; }
+        // respawn: player home, ghosts home, brief pause
+        S.phase = "countdown";
+        resetActors(); renderShardBar();
+        setStatus("", "Bitten on shard " + S.currentShard + ". " + S.lives + " " + (S.lives === 1 ? "life" : "lives") + " left.");
+        let n = 2;
+        const iv = setInterval(() => {
+          if (S.phase !== "countdown") { clearInterval(iv); return; }
+          if (n <= 0) { clearInterval(iv); S.phase = "playing"; S.lastStep = 0; S.lastGhost = 0; }
+          n--;
+        }, 650);
+      }
+
+      function endAllRuns() {
+        if (!S.live) return;
+        for (const s of S.startedShards) client.sendActionTo(SHARDS[s], "endRun", []).catch(() => {});
+      }
+      function gameOver() {
+        S.phase = "dead"; S.runToken++;
+        endAllRuns();
+        maybeShowNameRow();
+        showVeil(
+          "Game over · " + S.sparksTotal + " sparks",
+          "Across " + S.startedShards.size + " shard" + (S.startedShards.size === 1 ? "" : "s") + ", " + S.ghostsEaten + " ghosts, " + S.ports + " ports. All banked onchain. Go again.",
+          true, "Play again",
+        );
+        setStatus("", S.sparksTotal + " sparks are on the chain across " + S.startedShards.size + " shards.");
+      }
+      function win() {
+        S.phase = "won"; S.runToken++;
+        endAllRuns();
+        maybeShowNameRow();
+        showVeil("Supernova ✦", "All three shards lit — you cleared the network. " + S.sparksTotal + " sparks, " + S.ghostsEaten + " ghosts, " + S.ports + " ports, banked across three contracts.", true, "Play again");
+        setStatus("ok", "You lit all three shards. That is the whole network, onchain.");
+      }
+
+      // --- start ---
+      async function startGame() {
+        if (S.phase === "waking" || S.phase === "countdown") return;
+        const token = ++S.runToken;
+        buildMaze(); resetActors();
+        S.sparksTotal = 0; S.ghostsEaten = 0; S.ports = 0; S.lives = LIVES;
+        S.eatenByBand = [0, 0, 0]; S.lit = new Set(); S.startedShards = new Set();
+        S.pending = [0, 0, 0]; S.lastFlush = [0, 0, 0]; S.frightenedUntil = 0;
+        updateStats(); renderShardBar();
+        if (!S.live) { countdownThenPlay(token); return; }
+        S.phase = "waking";
+        showVeil("Entering shard 0", "Starting your run on the shard-0 contract. One second.", false);
+        $("start").disabled = true;
+        try {
+          await client.sendActionTo(SHARDS[0], "startRun", []);
+          S.startedShards.add(0);
+        } catch (err) {
+          // Don't dead-end if the relayer is unreachable — drop to practice so the
+          // game is always playable (this run just won't score).
+          console.warn("[novaman] startRun failed, dropping to practice:", err);
+          S.live = false;
+          $("chainCopy").innerHTML = "<b>Practice mode.</b> The relayer is unreachable right now, so this run won't score.";
+        }
+        $("start").disabled = false;
+        countdownThenPlay(token);
+      }
+      async function countdownThenPlay(token) {
+        S.phase = "countdown";
+        $("start").style.display = "none";
+        for (let n = 3; n >= 1; n--) {
+          if (token !== S.runToken) return;
+          $("veilTitle").textContent = "Get ready";
+          $("veilSub").innerHTML = "Arrows, WASD, or swipe. The <b>glowing gates</b> are tunnels between shards.";
+          $("veilCount").textContent = n; $("veilCount").style.display = "";
+          await new Promise((r) => setTimeout(r, 650));
+        }
+        if (token !== S.runToken) return;
+        hideVeil();
+        S.phase = "playing"; S.lastStep = 0; S.lastGhost = 0;
+        setStatus("", "Munch the sparks. Every action settles on the shard you're standing on.");
+      }
+
+      // --- reads ---
+      async function readConfig() {
+        const rd = await client.query("getConfig", [], SHARDS[0]);
+        if (rd && rd.length >= 3) {
+          S.sparkCount = Number(dU64(rd[0])) || 200;
+          S.msPerSpark = Number(dU64(rd[1])) || 80;
+          S.msPerGhost = Number(dU64(rd[2])) || 350;
+        }
+      }
+      function dU64(part) {
+        const bytes = client.b64ToBytes(part || "");
+        let v = 0n; for (const b of bytes) v = (v << 8n) | BigInt(b);
+        return v;
+      }
+      async function readPlayers() {
+        try {
+          const rd = await client.query("getPlayerCount", [], SHARDS[0]);
+          // (players shown via the leaderboard; kept for parity)
+        } catch (_e) {}
+      }
+      async function refreshBoard() {
+        try { renderLeaderboard(await fetchGameBoard("novaman")); } catch (_e) {}
+      }
+
+      // --- name ---
+      function maybeShowNameRow() {
+        if (S.sparksTotal > 0 && !getHandle()) $("nameRow").classList.remove("hidden");
+      }
+      async function saveName() {
+        const handle = ($("handle").value || "").trim();
+        if (!handle) return;
+        try {
+          await client.sendActionTo(SHARDS[S.currentShard], "setHandle", [client.strToHex(handle)]);
+          savePassportHandle(handle);
+          $("nameRow").classList.add("hidden");
+          setStatus("ok", "Name saved. It will show on the board shortly.");
+          setTimeout(refreshBoard, 2500);
+        } catch (err) { handleSendError(err); }
+      }
+
+      // --- boot ---
+      function boot() {
+        buildMaze(); resetActors(); renderShardBar(); updateStats();
+        draw(0);
+        refreshBoard();
+        window.setInterval(refreshBoard, 8000);
+        (async () => {
+          try {
+            await client.ensureKey();
+            await readConfig();
+          } catch (_e) {
+            S.live = false;
+            $("chainCopy").innerHTML = "<b>Practice mode.</b> The live chain is warming up; this run will not score.";
+          }
+        })();
+      }
+
+      $("start").addEventListener("click", startGame);
+      $("saveName").addEventListener("click", saveName);
+      $("handle").addEventListener("keydown", (e) => { if (e.key === "Enter") saveName(); });
+      $("handle").value = getHandle() || "";
+
+      S.loop = window.requestAnimationFrame(tick);
+      boot();
+    </script>
+    <script type="module" src="/arcade-bridge.js"></script>
+    <script type="module" src="/arcade-info.js"></script>
+    <script type="module" src="/arcade-lock.js"></script>
+    <script type="module" src="/arcade-share.js"></script>
+  </body>
+</html>

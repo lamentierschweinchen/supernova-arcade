@@ -29,6 +29,7 @@ const GAMES = {
   wenmoon: { route: "/wen-moon", copy: "I cashed out {score} in Wen Moon." },
   shardhydra: { route: "/shard-hydra", copy: "I dealt {score} damage to the Shard Hydra." },
   shardsnake: { route: "/snakanova", copy: "I grew my snake to {score} on Snakanova." },
+  novaman: { route: "/novaman", copy: "I lit {score} sparks across three shards in Novaman." },
   me: { route: "/me", copy: "{score} points, ranked #{rank} on the Supernova Arcade." },
 };
 

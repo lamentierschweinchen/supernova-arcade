@@ -25,6 +25,7 @@ import {
   SHARD_HYDRA_HUB_CONTRACT,
   SHARD_HYDRA_HEAD_CONTRACTS,
   SHARD_SNAKE_CONTRACT,
+  NOVAMAN_CONTRACTS,
   isPlaceholder,
 } from "@/lib/onchain/arcade.config";
 import { TAP_COUNTER_CONTRACT } from "@/lib/onchain/tap-counter.config";
@@ -53,6 +54,7 @@ function gameContracts(): string[] {
     ...SHARD_HYDRA_HEAD_CONTRACTS,
     TAP_COUNTER_CONTRACT,
     SHARD_SNAKE_CONTRACT,
+    ...NOVAMAN_CONTRACTS, // three shard instances all count toward the daily board
   ].filter((a) => a && !isPlaceholder(a));
 }
 
@@ -257,8 +259,41 @@ async function triptychBoard(): Promise<GameRow[] | null> {
   return rows;
 }
 
+// NOVAMAN: one board summing each player's `sparks` across the three shard instances
+// (model A — a run settles on whichever shard you're on, so the aggregate is the real
+// score, and the per-shard split is the fingerprint). Same shape as triptychBoard:
+// each contract's /keys is player-scaling (cheap), sum per addrHex, keep any handle.
+async function novamanBoard(): Promise<GameRow[] | null> {
+  const contracts = NOVAMAN_CONTRACTS.filter((a) => !isPlaceholder(a));
+  if (!contracts.length) return null; // none deployed yet
+  const hit = boardCache.get("novaman");
+  if (hit && Date.now() - hit.at < CACHE_MS) return hit.rows;
+
+  const sums = new Map<string, { handle: string; score: number }>();
+  await Promise.all(
+    contracts.map(async (contract, i) => {
+      const rows = await fetchRows(`novaman:${i}`, { contract, scoreMapper: "sparks" });
+      for (const r of rows) {
+        const e = sums.get(r.addrHex) || { handle: "", score: 0 };
+        e.score += r.score;
+        if (!e.handle && r.handle) e.handle = r.handle;
+        sums.set(r.addrHex, e);
+      }
+    }),
+  );
+  const gh = await globalHandles();
+  const rows = [...sums.entries()]
+    .filter(([, e]) => e.score > 0)
+    .map(([addrHex, e]) => ({ address: toBech32(addrHex), handle: e.handle || gh.get(addrHex) || "", score: e.score }))
+    .filter((e) => e.address)
+    .sort((a, b) => b.score - a.score);
+  boardCache.set("novaman", { at: Date.now(), rows });
+  return rows;
+}
+
 async function gameBoard(game: string): Promise<GameRow[] | null> {
   if (game === "triptych") return triptychBoard(); // one board across three shards
+  if (game === "novaman") return novamanBoard(); // sparks summed across three shards
   const cfg = GAME_BOARDS[game];
   if (!cfg || isPlaceholder(cfg.contract)) return null;
   const hit = boardCache.get(game);
@@ -317,6 +352,7 @@ const VOLUME_SOURCES: Record<string, GameCfg[]> = {
   wenmoon: [{ contract: WENMOON_CONTRACT, view: "getTopActions" }],
   clawback: [{ contract: CLAWBACK_CONTRACT, view: "getTopActions" }],
   shardsnake: [{ contract: SHARD_SNAKE_CONTRACT, scoreMapper: "playerEats" }],
+  novaman: NOVAMAN_CONTRACTS.map((contract) => ({ contract, scoreMapper: "sparks" })),
 };
 
 type VolumeRow = { address: string; handle: string; actions: number; games: number };

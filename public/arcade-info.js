@@ -73,6 +73,11 @@
       objective: "Classic snake, fully onchain. Every pellet you eat is a real gasless transaction, and the contract fixes the whole board (pellets and walls) up front, so your best length is honest. No bot can out-eat a real run.",
       controls: ["Steer with arrows, WASD, or swipe", "Eat the glowing pellet to grow", "Wrap off any edge to the far side", "Dodge the walls and your own tail"],
     },
+    novaman: {
+      title: "Novaman",
+      objective: "Pac-Man across three shards. The maze is split into three shard-bands; every spark you eat, ghost you catch, or bite you take settles on whichever shard you're standing on. Cross a glowing tunnel and you've ported to the next shard, so one run smears across three real contracts.",
+      controls: ["Steer with arrows, WASD, or swipe", "Munch the sparks, dodge the ghosts", "Cross a glowing gate to hop shards", "Grab a Nova Core to turn the ghosts edible"],
+    },
   };
 
   // Map a pathname to a game key. Handles /canvas, /canvas.html, /clawback/,
@@ -84,6 +89,7 @@
     if (/canvas[-_]classic/.test(p)) return "canvas";
     if (/three[-_]?shard[-_]?canvas|triptych|canvas/.test(p)) return "triptych";
     if (/wen[-_]?moon/.test(p)) return "wenmoon";
+    if (/novaman/.test(p)) return "novaman";
     if (/snakanova|shard[-_]?snake|shardsnake/.test(p)) return "shardsnake";
     if (/shard[-_]?hydra|shardhydra/.test(p)) return "shardhydra";
     if (/degen[-_]?dash/.test(p)) return "degendash";
