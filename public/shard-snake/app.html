@@ -3,11 +3,11 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>Shard Snake · Supernova Arcade</title>
+    <title>Snakanova · Supernova Arcade</title>
     <meta name="description" content="Uncheatable onchain snake. Every pellet you eat is a real gasless transaction; the contract fixes the layout up front, so your best length is honest." />
-    <meta property="og:title" content="Shard Snake · Supernova Arcade" />
+    <meta property="og:title" content="Snakanova · Supernova Arcade" />
     <meta property="og:description" content="Classic snake, onchain. Every pellet is a real gasless transaction and your best length is provably honest." />
-    <meta property="og:url" content="https://supernova-arcade.xyz/shard-snake" />
+    <meta property="og:url" content="https://supernova-arcade.xyz/snakanova" />
     <meta property="og:image" content="https://supernova-arcade.xyz/supernova-arcade-og.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
@@ -100,15 +100,15 @@
         <span class="lockup"><img src="/mvx-wordmark.svg" alt="MultiversX" /><span class="shard">shard 0</span></span>
       </header>
 
-      <h1>Shard Snake</h1>
-      <p class="sub">Eat the pellet, grow, do not bite your tail. Every pellet is a real onchain transaction, and the board is fixed up front, so your best length is honest. No bot can out-eat a real run.</p>
+      <h1>Snakanova</h1>
+      <p class="sub">Eat the pellet, grow, dodge the walls, and do not bite your tail. Every pellet is a real onchain transaction, and the whole board is fixed up front, so your best length is honest. No bot can out-eat a real run.</p>
       <div class="onetap">
         <span class="ic"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M13 2 3 14h7l-1 8 10-12h-7z" stroke="#23F7DD" stroke-width="1.6" stroke-linejoin="round"/></svg></span>
         <span class="t" id="chainCopy"><b>No wallet, just play.</b> A key is created in your browser and we cover the gas.</span>
       </div>
 
       <div class="cabinet">
-        <div class="cab-marquee">Shard Snake · every pellet is a transaction</div>
+        <div class="cab-marquee">Snakanova · every pellet is a transaction</div>
         <div class="screen">
           <div class="play">
             <div class="board-wrap" id="boardWrap">
@@ -186,19 +186,35 @@
         getFeed: () => S.feed,
       });
 
-      // --- deterministic pellet layout: MUST match the contract's pellet_pos ---
+      // --- deterministic layout: MUST match the contract bit-for-bit (verified via
+      // getPellet / getObstacles). Same mix64, same salts, same re-roll. ---
       const U64 = (1n << 64n) - 1n;
+      const OBSTACLE_SALT = 0x5eed0b57ac1e0000n;
+      const REROLL_SALT = 0xa5a55a5ac3c33c3cn;
       function mix64(z0) {
         let z = (BigInt(z0) + 0x9e3779b97f4a7c15n) & U64;
         z = ((z ^ (z >> 30n)) * 0xbf58476d1ce4e5b9n) & U64;
         z = ((z ^ (z >> 27n)) * 0x94d049bb133111ebn) & U64;
         return (z ^ (z >> 31n)) & U64;
       }
+      const areaBig = () => BigInt(S.cols * S.rows);
+      // The run's obstacle cells (y*cols + x); an obstacle on the center start is
+      // dropped, so the snake never spawns on a wall. Built once per run from the seed.
+      function deriveObstacles() {
+        S.obstacles = new Set();
+        for (let k = 0; k < S.numObstacles; k++) {
+          const c = Number(mix64((S.seed ^ OBSTACLE_SALT ^ BigInt(k)) & U64) % areaBig());
+          if (c !== S.centerCell) S.obstacles.add(c);
+        }
+      }
       function pelletAt(index) {
-        const h = mix64((S.seed ^ BigInt(index)) & U64);
-        const x = Number(h % BigInt(S.cols));
-        const y = Number((h / BigInt(S.cols)) % BigInt(S.rows));
-        return { x, y };
+        let cell = Number(mix64((S.seed ^ BigInt(index)) & U64) % areaBig());
+        let tries = 0;
+        while (tries < 12 && (cell === S.centerCell || S.obstacles.has(cell))) {
+          cell = Number(mix64((BigInt(cell) ^ REROLL_SALT) & U64) % areaBig());
+          tries++;
+        }
+        return { x: cell % S.cols, y: Math.floor(cell / S.cols) };
       }
       function decodeU64BigInt(part) {
         const bytes = client.b64ToBytes(part || "");
@@ -215,10 +231,14 @@
         cols: 24,
         rows: 24,
         msPerCell: 55,
+        numObstacles: 14,
+        centerCell: 12 * 24 + 12,
+        obstacles: new Set(),
         seed: 0n,
         snake: [],
         dir: { x: 1, y: 0 },
         nextDir: { x: 1, y: 0 },
+        moving: false, // the snake holds still until the first steer, so you can read the board
         length: 0,
         best: 0,
         pellet: null,
@@ -230,10 +250,10 @@
 
       const canvas = $("board");
       const ctx = canvas.getContext("2d");
-      const SHARD_COLORS = ["#23F7DD", "#5B8DEF", "#A78BFA"];
+      const PELLET_COLOR = "#FFC24B"; // warm amber, contrasts the mint snake
+      const WALL_COLOR = "#333d4d";
 
       const cell = () => canvas.width / S.cols;
-      const shardOf = (x) => Math.min(2, Math.floor((x / S.cols) * 3));
 
       function roundRect(x, y, w, h, r) {
         ctx.beginPath();
@@ -247,23 +267,27 @@
       function draw() {
         const c = cell();
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        for (let z = 0; z < 3; z++) {
-          ctx.fillStyle = SHARD_COLORS[z];
-          ctx.globalAlpha = 0.05;
-          ctx.fillRect(((z * S.cols) / 3) * c, 0, (S.cols / 3) * c, canvas.height);
+        // walls (part of the run's fixed, contract-committed layout)
+        ctx.fillStyle = WALL_COLOR;
+        for (const idx of S.obstacles) {
+          const x = idx % S.cols;
+          const y = Math.floor(idx / S.cols);
+          const pad = c * 0.07;
+          roundRect(x * c + pad, y * c + pad, c - pad * 2, c - pad * 2, 3);
+          ctx.fill();
         }
-        ctx.globalAlpha = 1;
+        // pellet
         if (S.pellet) {
-          const col = SHARD_COLORS[shardOf(S.pellet.x)];
           ctx.save();
-          ctx.shadowColor = col;
+          ctx.shadowColor = PELLET_COLOR;
           ctx.shadowBlur = 16;
-          ctx.fillStyle = col;
+          ctx.fillStyle = PELLET_COLOR;
           const pad = c * 0.18;
           roundRect(S.pellet.x * c + pad, S.pellet.y * c + pad, c - pad * 2, c - pad * 2, 4);
           ctx.fill();
           ctx.restore();
         }
+        // snake
         for (let i = S.snake.length - 1; i >= 0; i--) {
           const seg = S.snake[i];
           const head = i === 0;
@@ -301,6 +325,7 @@
       function steer(dx, dy) {
         if (S.snake.length > 1 && dx === -S.dir.x && dy === -S.dir.y) return; // no reversal
         S.nextDir = { x: dx, y: dy };
+        S.moving = true; // the snake starts on the player's first steer
       }
       const KEYS = {
         ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0],
@@ -338,18 +363,23 @@
         S.snake = [{ x: cx, y: cy }];
         S.dir = { x: 1, y: 0 };
         S.nextDir = { x: 1, y: 0 };
+        S.moving = false;
         S.length = 0;
         S.pellet = pelletAt(0);
       }
       function tick(now) {
         S.loop = window.requestAnimationFrame(tick);
-        if (S.phase !== "playing") return;
+        if (S.phase !== "playing" || !S.moving) return; // hold still until the first steer
         if (now - S.lastStep < STEP_MS) return;
         S.lastStep = now;
         S.dir = S.nextDir;
         const head = S.snake[0];
         const nx = (head.x + S.dir.x + S.cols) % S.cols;
         const ny = (head.y + S.dir.y + S.rows) % S.rows;
+        if (S.obstacles.has(ny * S.cols + nx)) { // ran into a wall
+          crash();
+          return;
+        }
         const willEat = S.pellet && nx === S.pellet.x && ny === S.pellet.y;
         const body = willEat ? S.snake : S.snake.slice(0, -1);
         if (body.some((s) => s.x === nx && s.y === ny)) {
@@ -391,6 +421,7 @@
         const token = ++S.runToken;
         if (!S.live) {
           S.seed = BigInt(Math.floor(Date.now())) & U64;
+          deriveObstacles();
           beginLife();
           return;
         }
@@ -413,6 +444,7 @@
           const run = await readRun();
           if (run && run.active && run.seed !== 0n) {
             S.seed = run.seed;
+            deriveObstacles();
             S.best = Math.max(S.best, await readBest());
             $("start").disabled = false;
             void countdownThenPlay(token);
@@ -446,7 +478,7 @@
         S.phase = "playing";
         S.lastStep = 0;
         updateStats();
-        setStatus("", "Every pellet you eat is a real onchain transaction.");
+        setStatus("", "Press a direction to go. Every pellet you eat is a real onchain transaction.");
         draw();
       }
       async function submitEat(index) {
@@ -485,6 +517,8 @@
           S.cols = Number(decodeU64BigInt(rd[0])) || 24;
           S.rows = Number(decodeU64BigInt(rd[1])) || 24;
           S.msPerCell = Number(decodeU64BigInt(rd[2])) || 55;
+          if (rd.length >= 4) S.numObstacles = Number(decodeU64BigInt(rd[3])) || 0;
+          S.centerCell = Math.floor(S.rows / 2) * S.cols + Math.floor(S.cols / 2);
         }
       }
       async function readPlayers() {

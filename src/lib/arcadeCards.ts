@@ -110,13 +110,13 @@ export const CARD_GAMES: Record<string, CardGame> = {
     copy: "I dealt {score} damage to the Shard Hydra.",
   },
   shardsnake: {
-    name: "Shard Snake",
+    name: "Snakanova",
     accent: "#23F7DD",
     shard: 0,
     art: "pix",
-    route: "/shard-snake",
+    route: "/snakanova",
     unit: "snake length",
-    copy: "I grew my snake to {score} on Shard Snake.",
+    copy: "I grew my snake to {score} on Snakanova.",
   },
   me: {
     name: "Supernova Arcade",

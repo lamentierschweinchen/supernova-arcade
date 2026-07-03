@@ -121,7 +121,7 @@ export const GAMES = {
   shardsnake: {
     // Uncheatable onchain snake. Each pellet eaten is a real tx; the contract
     // enforces eat-in-order + travel-time pacing, so the best score is honest.
-    label: "Shard Snake",
+    label: "Snakanova",
     contract: "erd1qqqqqqqqqqqqqpgq0lqyvkyt6eldks4ehvu38wd2g7e75tkmppuqhd5c5x", // testnet, shard 0
     gasLimit: 10000000,
   },

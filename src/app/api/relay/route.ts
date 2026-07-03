@@ -276,7 +276,7 @@ const RELAY_OPS: Record<string, RelayOp> = {
   // (high-frequency, tap-sized budget); cashOut banks. claim (above) + setHandle
   // (ARCADE_RECEIVERS) already include this contract.
   [STARTRUN_FUNCTION]: {
-    // shared by Wen Moon and Shard Snake (both expose startRun on their own contract)
+    // shared by Wen Moon and Snakanova (both expose startRun on their own contract)
     receivers: [WENMOON_CONTRACT, SHARD_SNAKE_CONTRACT].filter((a) => !isPlaceholder(a)),
     maxGasLimit: STARTRUN_GAS_LIMIT + 100_000,
     rateMax: 120,
@@ -314,7 +314,7 @@ const RELAY_OPS: Record<string, RelayOp> = {
     maxGasLimit: SETTLE_PLAYER_GAS_LIMIT + 100_000,
     rateMax: 1200,
   },
-  // --- Shard Snake (uncheatable onchain snake; its own contract) ---
+  // --- Snakanova (uncheatable onchain snake; its own contract) ---
   // startRun (shared allowlist above) seeds the run; `eat` is the per-pellet
   // scoring tx (tap-sized budget); `endRun` closes a life. setHandle is covered by
   // ARCADE_RECEIVERS. The contract enforces order + travel-time pacing, so a high

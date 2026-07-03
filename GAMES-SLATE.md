@@ -84,6 +84,18 @@ together, the tally is per-player bricks broken.
 
 ---
 
+## Backburner
+- **Slither (team snake).** A slither.io-style shared board where many snakes play at
+  once. This is the natural home for making "shards" REAL: split the shared board
+  across the three execution shards (players genuinely on different shards, one board
+  per shard aggregated like Shard Hydra / Three-Shard Canvas), so crossing a zone is a
+  felt cross-shard move and the team fills the whole network. Merges the "real shards"
+  fix for Shard Snake with a team game. Bigger lift (shared-state + 3 contracts).
+- **Shard Snake, earning its name.** v1 shards are cosmetic (3 colored zones + wrap).
+  Options to make them load-bearing: a seed-derived cross-shard combo (eat one pellet
+  of each shard color in a row for a bonus, one contract), or the full tri-shard board
+  above. Otherwise rename (Nova Snake / Onchain Snake).
+
 ## Also considered (parked)
 - **Frogger** (each lane a shard, crossing = shard hops) — fun but overlaps Shard Chomp's
   cross-shard hook.
