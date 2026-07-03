@@ -56,10 +56,10 @@ value, so the next session (or the next game) starts from a known state.
 
 ## Correctness backlog (cross-cabinet, user-visible)
 
-- **Nonce-resync missing in clawback + degen-dash** (the two highest-tx games). A single
-  relay rejection permanently desyncs the shared passport nonce for the session. Port
-  the proven 2-attempt `resyncNonce` block from `wen-moon/arcade.js` (or move onto
-  arcade-core, which has it).
+- **Nonce-resync — DONE for clawback + degen-dash.** Ported wen-moon's proven 2-attempt
+  send loop + `resyncNonce` into both (the happy path is byte-identical; only a relay
+  rejection now re-syncs the nonce and retries once instead of desyncing the rest of the
+  session). Both boot clean. Verified static + boot; the retry only fires on rejection.
 - **`pollTx` runaway guard exists only in tug-of-war.** canvas/triptych/button/reaction
   spawn an unbounded status-poll per action off the feed; backport tug's one-line
   "still in the feed" guard.
@@ -108,10 +108,12 @@ These are high-value but behavior-sensitive; each wants its own branch + verify 
   it) — bake it into the kit so the standard is enforced by construction.
 - **Consolidate the 3 private game clients** (clawback/degen-dash/wen-moon `arcade.js`,
   ~1,000 duplicated lines of signing/relay/read) onto `arcade-core.js` via ~60-line
-  adapters. Keeps each app.html untouched. The nonce-resync + passport-recovery fixes
-  then land everywhere by construction. Verify each: practice + onchain round + board +
-  tx-ring + two-tab nonce race, plus the existing smoke scripts under
-  `marketing/games/*/scripts/`.
+  adapters. Keeps each app.html untouched. DEFERRED (not the fixes — those are done
+  above): the full rewrite touches the entire onchain layer of 3 live games and can't be
+  fully verified without real playtesting (rAF + relay), so it's high-risk for a
+  line-count win. Do it in a worktree with the smoke scripts under
+  `marketing/games/*/scripts/` + a two-tab nonce-race test. The correctness bug it would
+  have fixed (nonce-resync) is already backported.
 - **Sprint monoliths.** `/sprint` (onchain.html, canonical, 1,151 players) still carries
   a private pre-passport copy of the signing/relay guts + fresh-key-per-load (so scores
   never reach the passport / `/me`). Port it onto `createArcadeClient("sprint")` (needs

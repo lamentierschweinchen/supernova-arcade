@@ -186,63 +186,66 @@ export function createArcade(config) {
     return state.initPromise;
   }
 
-  // ---- the core: build, sign, relay ONE transaction ----
+  /** re-fetch the network nonce for the shared passport key (recovers a nonce race). */
+  async function resyncNonce() {
+    try {
+      const r = await fetch(`${cfg.api}/accounts/${state.key.address}`);
+      if (r.ok) {
+        const j = await r.json();
+        state.nonce = j.nonce || 0;
+      }
+    } catch (_e) {
+      /* keep the in-memory nonce */
+    }
+  }
+
+  // ---- the core: build, sign, relay ONE transaction (2 attempts on a nonce race) ----
+  // The passport key is shared across every game, so a second open tab can claim the
+  // same nonce. On a relay rejection we re-sync the nonce from the network and retry
+  // once, so one hiccup does not desync the rest of the session (collect fires fast, so
+  // Degen Dash is the most exposed). Single-tab play (the norm) never hits the retry.
   async function send(fnName, dataStr, gasLimit) {
     const ok = await ready();
     if (!ok) throw new ArcadeError("unavailable", "onchain client unavailable");
 
     const { ed } = state.libs;
     const key = state.key;
-    const nonce = state.nonce++; // claim this nonce now
     const dataB64 = btoa(dataStr);
 
-    const txForSign = {
-      nonce,
-      value: "0",
-      receiver: cfg.contract,
-      sender: key.address,
-      gasPrice: cfg.gasPrice,
-      gasLimit,
-      dataB64,
-      chainID: cfg.chainID,
-      version: 2,
-      relayer: cfg.relayer,
-    };
+    let lastErr = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const nonce = state.nonce++; // claim this nonce now
+      const txForSign = {
+        nonce, value: "0", receiver: cfg.contract, sender: key.address,
+        gasPrice: cfg.gasPrice, gasLimit, dataB64, chainID: cfg.chainID, version: 2, relayer: cfg.relayer,
+      };
+      const sig = await ed.signAsync(enc.encode(signingString(txForSign)), key.priv);
+      const plainTx = {
+        nonce, value: "0", receiver: cfg.contract, sender: key.address,
+        senderUsername: undefined, receiverUsername: undefined,
+        gasPrice: cfg.gasPrice, gasLimit, data: dataB64, chainID: cfg.chainID, version: 2,
+        relayer: cfg.relayer, signature: bytesToHex(sig),
+      };
 
-    const sig = await ed.signAsync(enc.encode(signingString(txForSign)), key.priv);
-
-    const plainTx = {
-      nonce,
-      value: "0",
-      receiver: cfg.contract,
-      sender: key.address,
-      senderUsername: undefined,
-      receiverUsername: undefined,
-      gasPrice: cfg.gasPrice,
-      gasLimit,
-      data: dataB64,
-      chainID: cfg.chainID,
-      version: 2,
-      relayer: cfg.relayer,
-      signature: bytesToHex(sig),
-    };
-
-    let res, out;
-    try {
-      res = await fetch(cfg.relayUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ transaction: plainTx }),
-      });
-      out = await res.json();
-    } catch (err) {
-      throw new ArcadeError("network", "could not reach the relayer");
+      let res, out;
+      try {
+        res = await fetch(cfg.relayUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ transaction: plainTx }),
+        });
+        out = await res.json();
+      } catch (err) {
+        throw new ArcadeError("network", "could not reach the relayer");
+      }
+      if (res.ok && !out.error) {
+        try { if (window.parent !== window) window.parent.postMessage({ type: "arcade:tx", hash: out.txHash }, location.origin); } catch (_e) {} // feed the shell's live tx ring
+        return { txHash: out.txHash, explorerUrl: out.explorerUrl || explorerTx(out.txHash), sender: out.sender };
+      }
+      lastErr = new ArcadeError(out.error || `http_${res.status}`, out.message || "relay rejected the transaction");
+      if (attempt === 0) await resyncNonce(); // likely a cross-tab nonce race — re-sync and retry once
     }
-    if (!res.ok || out.error) {
-      throw new ArcadeError(out.error || `http_${res.status}`, out.message || "relay rejected the transaction");
-    }
-    try { if (window.parent !== window) window.parent.postMessage({ type: "arcade:tx", hash: out.txHash }, location.origin); } catch (_e) {} // feed the shell's live tx ring
-    return { txHash: out.txHash, explorerUrl: out.explorerUrl || explorerTx(out.txHash), sender: out.sender };
+    throw lastErr;
   }
 
   // ---- argument encoding: minimal big-endian hex, at least one byte, even
