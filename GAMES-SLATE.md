@@ -38,18 +38,22 @@ piece order is reproducible. Lines cleared = the uncheatable tally.
 - **Uncheatable:** lines-cleared tally onchain; sequence derived from the onchain seed.
 - **Build:** medium-high (real-time Tetris client), but the contract side is light.
 
-### 3. Shard Chomp (Pac-Man) — cross-shard as a mechanic *(you asked for this)*
-The maze is split into three **shard-colored zones**. Ghosts are deterministic from a VRF
-maze seed. The twist: after a power pellet, chasing a fleeing ghost across a **shard
-border** is a real **cross-shard transaction** — you watch it resolve in ~6s, the same
-settlement Shard Hydra uses. You *feel* the shards instead of reading a label. Optional
-shared-maze multiplayer (multiple pac-men, ghosts hunt everyone) like Hydra.
-- **MvX feature:** 3 shards + cross-shard latency turned into a chase mechanic + VRF ghosts.
-- **Uncheatable:** power-pellet chomps + ghost-eats are the onchain tally (pace-gated, so
-  no spamming — same anti-cheat as Degen Dash's grabs).
+### 3. Novaman (Pac-Man across shards) — cross-shard as a mechanic *(you asked for this)*
+**Full concept: [`concepts/NOVAMAN.md`](concepts/NOVAMAN.md).** Three mazes, one per
+execution shard, each its own contract — not one board in three colors (that was
+Snakanova's cosmetic-shard trap; we do not repeat it). The **bridges** between mazes (the
+classic Pac-Man tunnels) are **real cross-shard txs**: take one and you surface in the
+next shard when it lands, finality clock ticking — on Supernova the hop is near-instant,
+so every warp is a throughput flex you can feel. Ghosts are VRF-deterministic from a
+per-run seed (provably fair, like Snakanova's obstacles). Light all three shards to ignite
+the **Supernova** finale (campaign tie-in). Optional co-op: three players, one per shard,
+network goes supernova only when all three are lit.
+- **MvX feature:** 3 real shards + cross-shard finality as a chase/escape mechanic + VRF-fair board.
+- **Uncheatable:** ghosts eaten, shards lit, bridges crossed are the onchain tally (pace-gated,
+  same anti-cheat as Degen Dash's grabs); sparks stay local for feel.
 - **Why it "makes sense on MvX":** most chains have no shards to cross. This is a game only
   MvX can host honestly.
-- **Build:** high (maze + ghost AI + cross-shard flow), but reuses Hydra's cross-shard rig.
+- **Build:** high (maze + ghost AI + cross-shard flow), but reuses Hydra's cross-shard rig + the VRF-seed pattern.
 
 ---
 
