@@ -92,10 +92,13 @@ These are high-value but behavior-sensitive; each wants its own branch + verify 
   so everything including arcade-core can import it) + a `scripts/check-registry.mjs`
   that fails the build on drift between it and the un-importable mirrors (vercel.json,
   src/). Land consumer-by-consumer behind unchanged export shapes.
-- **`createCabinetKit()` — collapse ~380 duplicated lines** across the 5 simple
-  cabinets (`$`/`fmt`/`esc`/`setStatus`/`handleSendError`/`renderFeed`/
-  `renderLeaderboard`/`pollTx`/`wireName`, each currently a noun-swapped copy). Port
-  tug (the reference) first, diff-test the rest. Bake in the pollTx guard + the retry.
+- **`createCabinetKit()` — DONE for 4 of 5 cabinets** (`public/arcade-cabinet.js`;
+  tug/canvas/button/reaction ported + verified on prod; the pollTx runaway-guard + feed
+  escaping baked in; send-error copy standardized). REMAINING: port **triptych** (the
+  multi-board / per-shard-label outlier — needs the `feedLabel` hook + its multi-board
+  `saveName`), and optionally fold `saveName`/`maybeShowNameRow` into the kit (left
+  per-cabinet this pass). Also not yet done: the transient-send RETRY (only triptych has
+  it) — bake it into the kit so the standard is enforced by construction.
 - **Consolidate the 3 private game clients** (clawback/degen-dash/wen-moon `arcade.js`,
   ~1,000 duplicated lines of signing/relay/read) onto `arcade-core.js` via ~60-line
   adapters. Keeps each app.html untouched. The nonce-resync + passport-recovery fixes
