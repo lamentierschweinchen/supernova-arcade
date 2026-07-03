@@ -38,7 +38,12 @@ piece order is reproducible. Lines cleared = the uncheatable tally.
 - **Uncheatable:** lines-cleared tally onchain; sequence derived from the onchain seed.
 - **Build:** medium-high (real-time Tetris client), but the contract side is light.
 
-### 3. Novaman (Pac-Man across shards) — cross-shard as a mechanic *(you asked for this)*
+### 3. Novaman (Pac-Man across shards) — cross-shard as a mechanic *(you asked for this)* ✅ SHIPPED
+**✅ LIVE at [/novaman](https://supernova-arcade.xyz/novaman) (Jul 3 2026).** One contract on 3
+testnet shards (12 blackbox tests); onchain settlement verified end-to-end on prod for shard 0
+AND cross-shard shard 1 (`scripts/novaman-live-smoke.mjs`). Interactive playtest = a real browser
+(the headless preview pauses rAF). Below is the original concept.
+
 **Full concept: [`concepts/NOVAMAN.md`](concepts/NOVAMAN.md).** One maze split into three
 shard-parts (not one board in three colors — that was Snakanova's cosmetic-shard trap).
 Player and ghosts roam the whole board; the tunnels are the shard boundaries, and **every
