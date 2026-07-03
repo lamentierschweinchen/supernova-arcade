@@ -209,30 +209,39 @@
 
       // --- maze geometry ---
       // One board, three vertical shard-bands separated by DIVIDER walls at cols 8 and
-      // 16. The dividers are solid EXCEPT the tunnel gaps — the only way across, drawn
-      // as glowing gates. Everything else is a corridor lattice (posts at odd/odd), so
-      // the whole board is one connected maze you can roam.
+      // 16 (solid EXCEPT the tunnel gaps — the glowing gates, the only crossings). Each
+      // band is a hand-authored Pac-Man maze: an OPEN PERIMETER RING plus interior wall
+      // blocks, so every corridor is part of a loop and there are no dead-end nubs.
       const COLS = 25, ROWS = 21;
       const DIVIDERS = [8, 16];
-      const GAP_ROWS = [4, 10, 16];          // even rows so they meet the corridors
+      const GAP_ROWS = [4, 10, 16];          // rows where you can cross a divider
       const gapSet = new Set(GAP_ROWS);
       const dividerSet = new Set(DIVIDERS);
       const shardOf = (x) => (x < 8 ? 0 : x < 16 ? 1 : 2);
-      const isTunnel = (x, y) => dividerSet.has(x) && gapSet.has(y);
-
+      const BAND_START = [1, 9, 17];         // leftmost usable col of each band (7 wide)
+      // 19 rows x 7 cols, local rows 1..19. '#' wall, '.' corridor. Open left/right
+      // columns + an open row every third row = a ring of loops; the tunnel rows
+      // (4,10,16) are fully open so you can reach the gates. No dead ends.
+      const BAND = [
+        ".......", ".##.##.", ".##.##.", ".......", ".#.#.#.", ".#.#.#.",
+        ".......", ".##.##.", ".##.##.", ".......", ".##.##.", ".##.##.",
+        ".......", ".#.#.#.", ".#.#.#.", ".......", ".##.##.", ".##.##.",
+        ".......",
+      ];
       function isWall(x, y) {
         if (x <= 0 || x >= COLS - 1 || y <= 0 || y >= ROWS - 1) return true; // border
-        if (dividerSet.has(x)) return !gapSet.has(y);                        // divider: wall except gaps
-        if (x % 2 === 1 && y % 2 === 1) return true;                         // lattice posts
-        return false;
+        if (dividerSet.has(x)) return !gapSet.has(y);                        // divider except gaps
+        const lc = x - BAND_START[shardOf(x)], lr = y - 1;                   // local col/row
+        if (lr < 0 || lr > 18 || lc < 0 || lc > 6) return true;
+        return BAND[lr][lc] === "#";
       }
 
-      const START = { x: 2, y: 10 };
+      const START = { x: 4, y: 13 };
       const GHOST_STARTS = [
-        { x: 6, y: 10 }, { x: 12, y: 6 }, { x: 12, y: 14 }, { x: 20, y: 10 },
+        { x: 4, y: 7 }, { x: 12, y: 7 }, { x: 20, y: 7 }, { x: 12, y: 13 },
       ];
       const CORE_CELLS = [
-        { x: 2, y: 2 }, { x: 2, y: 18 }, { x: 12, y: 2 }, { x: 12, y: 18 }, { x: 22, y: 2 }, { x: 22, y: 18 },
+        { x: 1, y: 1 }, { x: 7, y: 19 }, { x: 9, y: 1 }, { x: 15, y: 19 }, { x: 17, y: 1 }, { x: 23, y: 19 },
       ];
       const keyOf = (x, y) => y * COLS + x;
 
@@ -248,7 +257,7 @@
         sparkCount: 200, msPerSpark: 80, msPerGhost: 350,
         walls: new Set(), sparks: new Set(), cores: new Set(),
         totalByBand: [0, 0, 0], eatenByBand: [0, 0, 0], bandTotals: [0, 0, 0],
-        player: { x: START.x, y: START.y, dir: { x: 0, y: 0 }, next: { x: 0, y: 0 }, moving: false },
+        player: { x: START.x, y: START.y, dir: { x: 0, y: 0 }, next: { x: 0, y: 0 }, prog: 0, moving: false },
         ghosts: [],
         currentShard: 0,
         startedShards: new Set(),      // which shard instances we've startRun'd this game
@@ -258,7 +267,7 @@
         lives: LIVES,
         pending: [0, 0, 0],            // buffered sparks per shard awaiting settlement
         lastFlush: [0, 0, 0],
-        lastStep: 0, lastGhost: 0, loop: 0, runToken: 0,
+        lastT: 0, loop: 0, runToken: 0,
         feed: [],
       };
 
@@ -290,10 +299,10 @@
       }
 
       function resetActors() {
-        S.player = { x: START.x, y: START.y, dir: { x: 0, y: 0 }, next: { x: 0, y: 0 }, moving: false };
+        S.player = { x: START.x, y: START.y, dir: { x: 0, y: 0 }, next: { x: 0, y: 0 }, prog: 0, moving: false };
         S.currentShard = shardOf(START.x);
         S.ghosts = GHOST_STARTS.map((g, i) => ({
-          x: g.x, y: g.y, dir: { x: 0, y: -1 }, color: ["#ff5d6c", "#ff9de0", "#7bdfff", "#ffd166"][i % 4], home: g,
+          x: g.x, y: g.y, dir: { x: 0, y: -1 }, prog: 0, color: ["#ff5d6c", "#ff9de0", "#7bdfff", "#ffd166"][i % 4], home: g,
         }));
       }
 
@@ -376,7 +385,7 @@
         for (const gh of S.ghosts) {
           ctx.fillStyle = fright ? "#3d6bff" : gh.color;
           ctx.save(); ctx.shadowColor = ctx.fillStyle; ctx.shadowBlur = 8;
-          const gx = gh.x * c + c / 2, gy2 = gh.y * h + h / 2, r = Math.min(c, h) * 0.36;
+          const gx = (gh.x + gh.dir.x * gh.prog) * c + c / 2, gy2 = (gh.y + gh.dir.y * gh.prog) * h + h / 2, r = Math.min(c, h) * 0.36;
           ctx.beginPath(); ctx.arc(gx, gy2 - r * 0.15, r, Math.PI, 0); ctx.lineTo(gx + r, gy2 + r * 0.8);
           ctx.lineTo(gx + r * 0.5, gy2 + r * 0.45); ctx.lineTo(gx, gy2 + r * 0.8);
           ctx.lineTo(gx - r * 0.5, gy2 + r * 0.45); ctx.lineTo(gx - r, gy2 + r * 0.8); ctx.closePath(); ctx.fill();
@@ -385,7 +394,7 @@
           ctx.beginPath(); ctx.arc(gx - r * 0.35, gy2 - r * 0.1, r * 0.16, 0, 7); ctx.arc(gx + r * 0.35, gy2 - r * 0.1, r * 0.16, 0, 7); ctx.fill();
         }
         // 8) Novaman
-        const p = S.player, px = p.x * c + c / 2, py = p.y * h + h / 2, pr = Math.min(c, h) * 0.4;
+        const p = S.player, px = (p.x + p.dir.x * p.prog) * c + c / 2, py = (p.y + p.dir.y * p.prog) * h + h / 2, pr = Math.min(c, h) * 0.4;
         const mouth = 0.16 + 0.14 * Math.abs(Math.sin((now || 0) / 90));
         let a0 = 0.25 * Math.PI + mouth * Math.PI, a1 = 2 * Math.PI - mouth * Math.PI;
         const dir = p.dir.x || p.dir.y ? p.dir : { x: 1, y: 0 };
@@ -443,14 +452,15 @@
       }
 
       // --- input ---
-      // A pressed direction is REMEMBERED (p.next) and retried every step until the
-      // way opens, so pressing a touch early still turns you at the junction instead
-      // of stopping. If the turn is already possible, snap to it now so it feels instant.
+      // A pressed direction is REMEMBERED (p.next) and taken at the next cell center it
+      // becomes possible, so pressing a touch early still turns you at the junction
+      // instead of stopping. If we're sitting still at a center, turn now (instant);
+      // otherwise buffer it (turning mid-cell would jerk the smooth motion).
       function steer(dx, dy) {
         const p = S.player;
         p.next = { x: dx, y: dy };
         p.moving = true;
-        if (canGo(p.x + dx, p.y + dy)) p.dir = { x: dx, y: dy };
+        if (p.prog === 0 && canGo(p.x + dx, p.y + dy)) p.dir = { x: dx, y: dy };
       }
       const KEYS = {
         ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0],
@@ -480,45 +490,54 @@
 
       const canGo = (x, y) => !S.walls.has(keyOf(x, y));
 
-      // --- main loop ---
+      // --- main loop (SMOOTH: entities interpolate between cells; the logical step
+      // commits at each cell center, so motion is fluid but turns stay grid-true) ---
+      const DIRS = [{ x: 1, y: 0 }, { x: -1, y: 0 }, { x: 0, y: 1 }, { x: 0, y: -1 }];
+
       function tick(now) {
         S.loop = window.requestAnimationFrame(tick);
+        let dt = S.lastT ? now - S.lastT : 0;
+        S.lastT = now;
+        if (dt > 100) dt = 100; // after a tab-away, don't let anything warp through walls
         draw(now);
         if (S.phase !== "playing") return;
-        // player step
-        if (S.player.moving && now - S.lastStep >= STEP_MS) {
-          S.lastStep = now;
-          stepPlayer(now);
-        }
-        // ghost step
-        if (now - S.lastGhost >= GHOST_MS) {
-          S.lastGhost = now;
-          stepGhosts(now);
-        }
-        // settle buffered sparks per shard
+        advancePac(dt, now);
+        advanceGhosts(dt, now);
         if (S.live) flushSparks(now);
         collideGhosts(now);
       }
 
-      function stepPlayer(now) {
+      // take the buffered turn at a cell center if the way is open
+      function applyTurn(e) {
+        if ((e.next.x || e.next.y) && canGo(e.x + e.next.x, e.y + e.next.y)) e.dir = { x: e.next.x, y: e.next.y };
+      }
+      function advancePac(dt, now) {
         const p = S.player;
-        // apply buffered turn if the target cell is open
-        if ((p.next.x || p.next.y) && canGo(p.x + p.next.x, p.y + p.next.y)) p.dir = { ...p.next };
-        const nx = p.x + p.dir.x, ny = p.y + p.dir.y;
-        if (!(p.dir.x || p.dir.y) || !canGo(nx, ny)) return; // blocked, wait for a turn
-        const prevShard = shardOf(p.x);
-        p.x = nx; p.y = ny;
+        if (!p.moving) return;
+        if (p.prog === 0) applyTurn(p);                    // decide (or resume) at a center
+        if (!canGo(p.x + p.dir.x, p.y + p.dir.y)) return;  // blocked here, wait for a turn
+        p.prog += dt / STEP_MS;
+        let guard = 0;
+        while (p.prog >= 1 && guard++ < 4) {
+          p.prog -= 1;
+          const fromShard = shardOf(p.x);
+          p.x += p.dir.x; p.y += p.dir.y;                  // arrived at the next cell
+          onArrivePac(now, fromShard);
+          applyTurn(p);
+          if (!canGo(p.x + p.dir.x, p.y + p.dir.y)) { p.prog = 0; break; } // stop at a wall
+        }
+      }
+      function onArrivePac(now, fromShard) {
+        const p = S.player;
         const nowShard = shardOf(p.x);
-        if (nowShard !== prevShard) onPort(nowShard);
+        if (nowShard !== fromShard) onPort(nowShard);
         const k = keyOf(p.x, p.y);
         if (S.sparks.has(k)) {
           S.sparks.delete(k);
-          S.sparksTotal++; S.eatenByBand[nowShard]++;
-          S.pending[nowShard]++;
+          S.sparksTotal++; S.eatenByBand[nowShard]++; S.pending[nowShard]++;
           updateStats();
           if (S.eatenByBand[nowShard] >= S.bandTotals[nowShard] && !S.lit.has(nowShard)) lightShard(nowShard);
-          // munch audio comes from the shell's per-tx sound on each settled batch
-          // (arcade:tx); per-spark would flood the shell postMessage bus.
+          // munch audio comes from the shell's per-tx sound on each settled batch.
         }
         if (S.cores.has(k)) {
           S.cores.delete(k);
@@ -527,32 +546,50 @@
         }
       }
 
-      function stepGhosts(now) {
+      function advanceGhosts(dt, now) {
         const fright = now < S.frightenedUntil;
         for (const gh of S.ghosts) {
-          const opts = [{ x: 1, y: 0 }, { x: -1, y: 0 }, { x: 0, y: 1 }, { x: 0, y: -1 }]
-            .filter((d) => !(d.x === -gh.dir.x && d.y === -gh.dir.y)) // no reversal
-            .filter((d) => canGo(gh.x + d.x, gh.y + d.y));
-          if (!opts.length) { gh.dir = { x: -gh.dir.x, y: -gh.dir.y }; continue; }
-          // greedy toward (chase) or away (frightened) from the player
-          const tx = S.player.x, ty = S.player.y;
-          let best = opts[0], bestScore = fright ? -1e9 : 1e9;
-          for (const d of opts) {
-            const dist = Math.abs(gh.x + d.x - tx) + Math.abs(gh.y + d.y - ty);
-            if ((!fright && dist < bestScore) || (fright && dist > bestScore)) { bestScore = dist; best = d; }
+          if (gh.prog === 0) ghostChooseDir(gh, fright);
+          if (!canGo(gh.x + gh.dir.x, gh.y + gh.dir.y)) {
+            ghostChooseDir(gh, fright);
+            if (!canGo(gh.x + gh.dir.x, gh.y + gh.dir.y)) continue;
           }
-          gh.dir = best; gh.x += best.x; gh.y += best.y;
+          gh.prog += dt / GHOST_MS;
+          let guard = 0;
+          while (gh.prog >= 1 && guard++ < 4) {
+            gh.prog -= 1;
+            gh.x += gh.dir.x; gh.y += gh.dir.y;
+            ghostChooseDir(gh, fright);
+            if (!canGo(gh.x + gh.dir.x, gh.y + gh.dir.y)) { gh.prog = 0; break; }
+          }
         }
+      }
+      // at a cell center, head toward (chase) or away (frightened) from the player,
+      // among the open non-reversing options.
+      function ghostChooseDir(gh, fright) {
+        const opts = DIRS
+          .filter((d) => !(d.x === -gh.dir.x && d.y === -gh.dir.y))
+          .filter((d) => canGo(gh.x + d.x, gh.y + d.y));
+        if (!opts.length) { gh.dir = { x: -gh.dir.x, y: -gh.dir.y }; return; }
+        const tx = S.player.x, ty = S.player.y;
+        let best = opts[0], bestScore = fright ? -1e9 : 1e9;
+        for (const d of opts) {
+          const dist = Math.abs(gh.x + d.x - tx) + Math.abs(gh.y + d.y - ty);
+          if ((!fright && dist < bestScore) || (fright && dist > bestScore)) { bestScore = dist; best = d; }
+        }
+        gh.dir = best;
       }
 
       function collideGhosts(now) {
         const fright = now < S.frightenedUntil;
+        const p = S.player, pfx = p.x + p.dir.x * p.prog, pfy = p.y + p.dir.y * p.prog;
         for (const gh of S.ghosts) {
-          if (gh.x !== S.player.x || gh.y !== S.player.y) continue;
+          const gfx = gh.x + gh.dir.x * gh.prog, gfy = gh.y + gh.dir.y * gh.prog;
+          if (Math.abs(pfx - gfx) + Math.abs(pfy - gfy) > 0.6) continue; // overlapping
           if (fright) {
             S.ghostsEaten++; updateStats();
             if (S.live) sendTo(S.currentShard, "eatGhost", []);
-            gh.x = gh.home.x; gh.y = gh.home.y; gh.dir = { x: 0, y: -1 };
+            gh.x = gh.home.x; gh.y = gh.home.y; gh.dir = { x: 0, y: -1 }; gh.prog = 0;
             try { if (window.parent !== window) window.parent.postMessage({ type: "arcade:sfx", sound: "ghost" }, location.origin); } catch (_e) {}
           } else {
             bitten();
@@ -618,7 +655,7 @@
         let n = 2;
         const iv = setInterval(() => {
           if (S.phase !== "countdown") { clearInterval(iv); return; }
-          if (n <= 0) { clearInterval(iv); S.phase = "playing"; S.lastStep = 0; S.lastGhost = 0; }
+          if (n <= 0) { clearInterval(iv); S.phase = "playing"; S.lastT = 0; }
           n--;
         }, 650);
       }
@@ -684,7 +721,7 @@
         }
         if (token !== S.runToken) return;
         hideVeil();
-        S.phase = "playing"; S.lastStep = 0; S.lastGhost = 0;
+        S.phase = "playing"; S.lastT = 0;
         setStatus("", "Munch the sparks. Every action settles on the shard you're standing on.");
       }
 
