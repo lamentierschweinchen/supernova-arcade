@@ -174,7 +174,17 @@
          can ever block it from appearing. arcade-tx-ring.js has no imports, so the
          mount itself is robust; this just guarantees ordering + a clear signal. */
       var txRing = { addTx: function () {} };
-      try { txRing = mountTxRing(); console.debug("[arcade] tx ring mounted"); }
+      try {
+        // contract -> game key, so the ring's ambient feed can label each tx
+        var CONTRACT_GAME = {};
+        for (var gk in GAMES) {
+          var gg = GAMES[gk];
+          if (gg && gg.contract) CONTRACT_GAME[gg.contract] = gk;
+          if (gg && gg.boards) gg.boards.forEach(function (b) { if (b && b.contract) CONTRACT_GAME[b.contract] = gk; });
+        }
+        txRing = mountTxRing({ resolveGame: function (addr) { return CONTRACT_GAME[addr] || ""; } });
+        console.debug("[arcade] tx ring mounted");
+      }
       catch (e) { console.warn("[arcade] tx ring mount failed", e); }
 
       /* ---- ONE persistent score. OPTIONAL: if the audio engine fails to start (a

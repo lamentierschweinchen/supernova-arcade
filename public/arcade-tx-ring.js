@@ -10,14 +10,22 @@
 //
 // Mounted ONCE by the shell, which feeds it each game's tx hashes (the games
 // postMessage `arcade:tx` up; the shell tags the current game and calls addTx).
+// The postMessage path is the INSTANT lane for your own taps; independently, the
+// ring polls the relayer's recent transactions — every gasless arcade tx rides
+// that one relayer — so it fills with the whole arcade's live activity and never
+// depends on the message relay (one phone with a broken lane still gets dots).
 // Self-contained, dependency-free, US English, on-canon.
 
 const API = "https://testnet-api.multiversx.com";
 const EXPLORER = "https://testnet-explorer.multiversx.com";
+// Mirrors arcade-core.js ARCADE_NET.relayer (kept inline: this file is import-free).
+const RELAYER = "erd1ru08dt4u5e0psfrwth38u0dfed0hw8289xqdd9yghl3ec24uppuq6hgphm";
 const MAX_DOTS = 18; // recent txs shown around the ring
 const POLL_MS = 1500;
 const POLL_TRIES = 16; // ~24s; Supernova finalizes in ~1-2s, this just bounds the unknown case
 const CONFIRMING_MS = 700; // brief blue->purple->green flourish on settle
+const FEED_MS = 4000; // ambient whole-arcade feed poll
+const FEED_SIZE = 12;
 
 const STATUS = {
   pending: { color: "#3b82f6", fill: false, label: "Pending" },
@@ -57,9 +65,10 @@ const CSS = `
 @media (prefers-reduced-motion: reduce){.atr-wrap.pulse .atr-ring{transform:none;}}
 `;
 
-export function mountTxRing() {
+export function mountTxRing(opts) {
   if (typeof document === "undefined") return { addTx() {} };
   if (document.getElementById("atrStyle")) return window.__arcadeTxRing || { addTx() {} };
+  const resolveGame = (opts && opts.resolveGame) || (() => "");
 
   const style = document.createElement("style");
   style.id = "atrStyle";
@@ -137,9 +146,13 @@ export function mountTxRing() {
     }).join("");
   }
 
-  // coalesce rapid updates (canvas can fire ~7 tx/s) into one render per frame
+  // coalesce rapid updates (canvas can fire ~7 tx/s) into one render per frame.
+  // While the page is hidden rAF is parked, so paint synchronously instead — a
+  // queued frame that never fires would leave the ring stale (or blank) until
+  // the next update after the page is visible again.
   let renderQueued = false;
   function render() {
+    if (document.hidden) { renderRing(); renderPanel(); return; }
     if (renderQueued) return;
     renderQueued = true;
     requestAnimationFrame(() => { renderQueued = false; renderRing(); renderPanel(); });
@@ -184,6 +197,52 @@ export function mountTxRing() {
     pulse();
     poll(tx);
   }
+
+  // Ambient whole-arcade feed: every gasless arcade tx is relayed by the ONE
+  // relayer, so its recent-transactions list IS the arcade's live activity. This
+  // lane needs no postMessage, so the ring stays alive even where that lane
+  // breaks, and it breathes with other players' txs too. Feed statuses are
+  // already final most of the time, so these entries skip the per-tx poll; a
+  // pending one just settles on a later feed tick.
+  function feedStatus(s) {
+    if (s === "success" || s === "executed") return "confirmed";
+    if (s === "fail") return "failed";
+    if (s === "invalid") return "cancelled";
+    return "pending";
+  }
+  async function pollFeed() {
+    let list;
+    try {
+      const r = await fetch(`${API}/transactions?relayer=${RELAYER}&size=${FEED_SIZE}&fields=txHash,receiver,function,status,timestamp`);
+      if (!r.ok) return;
+      list = await r.json();
+    } catch (_e) { return; } // ambient widget: fail silent, next tick retries
+    if (!Array.isArray(list)) return;
+    let fresh = 0;
+    for (let i = list.length - 1; i >= 0; i--) { // oldest first, so unshift keeps newest on top
+      const item = list[i];
+      if (!item || !item.txHash) continue;
+      const status = feedStatus(item.status);
+      const existing = txs.find((t) => t.hash === item.txHash);
+      if (existing) {
+        // settle a still-pending dot (covers postMessage-fed ones too)
+        if (existing.status === "pending" || existing.status === "confirming") existing.status = status;
+        continue;
+      }
+      txs.unshift({
+        hash: item.txHash,
+        game: resolveGame(item.receiver) || item.function || "",
+        status,
+        t: item.timestamp ? item.timestamp * 1000 : Date.now(),
+      });
+      fresh += 1;
+    }
+    if (txs.length > 60) txs.length = 60;
+    if (fresh) pulse();
+    render();
+  }
+  pollFeed();
+  setInterval(() => { if (!document.hidden) pollFeed(); }, FEED_MS);
 
   renderRing();
   const api = { addTx };

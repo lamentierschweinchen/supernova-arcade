@@ -106,12 +106,13 @@ const S = {
   offerTimer: 0,
   config: {
     // Decoupled model — MUST match hub getConfig: steady 1.5s beat + shrinking window.
+    // Live play overwrites these from getConfig; they only govern practice mode.
     raidDuration: 36_000,
     maxLives: 2,
     attackSpacing: 1_500,
     startWindow: 1_400,
-    windowStep: 80,
-    minWindow: 400,
+    windowStep: 95,
+    minWindow: 450,
     settlementGrace: 5_000,
   },
 };
