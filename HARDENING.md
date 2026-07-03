@@ -138,18 +138,21 @@ These are high-value but behavior-sensitive; each wants its own branch + verify 
 - **CSS**: migrate reaction.html's 5 uses of the legacy alias vars, then delete the
   alias block in `arcade-shell.css` (the other 9 aliases have zero consumers).
 
-## Tests to add (highest value first)
+## Tests
 
-1. **Relay validation suite** — wrong function/receiver/value/shard/signature → 400;
-   **gasPrice above min → 400** (the red test for the fix just shipped); `data:"__proto__"`
-   → 400 not 500. Invoke the route handler with a stub env key + mocked `fetch`.
-2. **Share-key ↔ CARD_GAMES contract test** — grep `data-game=`/`shareScore({game:`
-   keys across `public/`, assert each exists in `CARD_GAMES`. Would have caught the
-   three wrong cards before they shipped.
-3. **`decodeScoreEntry` + storage-parse units** — with/without trailing ts, truncated
-   buffers, huge handle-len, mapper prefix/length disambiguation, hex→bech32 failure.
-4. **Registry consistency test** — `GAME_FILE`/`GAME_PRETTY` ↔ vercel rewrites ↔
-   arcade-core `GAMES` ↔ `GAME_BOARDS`+`VOLUME_SOURCES`. Freezes the whole drift class.
+- **DONE — Relay validation suite** (`tests/relay-validation.test.mts`, `npm run test:relay`).
+  Drives the POST handler with a stub env key; asserts the 400s for wrong
+  function/receiver/value/relayer/gas + a control that a valid-shaped tx clears every
+  field guard. Includes the two security red-tests: **gasPrice above min → 400** and
+  **`data:"__proto__"` → 400 not 500**. Runs via tsx (the one test devDep added).
+- **DONE — Registry consistency check** (`scripts/check-registry.mjs`, `npm run check:registry`),
+  in `npm run verify` with the tests. Also covers the share-key ↔ CARD_GAMES invariant
+  (would have caught the three wrong cards).
+- **TODO — `decodeScoreEntry` + storage-parse units** — with/without trailing ts,
+  truncated buffers, huge handle-len, mapper prefix/length disambiguation, hex→bech32
+  failure. Needs the decode extracted from `leaderboard/route.ts` into a testable unit.
+
+`npm run verify` = check:registry + all tests (the pre-ship gate).
 
 ## Docs to fix
 
