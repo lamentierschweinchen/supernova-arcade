@@ -25,6 +25,9 @@ export const maxDuration = 30;
 const MAX_ATTACK_ID = 64;
 const MAX_FUTURE_DELAY_MS = 20_000;
 const SETTLEMENT_ATTEMPTS = 4;
+// A sane upper bound on the raid number (raids increment ~1/min, so this is years
+// out). Bounds the dedupe keyspace so a bogus raidId can't mint unlimited keys.
+const MAX_RAID_ID = 1_000_000;
 const RETRY_DELAY_MS = 2_500;
 const RATE_WINDOW_MS = 60_000;
 const RATE_MAX = 120;
@@ -78,6 +81,7 @@ function parseIntent(value: unknown): SettlementIntent | null {
     !Address.isValid(player) ||
     !Number.isSafeInteger(raidId) ||
     raidId <= 0 ||
+    raidId > MAX_RAID_ID ||
     !Number.isSafeInteger(attackId) ||
     attackId < 0 ||
     attackId > MAX_ATTACK_ID ||
@@ -128,24 +132,35 @@ function buildSignedSettlement(intent: SettlementIntent) {
   return transaction.toPlainObject();
 }
 
-async function authoritativeSettlement(intent: SettlementIntent) {
-  const response = await fetch(`${TESTNET_API}/vm-values/query`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      scAddress: SHARD_HYDRA_HUB_CONTRACT,
-      funcName: "getPlayerRaidSettlement",
-      args: [u64Hex(intent.raidId), Address.newFromBech32(intent.player).toHex()],
-    }),
-    cache: "no-store",
-  });
-  if (!response.ok) return { joined: true, nextSettlement: -1 };
+// Reads the hub's authoritative view of this player's settlement. `ok: false` means
+// the read itself failed (API down / bad response) — the caller must NOT relay on
+// that (fail-closed), since relaying an unverified settlePlayer wastes relayer gas.
+async function authoritativeSettlement(
+  intent: SettlementIntent,
+): Promise<{ ok: false } | { ok: true; joined: boolean; nextSettlement: number }> {
+  let response: Response;
+  try {
+    response = await fetch(`${TESTNET_API}/vm-values/query`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        scAddress: SHARD_HYDRA_HUB_CONTRACT,
+        funcName: "getPlayerRaidSettlement",
+        args: [u64Hex(intent.raidId), Address.newFromBech32(intent.player).toHex()],
+      }),
+      cache: "no-store",
+    });
+  } catch {
+    return { ok: false };
+  }
+  if (!response.ok) return { ok: false };
   const json = await response.json();
   const data = json?.data?.data;
   if (data?.returnCode !== "ok" || !Array.isArray(data.returnData)) {
-    return { joined: true, nextSettlement: -1 };
+    return { ok: false };
   }
   return {
+    ok: true,
     joined: decodeU64(data.returnData[0]) === 1,
     nextSettlement: decodeU64(data.returnData[1]),
   };
@@ -171,8 +186,13 @@ async function settleInBackground(origin: string, intent: SettlementIntent, key:
 
     for (let attempt = 0; attempt < SETTLEMENT_ATTEMPTS; attempt += 1) {
       const state = await authoritativeSettlement(intent);
-      if (!state.joined || state.nextSettlement > intent.attackId) return;
-      await relaySettlement(origin, intent);
+      // fail-closed: only relay when the hub confirms this player joined and this
+      // attack is not yet settled. On an unreadable state, skip this attempt (the
+      // in-page settlement pump is the client-side backstop) and re-read next loop.
+      if (state.ok) {
+        if (!state.joined || state.nextSettlement > intent.attackId) return; // settled / not joined
+        await relaySettlement(origin, intent);
+      }
       await sleep(RETRY_DELAY_MS);
     }
   } catch (error) {

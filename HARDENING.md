@@ -35,24 +35,35 @@ value, so the next session (or the next game) starts from a known state.
 
 ## Security backlog (do before any new relayed game)
 
-1. **`RELAYER_PEM` loading is broken and can log the private key.** `relay/route.ts`
-   passes PEM *contents* to `Account.newFromPem(path)`, which does `fs.readFile(path)`
-   — it tries to open a file named the key text, throws, and the error (embedding the
-   key material) is `console.error`'d into Vercel logs. The documented "recommended"
-   option has never worked; prod must be on `RELAYER_SECRET_KEY`. Fix: parse via
-   `UserSigner.fromPem(text)`, never log the raw key-load error, correct README +
-   `.env.example`. **Confirm which env var prod actually uses before touching this.**
-2. **`hydra/settle` fails open + weak dedupe.** On any testnet-api failure the keeper
-   assumes `nextSettlement:-1` and relays up to 4 `settlePlayer` txs (30M gas each)
-   unverified; `raidId` is unbounded so the dedupe key is bypassable. Fix: fail-closed
-   (skip relay when the authoritative read fails), clamp `raidId` to the hub's
-   `current_raid_id`, and authenticate the keeper (the `x-hydra-keeper` header it
-   already sends is read by nothing — wire it to a shared secret).
+1. **`RELAYER_PEM` loading + key-logging — DONE.** `relay/route.ts` passed PEM
+   *contents* to `Account.newFromPem(path)` (which `fs.readFile`s a path), so the
+   documented "recommended" option always threw, and the catch `console.error`'d the
+   error object — which for a key-parse failure can carry the key material — into
+   Vercel logs. Now parses the text via `UserSecretKey.fromPem(pem)` + `new Account(...)`,
+   and the catch logs a static message only (never the error). Prod is unaffected (it
+   runs on `RELAYER_SECRET_KEY`; the PEM path was dead), so this is a safe correctness
+   fix that makes the documented option actually work. REMAINING (docs): note in
+   README + `.env.example` that `RELAYER_PEM` now works.
+2. **`hydra/settle` fail-open + weak dedupe — DONE.** On any testnet-api failure the
+   keeper assumed `nextSettlement:-1` and relayed up to 4 unverified `settlePlayer` txs
+   (30M gas each); `raidId` was unbounded so the dedupe key was bypassable. Now
+   fail-closed: `authoritativeSettlement` returns `{ ok:false }` on fetch throw / non-ok
+   / bad body, and `settleInBackground` relays only on an authoritative not-settled read
+   (an unreadable state skips the attempt; the in-page pump is the client backstop).
+   `raidId` is clamped to `MAX_RAID_ID` (1e6, ~years of raids) — a static bound rather
+   than a per-request `current_raid_id` fetch (avoids adding a network dependency to
+   every settle; fail-closed already removes the unverified-relay risk the tighter bound
+   guarded). DEFERRED: keeper auth (wire the unused `x-hydra-keeper` header to a shared
+   secret) — lower priority now that `settlePlayer` is fail-closed + idempotent on-chain.
 3. **Rate limits are per-instance in-memory** (real budget = limit x live instances,
-   resets on cold start). Move to KV/Upstash + a relayer-balance alarm.
-4. **No security headers** anywhere (`vercel.json` has no `headers`): add
-   `frame-ancestors 'self'`/`X-Frame-Options`, HSTS, and sane cache headers for
-   `public/*.js`. Add `AbortSignal` timeouts to all upstream fetches.
+   resets on cold start). Move to KV/Upstash + a relayer-balance alarm. DEFERRED (infra).
+4. **Security headers — DONE.** `vercel.json` now sets, on `/(.*)`: `X-Frame-Options:
+   SAMEORIGIN` + CSP `frame-ancestors 'self'` (clickjacking; SAMEORIGIN keeps the
+   shell's same-origin cabinet iframes working), `X-Content-Type-Options: nosniff`,
+   `Referrer-Policy: strict-origin-when-cross-origin`, and HSTS (2y + subdomains). No
+   `script-src`/`connect-src` CSP (would break the esm.sh crypto imports) and no cache
+   headers (aggressive JS caching reintroduces the stale-ES-module bug). DEFERRED:
+   `AbortSignal` timeouts on upstream fetches (minor robustness).
 
 ## Correctness backlog (cross-cabinet, user-visible)
 

@@ -359,7 +359,11 @@ async function loadRelayer(): Promise<Account | null> {
   const secretHex = process.env.RELAYER_SECRET_KEY;
 
   if (pem && pem.trim().length > 0) {
-    return Account.newFromPem(pem);
+    // RELAYER_PEM is the PEM file CONTENTS (an env var), not a path — parse the text.
+    // (Account.newFromPem takes a PATH and fs.readFile's it, which would fail and
+    // surface the key material in the error; UserSecretKey.fromPem parses the text.)
+    const secretKey = UserSecretKey.fromPem(pem);
+    return new Account(secretKey);
   }
   if (secretHex && secretHex.trim().length > 0) {
     const secretKey = UserSecretKey.fromString(secretHex.trim());
@@ -372,8 +376,9 @@ export async function POST(request: Request) {
   let relayer: Account | null;
   try {
     relayer = await loadRelayer();
-  } catch (err) {
-    console.error("[/api/relay] Failed to load relayer key:", err);
+  } catch {
+    // Never log the error object — a key-parse failure can carry the key material.
+    console.error("[/api/relay] Failed to load relayer key (check RELAYER_PEM / RELAYER_SECRET_KEY)");
     return NextResponse.json(
       { error: "relayer_misconfigured" },
       { status: 500 },
