@@ -82,9 +82,9 @@ function smooth01(v) { v = clamp01(v); return v * v * (3 - 2 * v); } // smoothst
       1 = the chain is unmistakably driving). Default heavy.
    ============================================================================ */
 // each cabinet bends the melodic line a direction (+up / -down)
-const CABINET_PULL  = { sprint: 1.0, wenmoon: 0.85, reaction: 0.7, degendash: 0.5, canvas: 0.35, tugofwar: 0.0, clawback: -0.35, shardhydra: -0.6, button: -1.0 };
+const CABINET_PULL  = { sprint: 1.0, wenmoon: 0.85, reaction: 0.7, degendash: 0.5, shardsnake: 0.28, canvas: 0.35, tugofwar: 0.0, clawback: -0.35, shardhydra: -0.6, button: -1.0 };
 // the dominant cabinet tints the harmony
-const CABINET_COLOR = { sprint: "bright", canvas: "bright", tugofwar: "bright", clawback: "bright", reaction: "bright", wenmoon: "bright", button: "spacey", shardhydra: "spacey", degendash: "dorian" };
+const CABINET_COLOR = { sprint: "bright", canvas: "bright", tugofwar: "bright", clawback: "bright", reaction: "bright", wenmoon: "bright", shardsnake: "bright", button: "spacey", shardhydra: "spacey", degendash: "dorian" };
 // progression pool (semitone roots from the key) — movements draw varied changes
 const CHORD_SETS = [
   [0, 7, 9, 5],   // I  V  vi IV   (anthemic)
@@ -146,6 +146,7 @@ export const DEFAULT_MIX = {
     reaction:  { level: 0.50, reverb: 0.16, delay: 0.10 }, // sharp ready -> hit blip
     wenmoon:   { level: 0.46, reverb: 0.30, delay: 0.34 }, // rising "to the moon" sweep
     shardhydra:{ level: 0.46, reverb: 0.28, delay: 0.20 }, // 3-note cross-shard motif
+    shardsnake:{ level: 0.44, reverb: 0.20, delay: 0.16 }, // crisp digital pluck per pellet
     // --- event SFX ---
     blip:      { level: 0.66, reverb: 0.30, delay: 0.30 }, // jingles / stingers
   },
@@ -154,7 +155,7 @@ export const DEFAULT_MIX = {
 // bed layers driven by the energy arranger (each gets an energyGate)
 const BED_LAYERS = ["pad", "bass", "kick", "hat", "snare", "arp", "lead"];
 // per-cabinet accent voices (keys MUST match the hub CABINETS ids)
-const GAME_VOICES = ["sprint", "tugofwar", "canvas", "button", "clawback", "degendash", "reaction", "wenmoon", "shardhydra"];
+const GAME_VOICES = ["sprint", "tugofwar", "canvas", "button", "clawback", "degendash", "reaction", "wenmoon", "shardhydra", "shardsnake"];
 
 // energy tier names (for studio readouts) by energy 0..1
 function tierName(e) {
@@ -188,11 +189,11 @@ export function createArcadeScore(opts = {}) {
   const P = lite
     ? { reverb: false, chorus: false, eq: false, vibrato: false, riser: false,
         padOsc: { type: "triangle" }, padPoly: 3, padRelease: 2.0,
-        poly: { arp: 3, lead: 2, sprint: 3, tugofwar: 3, canvas: 4, clawback: 3, degendash: 4, reaction: 3, wenmoon: 3, shardhydra: 3, blip: 4 },
+        poly: { arp: 3, lead: 2, sprint: 3, tugofwar: 3, canvas: 4, clawback: 3, degendash: 4, reaction: 3, wenmoon: 3, shardhydra: 3, shardsnake: 3, blip: 4 },
         arpEvery: 2, hatSparse: true }
     : { reverb: true, chorus: true, eq: true, vibrato: true, riser: true,
         padOsc: { type: "fatsawtooth", spread: 22, count: 2 }, padPoly: 6, padRelease: 3.0,
-        poly: { arp: 5, lead: 3, sprint: 6, tugofwar: 5, canvas: 6, clawback: 5, degendash: 6, reaction: 5, wenmoon: 5, shardhydra: 5, blip: 8 },
+        poly: { arp: 5, lead: 3, sprint: 6, tugofwar: 5, canvas: 6, clawback: 5, degendash: 6, reaction: 5, wenmoon: 5, shardhydra: 5, shardsnake: 5, blip: 8 },
         arpEvery: 1, hatSparse: false };
 
   /* ---- live state ---- */
@@ -416,6 +417,10 @@ export function createArcadeScore(opts = {}) {
       const s = new T.PolySynth(T.Synth, { maxPolyphony: P.poly.shardhydra, oscillator: { type: "square" },
         envelope: { attack: 0.006, decay: 0.3, sustain: 0.15, release: 0.4 } }).connect(strip.level);
       S.shardhydra = s; graph.disposables.push(s); }
+    { const strip = makeStrip("shardsnake"); // crisp digital pluck, one per pellet
+      const s = new T.PolySynth(T.Synth, { maxPolyphony: P.poly.shardsnake, oscillator: { type: "triangle" },
+        envelope: { attack: 0.002, decay: 0.11, sustain: 0, release: 0.09 } }).connect(strip.level);
+      S.shardsnake = s; graph.disposables.push(s); }
 
     /* ---- event SFX (jingles / stingers / risers) ---- */
     { const strip = makeStrip("blip");
@@ -760,6 +765,9 @@ export function createArcadeScore(opts = {}) {
       for (let i = 0; i < 6; i++) S.blip.triggerAttackRelease(scaleFreq(i, 1), "16n", t + i * 0.07, 0.55 + 0.03 * i);
       S.blip.triggerAttackRelease([scaleFreq(0, 2), scaleFreq(2, 2), scaleFreq(4, 2)], "4n", t + 0.45, 0.6);
       if (graph.reverbBus) { graph.reverbBus.gain.rampTo(1.6, 0.3, t); graph.reverbBus.gain.rampTo(1.0 + energy * 0.25, 4, t + 1); }
+    } else if (type === "gameover") { // two descending low notes: a soft thud
+      S.blip.triggerAttackRelease(scaleFreq(2, -1), "8n", t, 0.6);
+      S.blip.triggerAttackRelease(scaleFreq(0, -1), "4n", t + 0.13, 0.6);
     }
     bumpMeter("blip", 1);
   }
@@ -800,6 +808,10 @@ export function createArcadeScore(opts = {}) {
       case "reaction":   syn.triggerAttackRelease(chordFreq(2, 1), "32n", t, vel * 0.8); break;
       case "wenmoon":    syn.triggerAttackRelease(scaleFreq(2, 1), "16n", t, vel); syn.triggerAttackRelease(scaleFreq(4, 1), "16n", t + 0.06, vel); break;
       case "shardhydra": syn.triggerAttackRelease(chordFreq(0, 0), "16n", t, vel * 0.8); break;
+      case "shardsnake": // quick two-note chomp
+        syn.triggerAttackRelease(scaleFreq(0, 1), "32n", t, vel * 0.7);
+        syn.triggerAttackRelease(scaleFreq(3, 1), "16n", t + 0.05, vel * 0.75);
+        break;
       default:           triggerJingle("coin");
     }
     bumpMeter(game, 0.7);

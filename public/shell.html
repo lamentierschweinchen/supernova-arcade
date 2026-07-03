@@ -401,6 +401,12 @@
             }
             break;
           }
+          case "arcade:sfx": {
+            // a client-side game beat (not a tx), e.g. a crash. Play it through the
+            // one shell audio engine so it respects the sound toggle.
+            if (d.sound) { try { score && score.triggerJingle && score.triggerJingle(d.sound === "crash" ? "gameover" : d.sound); } catch (err) {} }
+            break;
+          }
           case "arcade:navigate": {
             navigate(d.to);
             break;

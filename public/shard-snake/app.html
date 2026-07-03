@@ -131,7 +131,7 @@
         </div>
       </div>
 
-      <a class="why" href="/why#parallel">
+      <a class="why" href="/why#fair">
         <span class="why-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.5c.6.6 1 1.5 1 2.5h6c0-1 .4-1.9 1-2.5A6 6 0 0 0 12 3Z"/></svg></span>
         <span class="why-tx"><span class="why-k">Why it works</span>The board is fixed by the contract before you move, so nobody can rearrange the pellets or fake a length.</span>
         <span class="why-go" aria-hidden="true">&rarr;</span>
@@ -425,6 +425,7 @@
         S.phase = "dead";
         S.runToken += 1;
         draw();
+        try { if (window.parent !== window) window.parent.postMessage({ type: "arcade:sfx", sound: "crash" }, location.origin); } catch (_e) {} // a soft thud through the shell audio
         if (S.live) void client.sendAction("endRun", []).catch(() => {});
         maybeShowNameRow();
         showVeil(
