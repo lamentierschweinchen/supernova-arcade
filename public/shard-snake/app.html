@@ -359,7 +359,10 @@
         steer(k[0], k[1]);
       });
       document.querySelectorAll(".dpad button").forEach((b) => {
-        b.addEventListener("click", () => {
+        // pointerdown (not click) — on phones a tap's click gets swallowed by finger
+        // drift, so the dpad felt dead. pointerdown fires the instant you press.
+        b.addEventListener("pointerdown", (e) => {
+          e.preventDefault();
           const d = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] }[b.dataset.dir];
           if (d) steer(d[0], d[1]);
         });
@@ -599,8 +602,13 @@
         })();
       }
 
-      $("start").addEventListener("click", startGame);
-      $("saveName").addEventListener("click", saveName);
+      // Tap-friendly binding: on phones the synthesized `click` after a tap gets
+      // swallowed (finger drift + the board's swipe listeners), so buttons felt dead.
+      // pointerup fires reliably for mouse AND touch; stopPropagation keeps a tap on
+      // the start button from also reaching the board's swipe handler.
+      const onTap = (el, fn) => el && el.addEventListener("pointerup", (e) => { e.stopPropagation(); e.preventDefault(); fn(e); });
+      onTap($("start"), startGame);
+      onTap($("saveName"), saveName);
       $("handle").addEventListener("keydown", (e) => { if (e.key === "Enter") saveName(); });
       $("handle").value = getHandle() || "";
 
