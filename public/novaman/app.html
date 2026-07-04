@@ -31,10 +31,10 @@
         -webkit-tap-highlight-color: transparent;
       }
       #board { display: block; width: 100%; height: 100%; }
-      /* current-shard pill + fingerprint, floating over the board */
+      /* current-shard pips — a row ABOVE the board, never over the maze */
       .shard-bar {
-        position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
-        display: flex; gap: 6px; align-items: center; z-index: 3; pointer-events: none;
+        display: flex; gap: 6px; align-items: center; justify-content: center;
+        margin-bottom: 2px; pointer-events: none; min-height: 22px;
       }
       .shard-pip {
         font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.08em;
@@ -113,9 +113,9 @@
         <div class="cab-marquee">Novaman · every action lands on the shard you're on</div>
         <div class="screen">
           <div class="play">
+            <div class="shard-bar" id="shardBar"></div>
             <div class="board-wrap" id="boardWrap">
               <canvas id="board" width="500" height="420"></canvas>
-              <div class="shard-bar" id="shardBar"></div>
               <span class="port-flash" id="portFlash"></span>
               <span class="port-banner" id="portBanner"></span>
               <div class="board-veil" id="veil">
