@@ -65,29 +65,52 @@
       }
       .len-pop.show { opacity: 1; transform: translate(-50%, -6px); transition: transform 0.3s cubic-bezier(0, 0, 0.2, 1), opacity 0.15s; }
       .dpad { display: none; }
-      @media (max-width: 560px) {
+      /* THE CONSOLE — a chunky arcade D-pad; shows on touch devices + narrow screens */
+      @media (pointer: coarse), (max-width: 640px) {
         .dpad {
           display: grid;
           grid-template-columns: repeat(3, 1fr);
-          grid-template-rows: repeat(2, 1fr);
-          gap: 7px;
-          max-width: 210px;
-          margin: 12px auto 0;
+          grid-template-rows: repeat(3, 1fr);
+          gap: 8px;
+          width: min(78vw, 300px);
+          aspect-ratio: 1 / 1;
+          margin: 16px auto 6px;
+          padding: 13px;
+          position: relative;
+          border-radius: 28px;
+          background:
+            radial-gradient(130% 120% at 50% -10%, rgba(35, 247, 221, 0.07), transparent 60%),
+            linear-gradient(#141a24, #0a0d13);
+          border: 1px solid rgba(35, 247, 221, 0.18);
+          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 12px 30px rgba(0, 0, 0, 0.55);
+          touch-action: none;
+        }
+        .dpad::after {
+          content: ""; position: absolute; left: 50%; top: 50%;
+          width: 26px; height: 26px; border-radius: 50%; transform: translate(-50%, -50%);
+          background: radial-gradient(circle, rgba(35, 247, 221, 0.45), rgba(35, 247, 221, 0.04) 70%);
+          box-shadow: 0 0 12px rgba(35, 247, 221, 0.35); pointer-events: none;
         }
         .dpad button {
-          min-height: 46px;
-          border: 1px solid var(--line);
-          border-radius: 11px;
-          background: var(--panel-2, #121721);
-          color: var(--text, #e8ecf3);
-          font-size: 18px;
-          touch-action: manipulation;
-          -webkit-tap-highlight-color: transparent;
+          display: flex; align-items: center; justify-content: center;
+          border: 1px solid rgba(35, 247, 221, 0.28); border-radius: 17px;
+          background: linear-gradient(#1b2333, #10161f);
+          color: var(--c, #23F7DD); font-size: 27px; line-height: 1;
+          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+          touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+          -webkit-user-select: none; user-select: none;
+          transition: transform 0.07s ease, box-shadow 0.12s, background 0.12s, border-color 0.12s, color 0.12s;
+        }
+        .dpad button:active {
+          transform: scale(0.9);
+          background: linear-gradient(#25384a, #17242f);
+          border-color: var(--c, #23F7DD); color: #eafffb;
+          box-shadow: 0 0 18px rgba(35, 247, 221, 0.55), inset 0 0 12px rgba(35, 247, 221, 0.18);
         }
         .dpad .up { grid-column: 2; grid-row: 1; }
         .dpad .left { grid-column: 1; grid-row: 2; }
-        .dpad .down { grid-column: 2; grid-row: 2; }
         .dpad .right { grid-column: 3; grid-row: 2; }
+        .dpad .down { grid-column: 2; grid-row: 3; }
       }
     </style>
   </head>
