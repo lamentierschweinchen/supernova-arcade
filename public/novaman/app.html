@@ -156,7 +156,7 @@
               <span class="port-banner" id="portBanner"></span>
               <div class="board-veil" id="veil">
                 <span class="veil-title" id="veilTitle">Ready</span>
-                <span class="veil-sub" id="veilSub">Munch the sparks, dodge the ghosts. The glowing gates in the walls are tunnels — cross one and you've hopped to the next shard.</span>
+                <span class="veil-sub" id="veilSub">Clear the pellets on all three shard-bands to ignite the Supernova and reach the next level. The glowing gates are tunnels: cross one to hop shards. Dodge the ghosts.</span>
                 <span class="veil-count" id="veilCount" style="display:none">3</span>
                 <button class="btn" id="start" type="button">Insert coin</button>
               </div>
@@ -545,6 +545,11 @@
         ctx.fillText(String(S.score), canvas.width / 2, canvas.height - h * 0.35);
         ctx.fillStyle = "#9fb0c8"; ctx.textAlign = "right";
         ctx.fillText("LVL " + S.level, canvas.width - c * 0.6, canvas.height - h * 0.35);
+        // pellets remaining (top-center, over the border row) — clear all 3 shard-bands
+        // to advance, so this counts down to 0 across the whole board, not one band.
+        ctx.fillStyle = "rgba(234,255,251,0.55)"; ctx.textAlign = "center";
+        ctx.font = "700 " + Math.round(h * 0.56) + "px 'JetBrains Mono', monospace";
+        ctx.fillText(S.sparks.size + " LEFT", canvas.width / 2, h * 0.72);
         ctx.textAlign = "left"; ctx.restore();
       }
       function drawBanner() {
@@ -701,6 +706,8 @@
           S.sparksTotal++; S.eatenByBand[nowShard]++; S.pending[nowShard]++; S.score += 10;
           updateStats();
           if (S.eatenByBand[nowShard] >= S.bandTotals[nowShard] && !S.lit.has(nowShard)) lightShard(nowShard);
+          // bulletproof: the level is done the moment the whole board is empty
+          if (S.phase === "playing" && S.sparks.size === 0) levelClear();
         }
         if (S.cores.has(k)) {
           S.cores.delete(k);
@@ -825,13 +832,16 @@
       }
       function lightShard(shard) {
         S.lit.add(shard); renderShardBar();
+        addPopup(S.player.x, S.player.y, "SHARD " + shard + " ✦", SHARD_COLOR[shard], performance.now());
         if (S.lit.size === 3) { levelClear(); return; }
-        setStatus("ok", "Shard " + shard + " lit. " + (3 - S.lit.size) + " to go — port through a tunnel.");
+        const left = 3 - S.lit.size;
+        setStatus("ok", "Shard " + shard + " cleared! " + left + " shard" + (left === 1 ? "" : "s") + " still has pellets — port through a glowing tunnel to reach it.");
       }
       // clearing all three bands = a Supernova, and the next level (harder) begins
       function levelClear() {
         const token = ++S.runToken;
         S.phase = "ready";
+        for (let s = 0; s < 3; s++) S.lit.add(s); // all bands are done
         if (S.lives < MAX_LIVES) S.lives++;
         S.banner = { title: "SUPERNOVA ✦", sub: "Level " + S.level + " cleared · +1 life" };
         renderShardBar();
