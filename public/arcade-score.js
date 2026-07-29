@@ -840,13 +840,42 @@ export function createArcadeScore(opts = {}) {
   }
 
   /* ====================================================================== lifecycle */
+  /* MOBILE-CRITICAL. iOS only unlocks an AudioContext when it is created and
+     resumed SYNCHRONOUSLY inside a real user gesture. ensureAudio() has to
+     `await import(TONE_URL)` first (a CDN round-trip), by which point the gesture
+     has expired and iOS silently refuses to start audio — the toggle appears dead
+     on a phone while working fine on desktop Chrome.
+     So: the UI calls primeAudio() synchronously in the tap handler (no awaits
+     before it). That creates + resumes a raw context and kicks a silent buffer,
+     which is what actually performs the unlock. Tone is then handed that
+     already-unlocked context once it finishes loading. */
+  let primedCtx = null;
+  function primeAudio() {
+    if (primedCtx) { try { primedCtx.resume(); } catch (e) {} return primedCtx; }
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return null;
+      primedCtx = new AC();
+      primedCtx.resume();                       // sync — must be inside the gesture
+      const b = primedCtx.createBuffer(1, 1, 22050);   // silent blip: unlocks older iOS
+      const s = primedCtx.createBufferSource();
+      s.buffer = b; s.connect(primedCtx.destination); s.start(0);
+    } catch (e) { primedCtx = null; }
+    return primedCtx;
+  }
+
   function ensureAudio() {
     if (started) return Promise.resolve(true);
     if (loading) return loading;
     loading = (async () => {
       const mod = await import(TONE_URL);
       T = mod && mod.Synth ? mod : mod.default || mod;
+      // adopt the context the gesture already unlocked, so iOS keeps it running
+      if (primedCtx && typeof T.setContext === "function") {
+        try { T.setContext(primedCtx); } catch (e) {}
+      }
       await T.start();
+      try { const c = T.getContext && T.getContext(); if (c && c.rawContext && c.rawContext.state !== "running") await c.rawContext.resume(); } catch (e) {}
       buildGraph();
       if (!conductor.movements.length) conductor.movements = buildSuite(conductor.chainSeed);
       const mv0 = currentMovement(); keyRootMidi = homeRootMidi + mv0.root; swing = mv0.swingAmt;
@@ -943,6 +972,7 @@ export function createArcadeScore(opts = {}) {
 
   return {
     feed, setOn, toggle() { return setOn(!on); }, isOn() { return on; }, isStarted() { return started; },
+    primeAudio,
     captureMoment, triggerMoment, triggerJingle, triggerSfx,
     // mixer
     setLevel, setSend, setMaster, setMute, setSolo, applyMix, getMix,

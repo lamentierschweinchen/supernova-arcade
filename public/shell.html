@@ -281,18 +281,35 @@
         if (waveEl) waveEl.style.display = nowOn ? "" : "none";
         if (muteEl) muteEl.style.display = nowOn ? "none" : "";
       }
-      soundToggle.addEventListener("click", async () => {
+      /* MOBILE: iOS only unlocks audio if the AudioContext is created + resumed
+         SYNCHRONOUSLY inside the gesture. score.toggle() has to fetch Tone from a
+         CDN first, so the gesture expires and the toggle looks dead on a phone.
+         Prime on pointerdown (earliest point still inside the gesture, before any
+         await), then do the async work on the tap itself. */
+      soundToggle.addEventListener("pointerdown", function () {
+        try { score && score.primeAudio && score.primeAudio(); } catch (e) {}
+      }, { passive: true });
+
+      var soundBusy = false;
+      async function onSoundTap(e) {
+        if (e) e.preventDefault();
+        if (soundBusy) return;               // pointerup + click both fire; run once
+        soundBusy = true;
         soundToggle.classList.add("loading");
         try {
+          try { score.primeAudio && score.primeAudio(); } catch (e2) {}
           var nowOn = await score.toggle();
           writeSoundPref(nowOn);
           paintSound(nowOn);
-        } catch (e) {
-          console.warn("[shell] sound toggle failed", e);
+        } catch (err) {
+          console.warn("[shell] sound toggle failed", err);
         } finally {
           soundToggle.classList.remove("loading");
+          setTimeout(function () { soundBusy = false; }, 350);
         }
-      });
+      }
+      soundToggle.addEventListener("pointerup", onSoundTap);
+      soundToggle.addEventListener("click", onSoundTap);
 
       // reflect the saved choice on load
       paintSound(readSoundPref());
@@ -308,6 +325,9 @@
         var fire = function () {
           document.removeEventListener("pointerdown", fire, true);
           document.removeEventListener("keydown", fire, true);
+          // unlock synchronously while we are still inside the gesture, THEN do
+          // the async resume (same iOS rule as the toggle above)
+          try { score && score.primeAudio && score.primeAudio(); } catch (e) {}
           tryResume();
         };
         document.addEventListener("pointerdown", fire, true);
