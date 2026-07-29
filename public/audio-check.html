@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Audio check · Supernova Arcade</title>
+    <style>
+      :root { color-scheme: dark; }
+      body { margin: 0; padding: 20px; background: #0a0a0a; color: #e8ecf3;
+             font-family: ui-monospace, "JetBrains Mono", Menlo, monospace; font-size: 14px; }
+      h1 { font-size: 17px; color: #23f7dd; margin: 0 0 4px; }
+      p.sub { color: #9ba3b4; margin: 0 0 18px; font-size: 12.5px; line-height: 1.5; }
+      button { display: block; width: 100%; padding: 20px; font-size: 17px; font-weight: 700;
+               background: #23f7dd; color: #05070b; border: 0; border-radius: 14px;
+               margin: 14px 0; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+      button.alt { background: #1b2333; color: #23f7dd; border: 1px solid #23f7dd; }
+      .row { display: flex; justify-content: space-between; gap: 10px; padding: 9px 0;
+             border-bottom: 1px solid #1e2430; }
+      .k { color: #9ba3b4; } .v { text-align: right; word-break: break-all; }
+      .ok { color: #4ade80; } .bad { color: #ff6b6b; } .warn { color: #f5b544; }
+      .note { margin-top: 18px; padding: 12px; border: 1px solid #2a3446; border-radius: 10px;
+              color: #9ba3b4; font-size: 12.5px; line-height: 1.55; }
+    </style>
+  </head>
+  <body>
+    <h1>Audio check</h1>
+    <p class="sub">Tap the button. If you hear a tone, Web Audio works on this device.
+      Every line below is measured live, so send me a screenshot of it.</p>
+
+    <button id="go" type="button">▶ Play a test tone</button>
+    <button id="go2" class="alt" type="button">▶ Try again (with media unlock)</button>
+
+    <div id="out"></div>
+
+    <div class="note" id="verdict">Waiting for a tap…</div>
+
+    <!-- a silent looping clip. On iOS, Web Audio obeys the RINGER/SILENT switch;
+         starting an <audio> element first can move playback to a session that
+         ignores it. This is the standard "silent switch" workaround. -->
+    <audio id="unlock" playsinline loop preload="auto"
+      src="data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA="></audio>
+
+    <script>
+      const out = document.getElementById("out");
+      const verdict = document.getElementById("verdict");
+      const rows = [];
+      function set(k, v, cls) {
+        const i = rows.findIndex((r) => r.k === k);
+        const row = { k, v, cls };
+        if (i >= 0) rows[i] = row; else rows.push(row);
+        out.innerHTML = rows.map((r) =>
+          `<div class="row"><span class="k">${r.k}</span><span class="v ${r.cls || ""}">${r.v}</span></div>`).join("");
+      }
+
+      const AC = window.AudioContext || window.webkitAudioContext;
+      set("AudioContext API", AC ? "available" : "MISSING", AC ? "ok" : "bad");
+      set("User agent", navigator.userAgent.slice(0, 46));
+
+      let ctx = null;
+
+      function beep(useMediaUnlock) {
+        // ---- everything here must stay SYNCHRONOUS: iOS only unlocks audio
+        // inside the gesture, and any await forfeits that.
+        if (useMediaUnlock) {
+          try {
+            const el = document.getElementById("unlock");
+            el.volume = 0.01;
+            const p = el.play();
+            set("HTMLAudio unlock", "play() called", "ok");
+            if (p && p.catch) p.catch((e) => set("HTMLAudio unlock", "REJECTED: " + e.name, "bad"));
+          } catch (e) { set("HTMLAudio unlock", "threw: " + e.message, "bad"); }
+        }
+
+        if (!ctx) {
+          try { ctx = new AC(); } catch (e) { set("create ctx", "FAILED " + e.message, "bad"); return; }
+        }
+        set("state on create", ctx.state, ctx.state === "running" ? "ok" : "warn");
+        set("sampleRate", ctx.sampleRate + " Hz");
+
+        try { ctx.resume(); } catch (e) {}
+
+        // silent 1-frame buffer: the classic iOS unlock
+        try {
+          const b = ctx.createBuffer(1, 1, 22050);
+          const s = ctx.createBufferSource();
+          s.buffer = b; s.connect(ctx.destination); s.start(0);
+          set("silent unlock buffer", "fired", "ok");
+        } catch (e) { set("silent unlock buffer", "failed", "bad"); }
+
+        // an audible 440Hz tone for 1s
+        try {
+          const osc = ctx.createOscillator(), g = ctx.createGain();
+          osc.frequency.value = 440; g.gain.value = 0.25;
+          osc.connect(g); g.connect(ctx.destination);
+          osc.start(); osc.stop(ctx.currentTime + 1);
+          set("test tone", "scheduled (440Hz, 1s)", "ok");
+        } catch (e) { set("test tone", "failed: " + e.message, "bad"); }
+
+        setTimeout(() => {
+          set("state after 400ms", ctx.state, ctx.state === "running" ? "ok" : "bad");
+          if (ctx.state === "running") {
+            verdict.innerHTML = "<b class='ok'>Context is RUNNING.</b> If you still hear nothing, "
+              + "the phone's <b>ringer/silent switch</b> is almost certainly muting it — "
+              + "iOS Safari applies that switch to Web Audio. Flip the switch to ring, or "
+              + "turn the volume up, and tap again.";
+          } else {
+            verdict.innerHTML = "<b class='bad'>Context is " + ctx.state + ".</b> The browser "
+              + "refused to start audio even inside a real tap. Send me this screenshot.";
+          }
+        }, 400);
+
+        // does Tone (the arcade's engine) load and start here?
+        import("https://esm.sh/tone@15.0.4").then(async (mod) => {
+          const T = mod && mod.Synth ? mod : mod.default || mod;
+          set("Tone module", "loaded", "ok");
+          try {
+            if (typeof T.setContext === "function") { T.setContext(ctx); set("Tone.setContext(raw)", "accepted", "ok"); }
+          } catch (e) { set("Tone.setContext(raw)", "REJECTED: " + e.message, "bad"); }
+          try {
+            await T.start();
+            const c = T.getContext();
+            set("Tone context state", c.state + (c.rawContext ? " / raw " + c.rawContext.state : ""),
+                c.state === "running" ? "ok" : "bad");
+          } catch (e) { set("Tone.start()", "FAILED: " + e.message, "bad"); }
+        }).catch((e) => set("Tone module", "LOAD FAILED: " + e.message, "bad"));
+      }
+
+      document.getElementById("go").addEventListener("pointerup", () => beep(false));
+      document.getElementById("go2").addEventListener("pointerup", () => beep(true));
+    </script>
+  </body>
+</html>

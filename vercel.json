@@ -1,35 +1,110 @@
 {
   "rewrites": [
-    { "source": "/", "destination": "/shell.html" },
-    { "source": "/arcade", "destination": "/shell.html" },
-    { "source": "/tug-of-war", "destination": "/shell.html" },
-    { "source": "/canvas", "destination": "/shell.html" },
-    { "source": "/canvas-classic", "destination": "/shell.html" },
-    { "source": "/button", "destination": "/shell.html" },
-    { "source": "/reaction", "destination": "/shell.html" },
-    { "source": "/shard-hydra", "destination": "/shell.html" },
-    { "source": "/shard-snake", "destination": "/shell.html" },
-    { "source": "/snakanova", "destination": "/shell.html" },
-    { "source": "/novaman", "destination": "/shell.html" },
-    { "source": "/clawback", "destination": "/shell.html" },
-    { "source": "/degen-dash", "destination": "/shell.html" },
-    { "source": "/wen-moon", "destination": "/shell.html" },
-    { "source": "/sprint", "destination": "/shell.html" },
-    { "source": "/supernova-sprint", "destination": "/shell.html" },
-    { "source": "/why", "destination": "/shell.html" },
-    { "source": "/me", "destination": "/shell.html" }
+    {
+      "source": "/",
+      "destination": "/shell.html"
+    },
+    {
+      "source": "/arcade",
+      "destination": "/shell.html"
+    },
+    {
+      "source": "/tug-of-war",
+      "destination": "/shell.html"
+    },
+    {
+      "source": "/canvas",
+      "destination": "/shell.html"
+    },
+    {
+      "source": "/canvas-classic",
+      "destination": "/shell.html"
+    },
+    {
+      "source": "/button",
+      "destination": "/shell.html"
+    },
+    {
+      "source": "/reaction",
+      "destination": "/shell.html"
+    },
+    {
+      "source": "/shard-hydra",
+      "destination": "/shell.html"
+    },
+    {
+      "source": "/shard-snake",
+      "destination": "/shell.html"
+    },
+    {
+      "source": "/snakanova",
+      "destination": "/shell.html"
+    },
+    {
+      "source": "/novaman",
+      "destination": "/shell.html"
+    },
+    {
+      "source": "/clawback",
+      "destination": "/shell.html"
+    },
+    {
+      "source": "/degen-dash",
+      "destination": "/shell.html"
+    },
+    {
+      "source": "/wen-moon",
+      "destination": "/shell.html"
+    },
+    {
+      "source": "/sprint",
+      "destination": "/shell.html"
+    },
+    {
+      "source": "/supernova-sprint",
+      "destination": "/shell.html"
+    },
+    {
+      "source": "/why",
+      "destination": "/shell.html"
+    },
+    {
+      "source": "/me",
+      "destination": "/shell.html"
+    },
+    {
+      "source": "/audio-check",
+      "destination": "/audio-check.html"
+    }
   ],
   "redirects": [
-    { "source": "/onchain", "destination": "/sprint", "permanent": false },
-    { "source": "/three-shard-canvas", "destination": "/canvas", "permanent": false }
+    {
+      "source": "/onchain",
+      "destination": "/sprint",
+      "permanent": false
+    },
+    {
+      "source": "/three-shard-canvas",
+      "destination": "/canvas",
+      "permanent": false
+    }
   ],
   "headers": [
     {
       "source": "/(.*)",
       "headers": [
-        { "key": "X-Frame-Options", "value": "SAMEORIGIN" },
-        { "key": "X-Content-Type-Options", "value": "nosniff" },
-        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
+        {
+          "key": "X-Frame-Options",
+          "value": "SAMEORIGIN"
+        },
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "strict-origin-when-cross-origin"
+        },
         {
           "key": "Strict-Transport-Security",
           "value": "max-age=63072000; includeSubDomains"

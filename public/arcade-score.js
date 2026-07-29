@@ -849,8 +849,29 @@ export function createArcadeScore(opts = {}) {
      before it). That creates + resumes a raw context and kicks a silent buffer,
      which is what actually performs the unlock. Tone is then handed that
      already-unlocked context once it finishes loading. */
-  let primedCtx = null;
+  let primedCtx = null, silentEl = null;
+  /* iOS applies the hardware RINGER/SILENT switch to Web Audio, so a perfectly
+     unlocked context can still be inaudible with the switch flipped. Starting a
+     looping <audio> element alongside it moves playback to a session that ignores
+     the switch — the same trick howler.js uses. Harmless everywhere else. */
+  function startSilentLoop() {
+    try {
+      if (!silentEl) {
+        silentEl = document.createElement("audio");
+        silentEl.setAttribute("playsinline", "");
+        silentEl.loop = true;
+        silentEl.volume = 0.01;
+        // 1 frame of silence, inline so there is no network fetch in the gesture
+        silentEl.src = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=";
+        silentEl.style.display = "none";
+        document.body && document.body.appendChild(silentEl);
+      }
+      const p = silentEl.play();
+      if (p && p.catch) p.catch(() => {});
+    } catch (e) {}
+  }
   function primeAudio() {
+    startSilentLoop();                          // sync, before anything can await
     if (primedCtx) { try { primedCtx.resume(); } catch (e) {} return primedCtx; }
     try {
       const AC = window.AudioContext || window.webkitAudioContext;
