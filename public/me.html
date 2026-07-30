@@ -15,13 +15,21 @@
 <link rel="stylesheet" href="/arcade-shell.css" />
 <!--
   /me — the player profile. Presentation only; reads the passport (address +
-  handle) and the SAME onchain point sources the hub Leaderboard aggregates, so
-  the total here matches the board exactly. No onchain logic, no key grinding
-  (read-only queries). Identity = passport.js. Points model = the hub board's
-  (cumulative arcade points). Per-game points come from the board's sources;
-  the getTopPoints accumulators read 0 until that contract upgrade ships (same
-  as the board). House rules: solid headlines, glow earned (the total only),
-  onchain one word, US English, no em dashes.
+  handle) and the leaderboard service. Identity = passport.js.
+
+  EVERY cabinet on the hub is listed, scores read from /api/leaderboard?game=KEY.
+  That service parses raw storage / player-scaling views, and already sums Novaman
+  across its three shard contracts and the Canvas across its three boards. The old
+  build queried each contract's getTop* view directly: it covered only 6 games and
+  those views run out of query gas past ~120 players, so rows silently read 0.
+
+  The headline total + rank come from /api/leaderboard?window=alltime (total onchain
+  actions per player), so they agree with the hub board exactly. Per-game scores are
+  NOT summed into it: a Novaman spark count and a Button best-wait measure different
+  things and are not addable, which is why each tile shows its own unit.
+
+  House rules: solid headlines, glow earned (the total only), onchain one word,
+  US English, no em dashes.
 -->
 <style>
   body{ --c:#23F7DD; }
@@ -110,26 +118,33 @@
 </div>
 
 <script type="module">
-  import { createArcadeClient, GAMES } from "/arcade-core.js";
   import { mountGalaxy } from "/arcade-galaxy.js";
   import { getAddress, getHandle, hasPassport } from "/passport.js";
-  import { bech32 } from "https://esm.sh/@scure/base@1.1.6"; // same lib arcade-core uses, for address matching
 
   let galaxy = null;
   try { galaxy = mountGalaxy({ intensity: 0.5, canvas: "#galaxy", ambient: true }); } catch (e) {}
 
-  // SAME point sources the hub Leaderboard aggregates → /me total matches the board.
-  const SPRINT_LEADERBOARD = "erd1qqqqqqqqqqqqqpgqh9wpfl0mt337h68z8cuv6w6mkfucqv5tppuqsxz6sp";
+  /* EVERY cabinet on the hub, read through the off-chain leaderboard service.
+     The old build queried each contract's getTop* view directly, which (a) covered
+     only 6 of the games and (b) runs out of query gas past ~120 players, so several
+     rows silently read 0. The service parses raw storage / the player-scaling views
+     instead, sums Novaman across its three shards and the Canvas across its three
+     boards, and is the same source the cabinets and the hub already use.
+     Keys must match GAME_BOARDS in api/leaderboard/route.ts. */
   const SRC = [
-    { game: "Tug of War",       view: "getTopPullers",  address: GAMES.tugofwar.contract, args: ["0a"], weight: 1, c: "#23F7DD", route: "/tug-of-war" },
-    { game: "Supernova Canvas", view: "getTopPainters", address: GAMES.canvas.contract,   args: ["0a"], weight: 1, c: "#A78BFA", route: "/canvas" },
-    { game: "Supernova Sprint", view: "getTopPoints",   address: SPRINT_LEADERBOARD,       args: [],     weight: 1, c: "#23F7DD", route: "/sprint" },
-    { game: "Degen Dash",       view: "getTopPoints",   address: GAMES.degendash.contract, args: [],     weight: 1, c: "#FFD23F", route: "/degen-dash" },
-    { game: "Clawback",         view: "getTopPoints",   address: GAMES.clawback.contract,  args: [],     weight: 1, c: "#FF6B9D", route: "/clawback" },
-    { game: "The Button",       view: "getTopPoints",   address: GAMES.button.contract,    args: [],     weight: 1, c: "#5B8DEF", route: "/button" },
-  ].filter((s) => s.address && !/^erd1qqqqqqqqqqqqqqqqqqqqqqqqqqqq/.test(s.address));
+    { game: "Supernova Sprint",   key: "sprint",     unit: "taps",      c: "#23F7DD", route: "/sprint" },
+    { game: "Novaman",            key: "novaman",    unit: "sparks",    c: "#23F7DD", route: "/novaman" },
+    { game: "Snakanova",          key: "shardsnake", unit: "length",    c: "#23F7DD", route: "/snakanova" },
+    { game: "Shard Hydra",        key: "shardhydra", unit: "damage",    c: "#23F7DD", route: "/shard-hydra" },
+    { game: "Three-Shard Canvas", key: "triptych",   unit: "pixels",    c: "#A78BFA", route: "/canvas" },
+    { game: "Tug of War",         key: "tugofwar",   unit: "pulls",     c: "#23F7DD", route: "/tug-of-war" },
+    { game: "The Button",         key: "button",     unit: "best wait", c: "#5B8DEF", route: "/button" },
+    { game: "Reaction Arcade",    key: "reaction",   unit: "reactions", c: "#F5B544", route: "/reaction" },
+    { game: "Clawback",           key: "clawback",   unit: "kept",      c: "#FF6B9D", route: "/clawback" },
+    { game: "Degen Dash",         key: "degendash",  unit: "score",     c: "#FFD23F", route: "/degen-dash" },
+    { game: "Wen Moon",           key: "wenmoon",    unit: "cashed",    c: "#7CD3F2", route: "/wen-moon" },
+  ];
 
-  const client = createArcadeClient("canvas"); // throwaway query/decode client
   // bare /me = your passport; /me?addr=erd1... = a shareable read-only profile of any player
   const qAddr = new URLSearchParams(location.search).get("addr");
   const isSelf = !qAddr;
@@ -139,10 +154,8 @@
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const fmt = (n) => Number(n).toLocaleString("en-US");
   const short = (a) => (a ? a.slice(0, 8) + "…" + a.slice(-4) : "");
-  // decodeLeaderboard returns bech32 only if the crypto libs are loaded (they are not on a
-  // read-only profile), else 32-byte pubkey hex. Match in BOTH formats, no key grinding.
-  const addrToHex = (a) => { try { if (!a) return ""; const w = bech32.decode(a, 256).words; return Array.from(bech32.fromWords(w)).map((b) => b.toString(16).padStart(2, "0")).join(""); } catch (e) { return ""; } };
-  const myHex = addrToHex(myAddr);
+  // the leaderboard service always returns bech32, so a plain string compare is
+  // enough — no pubkey-hex fallback and no crypto libs needed on a read-only profile.
 
   // deterministic 5x5 mirrored identicon from the address
   function identicon(seed) {
@@ -154,11 +167,31 @@
     return cells;
   }
 
+  /** this player's score on one cabinet (0 if they have never played it) */
   async function readSrc(s) {
     try {
-      const rd = await client.query(s.view, s.args, s.address);
-      return rd && rd.length ? client.decodeLeaderboard(rd) : [];
-    } catch (e) { return []; }
+      const r = await fetch(`/api/leaderboard?game=${encodeURIComponent(s.key)}`, { cache: "no-store" });
+      if (!r.ok) return { score: 0, handle: "" };
+      const rows = (await r.json()).rows || [];
+      const me = rows.find((e) => e && e.address && e.address.toLowerCase() === myAddr.toLowerCase());
+      return me ? { score: me.score || 0, handle: me.handle || "" } : { score: 0, handle: "" };
+    } catch (e) { return { score: 0, handle: "" }; }
+  }
+
+  /** the hub's all-time board: total onchain actions per player across every game.
+      Using it here means the profile's total and rank agree with the hub exactly,
+      instead of summing per-game scores that measure different things (a Novaman
+      spark count and a Button best-wait are not addable). */
+  async function readHub() {
+    try {
+      const r = await fetch("/api/leaderboard?window=alltime", { cache: "no-store" });
+      if (!r.ok) return { total: 0, rank: null, players: 0, handle: "" };
+      const rows = (await r.json()).rows || [];
+      const i = rows.findIndex((e) => e && e.address && e.address.toLowerCase() === myAddr.toLowerCase());
+      const me = i >= 0 ? rows[i] : null;
+      return { total: me ? me.actions || 0 : 0, rank: me ? i + 1 : null,
+               players: rows.length, handle: me ? me.handle || "" : "" };
+    } catch (e) { return { total: 0, rank: null, players: 0, handle: "" }; }
   }
 
   function noPassport() {
@@ -170,25 +203,19 @@
 
   async function load() {
     if (!myAddr || (isSelf && !hasPassport())) { noPassport(); return; }
-    const results = await Promise.all(SRC.map((s) => readSrc(s).then((es) => ({ s, es }))));
+    const [perGame, hub] = await Promise.all([
+      Promise.all(SRC.map((s) => readSrc(s).then((r) => ({ ...s, pts: r.score, handle: r.handle })))),
+      readHub(),
+    ]);
 
-    const totals = new Map(); // address -> points (full board, for rank)
-    const mine = []; // per-game { ...s, pts }
-    let myTotal = 0;
-    for (const { s, es } of results) {
-      let myPts = 0;
-      for (const e of es) {
-        if (!e || !e.address || !e.score) continue;
-        const pts = Math.round(e.score * s.weight);
-        totals.set(e.address, (totals.get(e.address) || 0) + pts);
-        const ea = String(e.address).toLowerCase();
-        if (ea === myAddr.toLowerCase() || (myHex && ea === myHex)) { myPts = pts; if (!myHandle && e.handle) myHandle = e.handle; }
-      }
-      mine.push({ ...s, pts: myPts });
-      myTotal += myPts;
-    }
-    const players = totals.size;
-    const myRank = myTotal > 0 ? [...totals.values()].filter((t) => t > myTotal).length + 1 : null;
+    // a name claimed on ANY board is this player's name everywhere
+    if (!myHandle) myHandle = hub.handle || (perGame.find((g) => g.handle) || {}).handle || null;
+
+    // played cabinets first, then the rest, so a profile leads with what you actually do
+    const mine = perGame.slice().sort((a, b) => (b.pts > 0) - (a.pts > 0));
+    const myTotal = hub.total;
+    const myRank = hub.rank;
+    const players = hub.players;
 
     const name = myHandle && myHandle.length ? esc(myHandle) : "Player";
     const addrLine = (myHandle && myHandle.length) || !isSelf
@@ -205,7 +232,7 @@
       return `<a class="pg${z}" style="--gc:${g.c}" href="${g.route}">`
         + `<span class="go" aria-hidden="true">&rarr;</span>`
         + `<div class="gnm">${esc(g.game)}</div>`
-        + `<div class="gv"><span class="n">${g.pts > 0 ? fmt(g.pts) : "0"}</span><span class="u">pts</span></div></a>`;
+        + `<div class="gv"><span class="n">${g.pts > 0 ? fmt(g.pts) : "0"}</span><span class="u">${esc(g.unit)}</span></div></a>`;
     }).join("");
 
     view.innerHTML = `
