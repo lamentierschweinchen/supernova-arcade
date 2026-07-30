@@ -339,27 +339,20 @@
       soundToggle.addEventListener("click", onSoundTap);
 
       // reflect the saved choice on load
-      paintSound(readSoundPref());
+      // Always render OFF on load. Painting a remembered "on" would claim sound is
+      // playing when nothing has started, which is the exact confusion we are fixing.
+      paintSound(false);
 
-      // resume on the first gesture (chrome gestures here OR an in-iframe gesture
-      // forwarded as a message). Idempotent: only the first real gesture fires.
-      async function tryResume() {
-        if (!score || !readSoundPref() || score.isStarted()) return;
-        try { paintSound(await score.setOn(true)); }
-        catch (e) { console.warn("[shell] sound resume failed", e); }
-      }
-      (function armSoundResume() {
-        var fire = function () {
-          document.removeEventListener("pointerdown", fire, true);
-          document.removeEventListener("keydown", fire, true);
-          // unlock synchronously while we are still inside the gesture, THEN do
-          // the async resume (same iOS rule as the toggle above)
-          try { score && score.primeAudio && score.primeAudio(); } catch (e) {}
-          tryResume();
-        };
-        document.addEventListener("pointerdown", fire, true);
-        document.addEventListener("keydown", fire, true);
-      })();
+      // Sound always starts OFF and only turns on when the player taps the toggle.
+      // Auto-resuming a remembered preference is worse than useless on a phone: on
+      // iOS the ringer switch can mute it, so the UI would claim "Sound on" while
+      // the player hears nothing and never taps the button that would actually fix
+      // it (the tap is what starts the silent-loop element that bypasses the switch).
+      async function tryResume() { /* intentionally a no-op — explicit tap only */ }
+      // (armSoundResume removed) Nothing starts audio implicitly any more. The
+      // silent-loop element that bypasses the iOS ringer switch is only started by
+      // an explicit tap on the sound toggle, so we never spin up a media session
+      // for someone who never asked for sound.
 
       /* ===================================================================
          ROUTER. On load read ?g= (default arcade), load the RAW file, and clean
