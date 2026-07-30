@@ -367,6 +367,14 @@
         current = g;
         var file = GAME_FILE[g];
         var pretty = GAME_PRETTY[g] || "/";
+        /* Carry the query string through to the framed page. Without this every
+           shared link that depends on a param is silently broken: /me?addr=erd1...
+           loaded /me.html with no search, so a shared passport always rendered
+           "No passport yet". `g` is the shell's own routing param, so drop it. */
+        var qs = new URLSearchParams(location.search);
+        qs.delete("g");
+        var q = qs.toString();
+        if (q) { file += (file.indexOf("?") >= 0 ? "&" : "?") + q; pretty += "?" + q; }
         // only touch iframe.src if it actually changed (popstate to the same page)
         var want = location.origin + file;
         if (stage.src !== want) stage.src = file;
