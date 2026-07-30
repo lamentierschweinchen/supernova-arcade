@@ -72,6 +72,20 @@
   .pb-rank.none .medal{ background:transparent;border:1px dashed color-mix(in srgb,var(--c) 40%,transparent);color:var(--c);box-shadow:none;font-size:18px; }
   .pb-rank .of{ font-family:var(--mono);font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:var(--text-faint);line-height:1.4; }
 
+  /* ===== inline name editor on your own passport ===== */
+  .pb-addr .set{ cursor:pointer;text-decoration:underline;text-underline-offset:2px; }
+  .pb-addr .set:hover{ color:#fff; }
+  .pb-namerow{ position:relative;z-index:1;display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:0 22px 4px; }
+  .pb-namerow .name-input{ flex:1 1 180px;min-width:0;background:#0a0e15;color:var(--text);
+    border:1px solid color-mix(in srgb,var(--c) 34%,var(--border));border-radius:11px;padding:11px 13px;
+    font-family:var(--mono);font-size:13px; }
+  .pb-namerow .name-input:focus{ outline:none;border-color:var(--c);box-shadow:0 0 0 3px color-mix(in srgb,var(--c) 16%,transparent); }
+  .pb-namerow .name-save{ flex:0 0 auto;background:color-mix(in srgb,var(--c) 14%,transparent);color:var(--c);
+    border:1px solid color-mix(in srgb,var(--c) 40%,transparent);border-radius:11px;padding:11px 18px;cursor:pointer;
+    font-family:var(--mono);font-size:12px;letter-spacing:.06em;text-transform:uppercase; }
+  .pb-namerow .name-save:disabled{ opacity:.55;cursor:progress; }
+  .pb-namerow .name-note{ flex:1 0 100%;font-family:var(--mono);font-size:10px;color:var(--text-faint);line-height:1.5; }
+
   /* ===== per-game points as lit, themed mini-panels ===== */
   .pg-h{ font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--text-faint);margin:22px 2px 12px; }
   .pg-grid{ display:grid;grid-template-columns:1fr 1fr;gap:11px; }
@@ -119,7 +133,8 @@
 
 <script type="module">
   import { mountGalaxy } from "/arcade-galaxy.js";
-  import { getAddress, getHandle, hasPassport } from "/passport.js";
+  import { getAddress, getHandle, hasPassport, setHandle as savePassportHandle } from "/passport.js";
+  import { createArcadeClient, GAMES } from "/arcade-core.js";
 
   let galaxy = null;
   try { galaxy = mountGalaxy({ intensity: 0.5, canvas: "#galaxy", ambient: true }); } catch (e) {}
@@ -131,18 +146,21 @@
      instead, sums Novaman across its three shards and the Canvas across its three
      boards, and is the same source the cabinets and the hub already use.
      Keys must match GAME_BOARDS in api/leaderboard/route.ts. */
+  const SPRINT_TAP_COUNTER = "erd1qqqqqqqqqqqqqpgqlwv6l2zpx9v0uv6869tn90exv3vdplejppuq97k7r4";
+  // `sc` is where a name change is written for that cabinet. Every contract's
+  // setHandle requires a score there first, so we only write to cabinets played.
   const SRC = [
-    { game: "Supernova Sprint",   key: "sprint",     unit: "taps",      c: "#23F7DD", route: "/sprint" },
-    { game: "Novaman",            key: "novaman",    unit: "sparks",    c: "#23F7DD", route: "/novaman" },
-    { game: "Snakanova",          key: "shardsnake", unit: "length",    c: "#23F7DD", route: "/snakanova" },
-    { game: "Shard Hydra",        key: "shardhydra", unit: "damage",    c: "#23F7DD", route: "/shard-hydra" },
-    { game: "Three-Shard Canvas", key: "triptych",   unit: "pixels",    c: "#A78BFA", route: "/canvas" },
-    { game: "Tug of War",         key: "tugofwar",   unit: "pulls",     c: "#23F7DD", route: "/tug-of-war" },
-    { game: "The Button",         key: "button",     unit: "best wait", c: "#5B8DEF", route: "/button" },
-    { game: "Reaction Arcade",    key: "reaction",   unit: "reactions", c: "#F5B544", route: "/reaction" },
-    { game: "Clawback",           key: "clawback",   unit: "kept",      c: "#FF6B9D", route: "/clawback" },
-    { game: "Degen Dash",         key: "degendash",  unit: "score",     c: "#FFD23F", route: "/degen-dash" },
-    { game: "Wen Moon",           key: "wenmoon",    unit: "cashed",    c: "#7CD3F2", route: "/wen-moon" },
+    { game: "Supernova Sprint",   key: "sprint",     unit: "taps",      c: "#23F7DD", route: "/sprint",       sc: SPRINT_TAP_COUNTER },
+    { game: "Novaman",            key: "novaman",    unit: "sparks",    c: "#23F7DD", route: "/novaman",      sc: (GAMES.novaman.shards || [])[0] },
+    { game: "Snakanova",          key: "shardsnake", unit: "length",    c: "#23F7DD", route: "/snakanova",    sc: GAMES.shardsnake.contract },
+    { game: "Shard Hydra",        key: "shardhydra", unit: "damage",    c: "#23F7DD", route: "/shard-hydra",  sc: GAMES.shardhydra.contract },
+    { game: "Three-Shard Canvas", key: "triptych",   unit: "pixels",    c: "#A78BFA", route: "/canvas",       sc: GAMES.triptych.contract },
+    { game: "Tug of War",         key: "tugofwar",   unit: "pulls",     c: "#23F7DD", route: "/tug-of-war",   sc: GAMES.tugofwar.contract },
+    { game: "The Button",         key: "button",     unit: "best wait", c: "#5B8DEF", route: "/button",       sc: GAMES.button.contract },
+    { game: "Reaction Arcade",    key: "reaction",   unit: "reactions", c: "#F5B544", route: "/reaction",     sc: GAMES.reaction.contract },
+    { game: "Clawback",           key: "clawback",   unit: "kept",      c: "#FF6B9D", route: "/clawback",     sc: GAMES.clawback.contract },
+    { game: "Degen Dash",         key: "degendash",  unit: "score",     c: "#FFD23F", route: "/degen-dash",   sc: GAMES.degendash.contract },
+    { game: "Wen Moon",           key: "wenmoon",    unit: "cashed",    c: "#7CD3F2", route: "/wen-moon",     sc: GAMES.wenmoon.contract },
   ];
 
   // bare /me = your passport; /me?addr=erd1... = a shareable read-only profile of any player
@@ -218,9 +236,10 @@
     const players = hub.players;
 
     const name = myHandle && myHandle.length ? esc(myHandle) : "Player";
-    const addrLine = (myHandle && myHandle.length) || !isSelf
-      ? short(myAddr)
-      : `${short(myAddr)} · <span class="set">add a name on any game's board</span>`;
+    // the name is editable right here on your own passport; a shared profile is read-only
+    const addrLine = isSelf
+      ? `${short(myAddr)} · <span class="set" id="nameEdit" role="button" tabindex="0">${myHandle && myHandle.length ? "change name" : "set your name"}</span>`
+      : short(myAddr);
 
     const rcls = myRank && myRank <= 3 ? " r" + myRank : "";
     const rankBlock = myRank
@@ -243,6 +262,12 @@
           <div class="pb-ico" aria-hidden="true">${identicon(myAddr)}</div>
           <div class="pb-idt"><h1 class="pb-name">${name}</h1><div class="pb-addr">${addrLine}</div></div>
         </div>
+        ${isSelf ? `<div class="pb-namerow" id="nameRow" hidden>
+          <input id="nameInput" class="name-input" maxlength="24" autocomplete="off" spellcheck="false"
+            placeholder="Your name" value="${myHandle ? esc(myHandle) : ""}" />
+          <button id="nameSave" class="name-save" type="button">Save</button>
+          <div class="name-note" id="nameNote">One name across every game. Saved onchain on the cabinets you have played.</div>
+        </div>` : ""}
         <div class="pb-stat">
           <div class="pb-total"><div class="lbl">Arcade points</div><div class="v">${fmt(myTotal)}</div></div>
           ${rankBlock}
@@ -252,7 +277,60 @@
       <p class="pg-h">Points by game</p>
       <div class="pg-grid">${games}</div>`;
     { const _msb = document.getElementById("meShareBtn"); if (_msb) _msb.addEventListener("click", () => window.shareScore && window.shareScore({ game: "me", score: myTotal, rank: myRank })); }
+    if (isSelf) wireNameEditor(mine);
     if (galaxy) { try { for (let i = 0; i < 6; i++) galaxy.pulse(i % 3, 1); } catch (e) {} }
+  }
+
+  /* ---- name editing, straight from the passport ----------------------------
+     The name lives in two places: the passport in localStorage (which pre-fills
+     every cabinet's input, so it follows the player immediately) and onchain per
+     contract (which is what the public boards read). Each contract's setHandle
+     requires a score there, so we write to exactly the cabinets already played;
+     the leaderboard service's global handle map covers the rest. */
+  function wireNameEditor(mine) {
+    const edit = document.getElementById("nameEdit");
+    const row = document.getElementById("nameRow");
+    const input = document.getElementById("nameInput");
+    const save = document.getElementById("nameSave");
+    const note = document.getElementById("nameNote");
+    if (!edit || !row || !input || !save) return;
+
+    const open = () => { row.hidden = false; input.focus(); input.select(); };
+    edit.addEventListener("click", open);
+    edit.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } });
+
+    let busy = false;
+    async function commit() {
+      const v = (input.value || "").trim().slice(0, 24);
+      if (!v || busy) return;
+      const played = mine.filter((g) => g.pts > 0 && g.sc);
+      busy = true; save.disabled = true;
+      // local first: the name follows the player to every cabinet immediately,
+      // even if the onchain writes are still settling
+      savePassportHandle(v);
+      document.querySelector(".pb-name").textContent = v;
+      if (!played.length) {
+        note.textContent = "Saved. Play any cabinet and it will show on that board too.";
+        busy = false; save.disabled = false; row.hidden = true;
+        return;
+      }
+      note.textContent = `Saving onchain on ${played.length} cabinet${played.length === 1 ? "" : "s"}…`;
+      let ok = 0;
+      const client = createArcadeClient("shardsnake"); // any cabinet: we target contracts explicitly
+      for (const g of played) {
+        try {
+          await client.sendActionTo(g.sc, "setHandle", [client.strToHex(v)], 10_000_000);
+          ok++;
+        } catch (e) { /* a board we cannot write keeps the global-handle fallback */ }
+      }
+      note.textContent = ok
+        ? `Saved. Live on ${ok} board${ok === 1 ? "" : "s"} shortly.`
+        : "Saved on this device. The boards will pick it up shortly.";
+      busy = false; save.disabled = false;
+      setTimeout(() => { row.hidden = true; }, 2600);
+    }
+    save.addEventListener("click", commit);
+    input.addEventListener("keydown", (e) => { if (e.key === "Enter") commit(); });
   }
 
   load();
