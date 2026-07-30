@@ -290,6 +290,26 @@
         try { score && score.primeAudio && score.primeAudio(); } catch (e) {}
       }, { passive: true });
 
+      /* On iOS the hardware ringer/silent switch mutes Web Audio, so sound can be
+         genuinely running and still inaudible. Nothing in JS can detect or override
+         that, so say it out loud once on touch devices rather than leaving people
+         thinking the button is broken. */
+      function showSoundHint() {
+        if (!window.matchMedia || !window.matchMedia("(pointer: coarse)").matches) return;
+        if (sessionStorage.getItem("arcade.soundHint")) return;
+        try { sessionStorage.setItem("arcade.soundHint", "1"); } catch (e) {}
+        var el = document.createElement("div");
+        el.textContent = "Sound is on. Hear nothing? Check your phone's ringer switch.";
+        el.style.cssText = "position:fixed;left:50%;transform:translateX(-50%);" +
+          "bottom:calc(18px + env(safe-area-inset-bottom));z-index:2147483000;max-width:88vw;" +
+          "padding:10px 14px;border-radius:999px;border:1px solid rgba(35,247,221,.4);" +
+          "background:rgba(10,13,19,.94);color:#e8ecf3;font:500 12.5px/1.4 system-ui,sans-serif;" +
+          "text-align:center;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)";
+        document.body.appendChild(el);
+        setTimeout(function () { el.style.transition = "opacity .4s"; el.style.opacity = "0"; }, 5200);
+        setTimeout(function () { el.remove(); }, 5800);
+      }
+
       var soundBusy = false;
       async function onSoundTap(e) {
         if (e) e.preventDefault();
@@ -301,6 +321,13 @@
           var nowOn = await score.toggle();
           writeSoundPref(nowOn);
           paintSound(nowOn);
+          if (nowOn) {
+            // an immediate audible confirmation. The soundtrack's drums/bass fade in
+            // with onchain activity, so without this the first seconds can read as
+            // "nothing happened" even when audio is working perfectly.
+            try { score.triggerJingle && score.triggerJingle("levelup"); } catch (e3) {}
+            showSoundHint();
+          }
         } catch (err) {
           console.warn("[shell] sound toggle failed", err);
         } finally {
