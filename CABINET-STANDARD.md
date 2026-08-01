@@ -40,7 +40,8 @@ checklist for reviewing community submissions. Reference implementations:
 
 ## Notes / known deviations
 
-- **Forks** (`clawback/`, `degen-dash/`, `wen-moon/`) and **`onchain.html`** (Sprint) render to the standard but keep some **bespoke internal markup** (their own `.lb`/stats). They use the same shared services, so this is a maintainability nit, not a user-facing gap — left as-is deliberately (rewriting working, popular games for internal purity isn't worth the breakage risk).
+- **Forks** (`clawback/`, `degen-dash/`, `wen-moon/`, `shard-hydra/`, `shard-snake/`, `novaman/`) and **`onchain.html`** (Sprint) render to the standard but keep some **bespoke internal markup** (their own `.lb`/stats). They use the same shared services, so this is a maintainability nit, not a user-facing gap — left as-is deliberately (rewriting working, popular games for internal purity isn't worth the breakage risk).
+- **`novaman/`** is the one cabinet whose contract is deployed **three times**, once per shard. `GAMES.novaman.contract` is shard 0 only; `GAMES.novaman.shards` is all three. Anything that totals its activity must sum the shards, or it silently reports a third of the truth.
 - **Sprint** gates its leaderboard/share inside a post-run results panel rather than always-visible — a deliberate "timed run → see your result" design.
 
 ## Deploy

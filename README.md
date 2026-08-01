@@ -80,7 +80,7 @@ server route that travels with the arcade.
 | `public/` | Every cabinet, the shell, shared client modules, fonts |
 | `src/app/api/` | `relay` (gasless co-signing), `leaderboard`, `hydra` |
 | `src/lib/onchain/` | Contract addresses, gas caps, network config |
-| `scripts/` | Operational tooling: standings, load generation |
+| `scripts/` | Operational tooling: standings, smoke tests, registry check |
 | `tests/` | Relay validation and Hydra state tests |
 | `concepts/` | Design docs for games, shipped and unshipped |
 | `template/` | Starting point for a new cabinet |
@@ -93,7 +93,7 @@ server route that travels with the arcade.
 | [CABINET-STANDARD.md](CABINET-STANDARD.md) | You want the conventions every cabinet follows |
 | [GAMES-SLATE.md](GAMES-SLATE.md) | You want the roadmap and the reasoning behind each pick |
 | [HARDENING.md](HARDENING.md) | You are touching the relay, the contracts, or anything security-adjacent |
-| [OPERATIONS.md](OPERATIONS.md) | You are running load, reading standings, or minding the relayer |
+| [OPERATIONS.md](OPERATIONS.md) | You are reading standings, smoke-testing a deploy, or minding the relayer |
 | [THREE-SHARD-CANVAS-DEPLOY.md](THREE-SHARD-CANVAS-DEPLOY.md) | You are redeploying the canvas trio |
 | [concepts/NOVAMAN.md](concepts/NOVAMAN.md) | You want the full cross-shard design |
 
@@ -129,9 +129,8 @@ node scripts/arcade-standings.mjs
 
 See `.env.example` for every environment variable.
 
-> **Never commit a key.** The relayer PEM, the load-generation rosters and the bot and
-> painter keyfiles are all gitignored. `scripts/*roster*.json` in particular holds one
-> secret key per generated player.
+> **Never commit a key.** The relayer PEM is gitignored, along with anything holding a
+> secret key. If you add tooling that generates keypairs, keep its keyfile out of the repo.
 
 ## Status
 

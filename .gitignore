@@ -48,7 +48,8 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# load-generation rosters hold player SECRET KEYS — never commit them
+# anything holding a generated secret key stays out of the repo
 scripts/*roster*.json
+scripts/*keys*.json
 scripts/arcade-bots.json
 scripts/arcade-painters.json
