@@ -230,7 +230,12 @@
           { id: "wenmoon",    address: GAMES.wenmoon.contract,    view: "getGlobalActions" },
           { id: "shardhydra", address: GAMES.shardhydra.contract, view: "getGlobalActions" },
           { id: "shardsnake", address: GAMES.shardsnake.contract, view: "getGlobalActions" },
-          { id: "novaman",    address: GAMES.novaman.contract,    view: "getGlobalActions" },
+          // Novaman is ONE contract deployed on all three shards, and a run is smeared
+          // across them by geography. GAMES.novaman.contract is only shard 0, so counting
+          // it alone under-reported the odometer by the other two shards' worth of play.
+          { id: "novaman",    address: GAMES.novaman.shards[1],   view: "getGlobalActions" },
+          { id: "novaman",    address: GAMES.novaman.shards[2],   view: "getGlobalActions" },
+          { id: "novaman",    address: GAMES.novaman.shards[0],   view: "getGlobalActions" },
         ];
         var rclient;
         try { rclient = createArcadeClient("tugofwar"); } // read-only use; no key is ground for query()
@@ -246,9 +251,14 @@
             var per = {}, total = 0, any = false;
             COUNTERS.forEach(function (c, i) {
               var v = vals[i];
-              if (v == null) v = prev[c.id]; // hold last-known on a failed read
+              // Hold last-known per CONTRACT, not per cabinet id: multi-shard cabinets
+              // (novaman, triptych) list several contracts under one id, and keying the
+              // fallback by id made a failed read on one shard borrow another's value.
+              if (v == null) v = prev[c.address];
               if (v == null) return;
-              prev[c.id] = v; per[c.id] = v; total += v; any = true;
+              prev[c.address] = v;
+              per[c.id] = (per[c.id] || 0) + v; // ACCUMULATE — a cabinet can span shards
+              total += v; any = true;
             });
             if (!any) return; // nothing read yet -> don't feed a phantom zero
             try { score.feed({ perCabinet: per, total: total }); } catch (e) {}
