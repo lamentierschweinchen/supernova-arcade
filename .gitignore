@@ -50,3 +50,4 @@ next-env.d.ts
 
 # load-generation rosters hold player SECRET KEYS — never commit them
 scripts/*roster*.json
+scripts/arcade-bots.json
